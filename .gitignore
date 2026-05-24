@@ -1,3 +1,6 @@
+# 强制忽略所有项目的obj bin
+**/obj/
+**/bin/
 # .NET 编译产物
 bin/
 obj/
