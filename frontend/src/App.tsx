@@ -1,45 +1,11 @@
-import { useState, useEffect } from 'react';
+import { observer } from 'mobx-react-lite';
 import aspireLogo from '/Aspire.png';
 import './App.css';
+import { useStore } from './stores/StoreProvider';
 
-interface WeatherForecast {
-  date: string;
-  temperatureC: number;
-  temperatureF: number;
-  summary: string;
-}
-
-function App() {
-  const [weatherData, setWeatherData] = useState<WeatherForecast[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [useCelsius, setUseCelsius] = useState(false);
-
-  const fetchWeatherForecast = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await fetch('/api/weatherforecast');
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data: WeatherForecast[] = await response.json();
-      setWeatherData(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch weather data');
-      console.error('Error fetching weather forecast:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchWeatherForecast();
-  }, []);
-
+const App = observer(() => {
+  const { weatherStore } = useStore();
+  const { loading, error, useCelsius, formattedForecasts } = weatherStore;
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString(undefined, { 
       weekday: 'short', 
@@ -74,7 +40,7 @@ function App() {
                   <legend className="visually-hidden">Temperature unit</legend>
                   <button 
                     className={`toggle-option ${!useCelsius ? 'active' : ''}`}
-                    onClick={() => setUseCelsius(false)}
+                    onClick={() => weatherStore.setUseCelsius(false)}
                     aria-pressed={!useCelsius}
                     type="button"
                   >
@@ -83,7 +49,7 @@ function App() {
                   </button>
                   <button 
                     className={`toggle-option ${useCelsius ? 'active' : ''}`}
-                    onClick={() => setUseCelsius(true)}
+                    onClick={() => weatherStore.setUseCelsius(true)}
                     aria-pressed={useCelsius}
                     type="button"
                   >
@@ -93,7 +59,7 @@ function App() {
                 </fieldset>
                 <button 
                   className="refresh-button"
-                  onClick={fetchWeatherForecast} 
+                  onClick={weatherStore.fetchWeatherForecast} 
                   disabled={loading}
                   aria-label={loading ? 'Loading weather forecast' : 'Refresh weather forecast'}
                   type="button"
@@ -127,7 +93,7 @@ function App() {
               </div>
             )}
             
-            {loading && weatherData.length === 0 && (
+            {loading && formattedForecasts.length === 0 && (
               <div className="loading-skeleton" role="status" aria-live="polite" aria-label="Loading weather data">
                 {[...Array(5)].map((_, i) => (
                   <div key={i} className="skeleton-row" aria-hidden="true" />
@@ -136,18 +102,18 @@ function App() {
               </div>
             )}
             
-            {weatherData.length > 0 && (
+            {formattedForecasts.length > 0 && (
               <div className="weather-grid">
-                {weatherData.map((forecast, index) => (
+                {formattedForecasts.map((forecast, index) => (
                   <article key={index} className="weather-card" aria-label={`Weather for ${formatDate(forecast.date)}`}>
                     <h3 className="weather-date">
                       <time dateTime={forecast.date}>{formatDate(forecast.date)}</time>
                     </h3>
                     <p className="weather-summary">{forecast.summary}</p>
-                    <div className="weather-temps" aria-label={`Temperature: ${useCelsius ? forecast.temperatureC : forecast.temperatureF} degrees ${useCelsius ? 'Celsius' : 'Fahrenheit'}`}>
+                    <div className="weather-temps" aria-label={`Temperature: ${forecast.temperature} degrees ${useCelsius ? 'Celsius' : 'Fahrenheit'}`}>
                       <div className="temp-group">
                         <span className="temp-value" aria-hidden="true">
-                          {useCelsius ? forecast.temperatureC : forecast.temperatureF}°
+                          {forecast.temperature}°
                         </span>
                         <span className="temp-unit" aria-hidden="true">{useCelsius ? 'Celsius' : 'Fahrenheit'}</span>
                       </div>
@@ -179,6 +145,6 @@ function App() {
       </footer>
     </div>
   );
-}
+});
 
 export default App;
