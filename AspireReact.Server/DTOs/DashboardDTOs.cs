@@ -1,0 +1,44 @@
+using AspireReact.Server.DTOs;
+
+namespace AspireReact.Server.DTOs;
+
+/// <summary>
+/// 首页概览响应
+/// </summary>
+public class DashboardResponse
+{
+    /// <summary>
+    /// 今日盈亏
+    /// </summary>
+    public decimal TodayPnL { get; set; }
+
+    /// <summary>
+    /// 本周盈亏
+    /// </summary>
+    public decimal WeekPnL { get; set; }
+
+    /// <summary>
+    /// 本月盈亏
+    /// </summary>
+    public decimal MonthPnL { get; set; }
+
+    /// <summary>
+    /// 累计盈亏
+    /// </summary>
+    public decimal CumulativePnL { get; set; }
+
+    /// <summary>
+    /// 最新账户资金记录
+    /// </summary>
+    public AccountDailyResponse? LatestAccount { get; set; }
+
+    /// <summary>
+    /// 最近银证流水记录（最多10条）
+    /// </summary>
+    public List<BankFlowResponse> RecentBankFlows { get; set; } = new();
+
+    /// <summary>
+    /// 最近交易记录（最多5条）
+    /// </summary>
+    public List<StockTradeResponse> RecentTrades { get; set; } = new();
+}
