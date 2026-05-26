@@ -43,6 +43,7 @@ builder.Services.AddScoped<ICaptchaService, CaptchaService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<IBankFlowService, BankFlowService>();
+builder.Services.AddScoped<IStockTradeService, StockTradeService>();
 
 // 添加控制器支持
 builder.Services.AddControllers();
