@@ -1,30 +1,67 @@
 import { observer } from 'mobx-react-lite';
-import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useStore } from '../stores/StoreProvider';
+import StatsCards from '../components/Dashboard/StatsCards';
+import QuickEntry from '../components/Dashboard/QuickEntry';
+import RecentRecords from '../components/Dashboard/RecentRecords';
+import './DashboardPage.css';
 
 const DashboardPage = observer(() => {
-  const { weatherStore } = useStore();
-  const navigate = useNavigate();
+  const { dashboardStore } = useStore();
+
+  useEffect(() => {
+    dashboardStore.fetchDashboard();
+  }, [dashboardStore]);
 
   return (
-    <div className="app-container">
-      <header className="app-header">
-        <h1 className="app-title">Dashboard</h1>
-        <p className="app-subtitle">股票交易记录管理系统</p>
+    <div className="dashboard-container">
+      <header className="dashboard-header">
+        <div>
+          <h1 className="dashboard-title">首页概览</h1>
+          <p className="dashboard-subtitle">股票交易记录管理系统</p>
+        </div>
+        <button
+          className="dashboard-refresh-btn"
+          onClick={() => dashboardStore.fetchDashboard()}
+          disabled={dashboardStore.loading}
+          type="button"
+        >
+          {dashboardStore.loading && !dashboardStore.data ? '加载中...' : '刷新数据'}
+        </button>
       </header>
 
-      <main className="main-content">
-        <div className="card" style={{ textAlign: 'center', minHeight: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <p style={{ color: 'var(--text-tertiary)', fontSize: '1.1rem' }}>
-            Dashboard 页面 — 功能开发中...
-          </p>
-        </div>
+      <main className="dashboard-main">
+        {dashboardStore.loading && !dashboardStore.data && (
+          <div className="dashboard-loading">
+            <div className="dashboard-loading__spinner" />
+            <span className="dashboard-loading__text">加载中...</span>
+          </div>
+        )}
+
+        {dashboardStore.error && (
+          <div className="dashboard-error">
+            <span>{dashboardStore.error}</span>
+            <button
+              className="dashboard-error__retry"
+              onClick={() => dashboardStore.fetchDashboard()}
+              type="button"
+            >
+              重试
+            </button>
+          </div>
+        )}
+
+        {(dashboardStore.data || !dashboardStore.loading) && (
+          <>
+            <StatsCards />
+            <QuickEntry />
+            <RecentRecords />
+          </>
+        )}
       </main>
 
-      <footer className="app-footer">
-        <nav>
-          <span>股票交易记录管理系统 v1.0</span>
-        </nav>
+      <footer className="dashboard-footer">
+        <span>股票交易记录管理系统 v1.0</span>
       </footer>
     </div>
   );

@@ -1,0 +1,47 @@
+.quick-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.quick-entry-card {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  border-left: 4px solid var(--card-accent, #3b82f6);
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  min-height: 110px;
+  color: #111827;
+  font-family: inherit;
+  text-align: left;
+}
+
+.quick-entry-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--card-accent, #3b82f6);
+}
+
+.quick-entry-card:focus-visible {
+  outline: 3px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+.quick-entry-card__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.quick-entry-card__desc {
+  font-size: 0.8rem;
+  color: #9ca3af;
+  line-height: 1.4;
+}
