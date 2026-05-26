@@ -1,0 +1,119 @@
+.stock-search-wrapper {
+  position: relative;
+}
+
+.stock-search-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.stock-search-loading {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.75rem;
+  color: #7c92f5;
+  pointer-events: none;
+}
+
+.stock-search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  background: rgba(30, 30, 46, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.stock-search-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.stock-search-item:hover {
+  background: rgba(124, 146, 245, 0.15);
+}
+
+.stock-code {
+  font-weight: 600;
+  color: #7c92f5;
+  min-width: 64px;
+  font-size: 0.875rem;
+}
+
+.stock-name {
+  color: #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.stock-abbr {
+  color: #94a3b8;
+  font-size: 0.8125rem;
+}
+
+.stock-board {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+.stock-search-empty {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  padding: 0.75rem;
+  text-align: center;
+  color: #94a3b8;
+  background: rgba(30, 30, 46, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.5rem;
+  z-index: 100;
+  font-size: 0.8125rem;
+}
+
+@media (prefers-color-scheme: light) {
+  .stock-search-dropdown,
+  .stock-search-empty {
+    background: rgba(255, 255, 255, 0.98);
+    border-color: rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .stock-search-item:hover {
+    background: rgba(102, 126, 234, 0.08);
+  }
+
+  .stock-name {
+    color: #1a202c;
+  }
+
+  .stock-abbr {
+    color: #718096;
+  }
+
+  .stock-board {
+    color: #718096;
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  .stock-search-empty {
+    color: #718096;
+  }
+}

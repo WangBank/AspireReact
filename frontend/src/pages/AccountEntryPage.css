@@ -1,0 +1,360 @@
+.entry-page-container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+.entry-page-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+  background: linear-gradient(135deg, #7c92f5 0%, #8b5ecf 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.entry-page-subtitle {
+  font-size: 0.875rem;
+  color: #94a3b8;
+  margin: 0 0 2rem;
+}
+
+.entry-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  flex: 1;
+}
+
+.form-group-half {
+  flex: 1;
+}
+
+.form-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.required-star {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  font-size: 0.9375rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.form-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.form-input:focus {
+  border-color: #7c92f5;
+  box-shadow: 0 0 0 3px rgba(124, 146, 245, 0.15);
+}
+
+.form-input-error {
+  border-color: #ef4444 !important;
+}
+
+.form-error {
+  font-size: 0.8125rem;
+  color: #fca5a5;
+  margin-top: 0.125rem;
+}
+
+.form-textarea {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.form-textarea:focus {
+  border-color: #7c92f5;
+  box-shadow: 0 0 0 3px rgba(124, 146, 245, 0.15);
+}
+
+.entry-error-banner {
+  background: rgba(220, 38, 38, 0.1);
+  border-left: 4px solid #ef4444;
+  color: #fca5a5;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.entry-success-banner {
+  background: rgba(34, 197, 94, 0.1);
+  border-left: 4px solid #22c55e;
+  color: #86efac;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.entry-submit-btn {
+  width: 100%;
+  padding: 0.75rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: linear-gradient(135deg, #7c92f5 0%, #8b5ecf 100%);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  box-shadow: 0 2px 8px rgba(124, 146, 245, 0.3);
+  margin-top: 0.5rem;
+}
+
+.entry-submit-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(124, 146, 245, 0.4);
+}
+
+.entry-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Radio group */
+.radio-group {
+  display: flex;
+  gap: 1rem;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.5rem;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.radio-label:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.radio-label-active {
+  border-color: #7c92f5;
+  background: rgba(124, 146, 245, 0.1);
+}
+
+.radio-input {
+  display: none;
+}
+
+.radio-custom {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  position: relative;
+  flex-shrink: 0;
+  transition: border-color 0.2s ease;
+}
+
+.radio-label-active .radio-custom {
+  border-color: #7c92f5;
+}
+
+.radio-label-active .radio-custom::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7c92f5;
+}
+
+.radio-text {
+  color: #cbd5e0;
+  font-size: 0.875rem;
+}
+
+.radio-label-active .radio-text {
+  color: #7c92f5;
+}
+
+/* Fieldset */
+.form-fieldset {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 0;
+}
+
+.fieldset-legend {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #94a3b8;
+  padding: 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Selected stock info */
+.selected-stock-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(124, 146, 245, 0.08);
+  border-radius: 0.5rem;
+  border: 1px solid rgba(124, 146, 245, 0.2);
+}
+
+.selected-stock-code {
+  font-weight: 600;
+  color: #7c92f5;
+  font-size: 0.875rem;
+}
+
+.selected-stock-name {
+  color: #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.selected-stock-board {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+@media (max-width: 480px) {
+  .form-row {
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  .entry-page-subtitle {
+    color: #4a5568;
+  }
+
+  .form-label {
+    color: #2d3748;
+  }
+
+  .form-input,
+  .form-textarea {
+    border-color: rgba(0, 0, 0, 0.15);
+    background: rgba(0, 0, 0, 0.02);
+    color: #1a202c;
+  }
+
+  .form-input::placeholder,
+  .form-textarea::placeholder {
+    color: rgba(0, 0, 0, 0.3);
+  }
+
+  .entry-error-banner {
+    background: #fee;
+    color: #991b1b;
+  }
+
+  .entry-success-banner {
+    background: #f0fdf4;
+    color: #166534;
+  }
+
+  .form-error {
+    color: #991b1b;
+  }
+
+  .radio-label {
+    border-color: rgba(0, 0, 0, 0.15);
+  }
+
+  .radio-label:hover {
+    background: rgba(102, 126, 234, 0.06);
+  }
+
+  .radio-label-active {
+    background: rgba(102, 126, 234, 0.08);
+  }
+
+  .radio-custom {
+    border-color: rgba(0, 0, 0, 0.25);
+  }
+
+  .radio-text {
+    color: #4a5568;
+  }
+
+  .radio-label-active .radio-text {
+    color: #667eea;
+  }
+
+  .form-fieldset {
+    border-color: rgba(0, 0, 0, 0.12);
+  }
+
+  .fieldset-legend {
+    color: #4a5568;
+  }
+
+  .selected-stock-info {
+    background: rgba(102, 126, 234, 0.06);
+    border-color: rgba(102, 126, 234, 0.2);
+  }
+
+  .selected-stock-code {
+    color: #667eea;
+  }
+
+  .selected-stock-name {
+    color: #1a202c;
+  }
+
+  .selected-stock-board {
+    color: #718096;
+    background: rgba(0, 0, 0, 0.04);
+  }
+}

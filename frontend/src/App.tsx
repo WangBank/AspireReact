@@ -3,6 +3,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useStore } from './stores/StoreProvider';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import AccountEntryPage from './pages/AccountEntryPage';
+import BankFlowEntryPage from './pages/BankFlowEntryPage';
+import TradeEntryPage from './pages/TradeEntryPage';
 import './App.css';
 
 const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) => {
@@ -29,6 +32,30 @@ const App = observer(() => {
         element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/entry/account"
+        element={
+          <ProtectedRoute>
+            <AccountEntryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/entry/bankflow"
+        element={
+          <ProtectedRoute>
+            <BankFlowEntryPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/entry/trade"
+        element={
+          <ProtectedRoute>
+            <TradeEntryPage />
           </ProtectedRoute>
         }
       />
