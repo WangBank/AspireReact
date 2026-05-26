@@ -1,0 +1,497 @@
+.sp-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f3f4f6;
+}
+
+/* Header */
+.sp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 32px 0;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.sp-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.sp-subtitle {
+  font-size: 0.875rem;
+  color: #9ca3af;
+  margin: 4px 0 0;
+}
+
+.sp-refresh-btn {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-family: inherit;
+}
+
+.sp-refresh-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.sp-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Filter bar */
+.sp-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  max-width: 1400px;
+  width: 100%;
+  margin: 16px auto 0;
+  padding: 0 32px;
+  box-sizing: border-box;
+}
+
+.sp-filter-bar label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+}
+
+.sp-input-text {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  color: #111827;
+  background: #fff;
+  min-width: 120px;
+}
+
+.sp-input-text:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.sp-input-date {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  color: #111827;
+  background: #fff;
+}
+
+.sp-input-date:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.sp-select {
+  padding: 6px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  color: #111827;
+  background: #fff;
+  min-width: 120px;
+}
+
+.sp-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.sp-btn-primary {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 18px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s;
+}
+
+.sp-btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.sp-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.sp-btn-secondary {
+  background: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 7px 18px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s;
+}
+
+.sp-btn-secondary:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
+/* Date filter tabs */
+.sp-date-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.sp-date-tab {
+  padding: 6px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.82rem;
+  font-family: inherit;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.sp-date-tab:hover {
+  background: #f3f4f6;
+}
+
+.sp-date-tab--active {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+}
+
+.sp-date-tab--active:hover {
+  background: #2563eb;
+}
+
+/* PnL filter tabs */
+.sp-pnl-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.sp-pnl-tab {
+  padding: 6px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 0.82rem;
+  font-family: inherit;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.sp-pnl-tab:hover {
+  background: #f3f4f6;
+}
+
+.sp-pnl-tab--active {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+}
+
+.sp-pnl-tab--active:hover {
+  background: #2563eb;
+}
+
+/* Main */
+.sp-main {
+  flex: 1;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 16px 32px 32px;
+  box-sizing: border-box;
+}
+
+/* Status */
+.sp-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 40px 0;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+.sp-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: sp-spin 0.8s linear infinite;
+}
+
+@keyframes sp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sp-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fef2f2;
+  border-left: 4px solid #ef4444;
+  color: #991b1b;
+  padding: 14px 20px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.sp-error button {
+  margin-left: auto;
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.sp-empty {
+  text-align: center;
+  padding: 60px 0;
+  color: #9ca3af;
+  font-size: 1rem;
+}
+
+/* Stat cards */
+.sp-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.sp-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.sp-card-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px;
+}
+
+.sp-card-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.sp-card-value--positive {
+  color: #16a34a;
+}
+
+.sp-card-value--negative {
+  color: #dc2626;
+}
+
+.sp-card-sub {
+  font-size: 0.78rem;
+  color: #9ca3af;
+  margin: 4px 0 0;
+}
+
+/* Section */
+.sp-section {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  padding: 20px 24px;
+  margin-bottom: 24px;
+}
+
+.sp-section-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 16px;
+}
+
+/* Table */
+.sp-table-wrap {
+  overflow-x: auto;
+}
+
+.sp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.sp-table th {
+  text-align: left;
+  padding: 10px 14px;
+  background: #f9fafb;
+  color: #6b7280;
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.sp-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.sp-table tr:last-child td {
+  border-bottom: none;
+}
+
+.sp-table tr:hover td {
+  background: #f9fafb;
+}
+
+.sp-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+}
+
+.sp-positive {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.sp-negative {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+/* Board tag */
+.sp-board-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.sp-board-tag--主板 {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.sp-board-tag--创业板 {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.sp-board-tag--科创板 {
+  background: #fce7f3;
+  color: #be185d;
+}
+
+.sp-board-tag--北交所 {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sp-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 16px 0;
+  }
+
+  .sp-filter-bar {
+    padding: 0 16px;
+  }
+
+  .sp-main {
+    padding: 16px 16px 32px;
+  }
+
+  .sp-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .sp-table-wrap {
+    margin: 0 -16px;
+    padding: 0 16px;
+  }
+
+  .sp-table th,
+  .sp-table td {
+    padding: 8px 10px;
+  }
+
+  /* Card layout for mobile */
+  .sp-table tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    padding: 10px;
+  }
+
+  .sp-table thead {
+    display: none;
+  }
+
+  .sp-table td {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border: none;
+  }
+
+  .sp-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: #9ca3af;
+    font-size: 0.78rem;
+  }
+}

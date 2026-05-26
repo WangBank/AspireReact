@@ -2,6 +2,7 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import type { TradeSortField } from '../stores/TradeListStore';
+import StockLink from '../components/StockLink';
 import './TradeListPage.css';
 
 const TradeListPage = observer(() => {
@@ -182,7 +183,9 @@ const TradeListPage = observer(() => {
                   {store.displayedData.map((row) => (
                     <tr key={row.id}>
                       <td data-label="日期">{row.tradeDate}</td>
-                      <td data-label="代码" className="tlp-mono">{row.stockCode}</td>
+                      <td data-label="代码" className="tlp-mono">
+                        <StockLink stockCode={row.stockCode} stockName={row.stockName} />
+                      </td>
                       <td data-label="名称">{row.stockName}</td>
                       <td data-label="板块">{row.board}</td>
                       <td data-label="买入价" className="tlp-num">{row.buyPrice.toFixed(2)}</td>

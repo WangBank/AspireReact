@@ -9,6 +9,10 @@ import TradeEntryPage from './pages/TradeEntryPage';
 import AccountListPage from './pages/AccountListPage';
 import BankFlowListPage from './pages/BankFlowListPage';
 import TradeListPage from './pages/TradeListPage';
+import StatisticsPage from './pages/StatisticsPage';
+import GlobalNotesPage from './pages/GlobalNotesPage';
+import StockNotesPage from './pages/StockNotesPage';
+import ConfigPage from './pages/ConfigPage';
 import './App.css';
 
 const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) => {
@@ -83,6 +87,38 @@ const App = observer(() => {
         element={
           <ProtectedRoute>
             <TradeListPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/statistics"
+        element={
+          <ProtectedRoute>
+            <StatisticsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/notes/global"
+        element={
+          <ProtectedRoute>
+            <GlobalNotesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/notes/stock"
+        element={
+          <ProtectedRoute>
+            <StockNotesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/config"
+        element={
+          <ProtectedRoute>
+            <ConfigPage />
           </ProtectedRoute>
         }
       />

@@ -1,0 +1,23 @@
+.stock-link {
+  color: #3b82f6;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+  font-size: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s, text-decoration 0.15s;
+}
+
+.stock-link:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.stock-link--no-link {
+  color: inherit;
+  cursor: default;
+}
+
+.stock-link--no-link:hover {
+  color: inherit;
+  text-decoration: none;
+}

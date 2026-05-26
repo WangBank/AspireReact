@@ -7,6 +7,9 @@ import { tradeEntryStore } from './TradeEntryStore';
 import { accountListStore } from './AccountListStore';
 import { bankFlowListStore } from './BankFlowListStore';
 import { tradeListStore } from './TradeListStore';
+import { statisticsStore } from './StatisticsStore';
+import { notesStore } from './NotesStore';
+import { configStore } from './ConfigStore';
 
 export class RootStore {
   weatherStore = weatherStore;
@@ -18,6 +21,9 @@ export class RootStore {
   accountListStore = accountListStore;
   bankFlowListStore = bankFlowListStore;
   tradeListStore = tradeListStore;
+  statisticsStore = statisticsStore;
+  notesStore = notesStore;
+  configStore = configStore;
 }
 
 export const rootStore = new RootStore();
