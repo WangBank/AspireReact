@@ -22,6 +22,12 @@ export interface BankFlowApiResponse<T> {
   data?: T;
 }
 
+export interface BankFlowListResponse {
+  success: boolean;
+  message: string;
+  data: BankFlowResponse[];
+}
+
 export class BankFlowService {
   private getAuthHeaders(): HeadersInit {
     const token = localStorage.getItem('jwt_token');
@@ -36,6 +42,23 @@ export class BankFlowService {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify(request),
+    });
+    return response.json();
+  }
+
+  async getByDateRange(startDate?: string, endDate?: string): Promise<BankFlowListResponse> {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    const url = `${API_BASE}${params.toString() ? '?' + params.toString() : ''}`;
+    const response = await fetch(url, { headers: this.getAuthHeaders() });
+    return response.json();
+  }
+
+  async delete(id: number): Promise<BankFlowApiResponse<null>> {
+    const response = await fetch(`${API_BASE}/${id}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
     });
     return response.json();
   }

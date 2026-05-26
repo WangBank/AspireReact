@@ -4,6 +4,9 @@ import { dashboardStore } from './DashboardStore';
 import { accountEntryStore } from './AccountEntryStore';
 import { bankFlowEntryStore } from './BankFlowEntryStore';
 import { tradeEntryStore } from './TradeEntryStore';
+import { accountListStore } from './AccountListStore';
+import { bankFlowListStore } from './BankFlowListStore';
+import { tradeListStore } from './TradeListStore';
 
 export class RootStore {
   weatherStore = weatherStore;
@@ -12,6 +15,9 @@ export class RootStore {
   accountEntryStore = accountEntryStore;
   bankFlowEntryStore = bankFlowEntryStore;
   tradeEntryStore = tradeEntryStore;
+  accountListStore = accountListStore;
+  bankFlowListStore = bankFlowListStore;
+  tradeListStore = tradeListStore;
 }
 
 export const rootStore = new RootStore();

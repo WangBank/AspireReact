@@ -37,6 +37,16 @@ export interface StockTradeApiResponse<T> {
   data?: T;
 }
 
+export interface TradeListResponse {
+  success: boolean;
+  message: string;
+  data: StockTradeResponse[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export class TradeService {
   private getAuthHeaders(): HeadersInit {
     const token = localStorage.getItem('jwt_token');
@@ -51,6 +61,32 @@ export class TradeService {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify(request),
+    });
+    return response.json();
+  }
+
+  async query(params: {
+    stockCode?: string;
+    tradeDate?: string;
+    board?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<TradeListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params.stockCode) searchParams.append('stockCode', params.stockCode);
+    if (params.tradeDate) searchParams.append('tradeDate', params.tradeDate);
+    if (params.board) searchParams.append('board', params.board);
+    if (params.page) searchParams.append('page', String(params.page));
+    if (params.pageSize) searchParams.append('pageSize', String(params.pageSize));
+    const url = `${API_BASE}?${searchParams.toString()}`;
+    const response = await fetch(url, { headers: this.getAuthHeaders() });
+    return response.json();
+  }
+
+  async delete(id: number): Promise<StockTradeApiResponse<null>> {
+    const response = await fetch(`${API_BASE}/${id}`, {
+      method: 'DELETE',
+      headers: this.getAuthHeaders(),
     });
     return response.json();
   }
