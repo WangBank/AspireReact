@@ -7,8 +7,7 @@ public static class DatabaseInitializer
 {
     public static async Task InitializeAsync(AppDbContext context)
     {
-        // 确保数据库已创建
-        await context.Database.EnsureCreatedAsync();
+        // 数据库由 MigrationService 通过 MigrateAsync() 自动创建和迁移，此处仅做种子数据填充
         
         // 添加一些初始数据（可选）
         if (!await context.StockBasics.AnyAsync())

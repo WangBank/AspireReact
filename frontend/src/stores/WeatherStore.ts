@@ -54,14 +54,6 @@ export class WeatherStore {
       temperature: this.useCelsius ? forecast.temperatureC : forecast.temperatureF,
     }));
   }
-
-  private formatDate(dateString: string) {
-    return new Date(dateString).toLocaleDateString(undefined, { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric' 
-    });
-  }
 }
 
 export const weatherStore = new WeatherStore();

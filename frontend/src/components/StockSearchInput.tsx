@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { stockService } from '../../services/StockService';
-import type { StockSearchResult } from '../../services/StockService';
+import { stockService } from '../services/StockService';
+import type { StockSearchResult } from '../services/StockService';
 import './StockSearchInput.css';
 
 interface StockSearchInputProps {
@@ -21,7 +21,7 @@ const StockSearchInput = ({
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
   const [noResult, setNoResult] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // 点击外部关闭下拉
@@ -69,10 +69,10 @@ const StockSearchInput = ({
   };
 
   const handleSelect = (stock: StockSearchResult) => {
-    setKeyword(`${stock.StockCode} - ${stock.StockName}`);
+    setKeyword(`${stock.stockCode} - ${stock.stockName}`);
     setShowDropdown(false);
     setResults([]);
-    onChange(stock.StockCode, stock.StockName, stock.Board);
+    onChange(stock.stockCode, stock.stockName, stock.board);
   };
 
   const handleBlur = () => {
@@ -98,16 +98,16 @@ const StockSearchInput = ({
         <ul className="stock-search-dropdown">
           {results.map((stock) => (
             <li
-              key={stock.StockCode}
+              key={stock.stockCode}
               className="stock-search-item"
               onMouseDown={() => handleSelect(stock)}
             >
-              <span className="stock-code">{stock.StockCode}</span>
-              <span className="stock-name">{stock.StockName}</span>
-              {stock.StockAbbr && (
-                <span className="stock-abbr">({stock.StockAbbr})</span>
+              <span className="stock-code">{stock.stockCode}</span>
+              <span className="stock-name">{stock.stockName}</span>
+              {stock.stockAbbr && (
+                <span className="stock-abbr">({stock.stockAbbr})</span>
               )}
-              <span className="stock-board">{stock.Board}</span>
+              <span className="stock-board">{stock.board}</span>
             </li>
           ))}
         </ul>
