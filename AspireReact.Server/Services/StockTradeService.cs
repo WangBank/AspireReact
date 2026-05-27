@@ -19,7 +19,7 @@ public class StockTradeService : IStockTradeService
     /// </summary>
     public async Task<StockTradeResult> CreateAsync(StockTradeRequest request)
     {
-        // 验证：同一股票在同一天不应重复录入（防止误操作）
+        // 验证：同一心魔在同一天不应重复录入（防止误操作）
         var exists = await _db.StockTrades.AnyAsync(t =>
             t.TradeDate == request.TradeDate.Date &&
             t.StockCode == request.StockCode);
@@ -28,7 +28,7 @@ public class StockTradeService : IStockTradeService
             return new StockTradeResult
             {
                 Success = false,
-                Message = $"股票 {request.StockCode} 在 {request.TradeDate:yyyy-MM-dd} 已有交易记录，请勿重复添加"
+                Message = $"心魔 {request.StockCode} 在 {request.TradeDate:yyyy-MM-dd} 已有交易记录，请勿重复添加"
             };
         }
 
@@ -74,7 +74,7 @@ public class StockTradeService : IStockTradeService
             };
         }
 
-        // 如果修改了日期或股票代码，检查是否与其他记录冲突
+        // 如果修改了日期或心魔代码，检查是否与其他记录冲突
         if (entity.TradeDate != request.TradeDate.Date || entity.StockCode != request.StockCode)
         {
             var conflict = await _db.StockTrades.AnyAsync(t =>
@@ -86,7 +86,7 @@ public class StockTradeService : IStockTradeService
                 return new StockTradeResult
                 {
                     Success = false,
-                    Message = $"股票 {request.StockCode} 在 {request.TradeDate:yyyy-MM-dd} 已有其他交易记录，无法修改为该组合"
+                    Message = $"心魔 {request.StockCode} 在 {request.TradeDate:yyyy-MM-dd} 已有其他交易记录，无法修改为该组合"
                 };
             }
         }
@@ -172,7 +172,7 @@ public class StockTradeService : IStockTradeService
     {
         var query = _db.StockTrades.AsNoTracking();
 
-        // 按股票代码筛选
+        // 按心魔代码筛选
         if (!string.IsNullOrWhiteSpace(request.StockCode))
         {
             var code = request.StockCode.Trim();
@@ -223,7 +223,7 @@ public class StockTradeService : IStockTradeService
     }
 
     /// <summary>
-    /// 统计汇总（按日期范围、股票、板块统计盈亏）
+    /// 统计汇总（按日期范围、心魔、板块统计盈亏）
     /// </summary>
     public async Task<TradeSummaryResponse> GetSummaryAsync(TradeSummaryRequest request)
     {
@@ -242,7 +242,7 @@ public class StockTradeService : IStockTradeService
             query = query.Where(t => t.TradeDate <= end);
         }
 
-        // 按股票过滤
+        // 按心魔过滤
         if (!string.IsNullOrWhiteSpace(request.StockCode))
         {
             var code = request.StockCode.Trim();
@@ -258,7 +258,7 @@ public class StockTradeService : IStockTradeService
 
         var trades = await query.ToListAsync();
 
-        // 按股票汇总
+        // 按心魔汇总
         var byStock = trades
             .GroupBy(t => new { t.StockCode, t.StockName, t.Board })
             .Select(g => new TradeSummaryItem

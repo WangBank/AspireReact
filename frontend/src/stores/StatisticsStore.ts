@@ -95,7 +95,7 @@ export class StatisticsStore {
     }
   };
 
-  /** 获取过滤后的按股票汇总列表 */
+  /** 获取过滤后的按心魔汇总列表 */
   get filteredByStock(): import('../services/StatisticsService').TradeSummaryItem[] {
     if (!this.data) return [];
     const list = this.data.byStock;

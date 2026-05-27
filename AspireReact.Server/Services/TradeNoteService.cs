@@ -95,7 +95,7 @@ public class TradeNoteService : ITradeNoteService
     }
 
     /// <summary>
-    /// 按条件搜索笔记（支持日期、股票代码、关键词）
+    /// 按条件搜索笔记（支持日期、心魔代码、关键词）
     /// </summary>
     public async Task<List<NoteResponse>> SearchAsync(DateTime? date = null, string? stockCode = null, string? keyword = null)
     {
@@ -143,7 +143,7 @@ public class TradeNoteService : ITradeNoteService
     }
 
     /// <summary>
-    /// 获取指定股票的笔记
+    /// 获取指定心魔的笔记
     /// </summary>
     public async Task<List<NoteResponse>> GetByStockCodeAsync(string stockCode)
     {

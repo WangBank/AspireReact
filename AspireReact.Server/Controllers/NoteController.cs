@@ -52,7 +52,7 @@ public class NoteController : ControllerBase
     }
 
     /// <summary>
-    /// 获取指定股票的笔记
+    /// 获取指定心魔的笔记
     /// </summary>
     [HttpGet("stock/{stockCode}")]
     public async Task<IActionResult> GetByStockCode(string stockCode)
@@ -63,7 +63,7 @@ public class NoteController : ControllerBase
         {
             success = true,
             data = list,
-            message = $"查询到 {list.Count} 条股票 {stockCode} 的笔记"
+            message = $"查询到 {list.Count} 条心魔 {stockCode} 的笔记"
         });
     }
 

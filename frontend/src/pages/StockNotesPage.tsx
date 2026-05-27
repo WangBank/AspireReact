@@ -10,13 +10,13 @@ const StockNotesPage = observer(() => {
   const [searchExpanded, setSearchExpanded] = useState(false);
 
   useEffect(() => {
-    // 不自动加载，等用户输入股票代码
+    // 不自动加载，等用户输入心魔代码
   }, [store]);
 
   const handleLoad = () => {
     const code = inputStockCode.trim();
     if (!code) {
-      store.error = '请输入股票代码';
+      store.error = '请输入心魔代码';
       return;
     }
     setStockCode(code);
@@ -31,7 +31,7 @@ const StockNotesPage = observer(() => {
     store.setKeyword('');
     store.setSearchDate('');
     store.setSearchStockCode('');
-    // 重新加载当前股票笔记
+    // 重新加载当前心魔笔记
     if (stockCode) {
       store.loadStockNotes(stockCode);
     }
@@ -91,7 +91,7 @@ const StockNotesPage = observer(() => {
         <div>
           <h1 className="snp-title">个股笔记管理</h1>
           <p className="snp-subtitle">
-            {stockCode ? `查看 ${stockCode} 的交易笔记` : '输入股票代码查看对应笔记'}
+            {stockCode ? `查看 ${stockCode} 的交易笔记` : '输入心魔代码查看对应笔记'}
           </p>
         </div>
         <div className="snp-header-actions">
@@ -118,10 +118,10 @@ const StockNotesPage = observer(() => {
       </header>
 
       <div className="snp-stock-input-bar">
-        <label>股票代码</label>
+        <label>心魔代码</label>
         <input
           type="text"
-          placeholder="输入股票代码，如 000001"
+          placeholder="输入心魔代码，如 000001"
           value={inputStockCode}
           onChange={(e) => setInputStockCode(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -146,7 +146,7 @@ const StockNotesPage = observer(() => {
             value={store.searchDate}
             onChange={(e) => store.setSearchDate(e.target.value)}
           />
-          <label>股票代码</label>
+          <label>心魔代码</label>
           <input
             type="text"
             placeholder="如 000001"
@@ -182,7 +182,7 @@ const StockNotesPage = observer(() => {
         {!stockCode && !store.loading && (
           <div className="snp-empty">
             <div className="snp-empty-icon">&#128270;</div>
-            <span>请输入股票代码查看笔记</span>
+            <span>请输入心魔代码查看笔记</span>
           </div>
         )}
 
@@ -228,7 +228,7 @@ const StockNotesPage = observer(() => {
                 />
               </div>
               <div className="snp-form-group">
-                <label>关联股票</label>
+                <label>关联心魔</label>
                 <input
                   type="text"
                   placeholder="可选，如 000001"

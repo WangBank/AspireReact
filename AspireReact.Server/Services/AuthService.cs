@@ -44,10 +44,18 @@ public class AuthService : IAuthService
             return new AuthResponse { Success = false, Message = "用户名已存在" };
         }
 
+        // 检查邮箱是否已存在
+        var existingEmail = await _db.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+        if (existingEmail != null)
+        {
+            return new AuthResponse { Success = false, Message = "该邮箱已被注册" };
+        }
+
         // 创建用户
         var user = new User
         {
             Username = request.Username,
+            Email = request.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             CreatedAt = DateTime.UtcNow,
             IsActive = true

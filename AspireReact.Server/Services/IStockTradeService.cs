@@ -3,7 +3,7 @@ using AspireReact.Server.DTOs;
 namespace AspireReact.Server.Services;
 
 /// <summary>
-/// 股票交易服务接口
+/// 心魔交易服务接口
 /// </summary>
 public interface IStockTradeService
 {
@@ -33,7 +33,7 @@ public interface IStockTradeService
     Task<PagedResult<StockTradeResponse>> QueryAsync(TradeQueryRequest request);
 
     /// <summary>
-    /// 统计汇总（按日期范围、股票、板块统计盈亏）
+    /// 统计汇总（按日期范围、心魔、板块统计盈亏）
     /// </summary>
     Task<TradeSummaryResponse> GetSummaryAsync(TradeSummaryRequest request);
 }

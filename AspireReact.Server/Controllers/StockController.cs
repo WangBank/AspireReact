@@ -28,9 +28,9 @@ public class StockController : ControllerBase
     }
 
     /// <summary>
-    /// 模糊搜索股票（集成第三方API，缓存策略：Redis → PostgreSQL → 第三方API）
+    /// 模糊搜索心魔（集成第三方API，缓存策略：Redis → PostgreSQL → 第三方API）
     /// </summary>
-    /// <param name="keyword">搜索关键词（股票代码/名称/简称）</param>
+    /// <param name="keyword">搜索关键词（心魔代码/名称/简称）</param>
     [HttpGet("search")]
     public async Task<IActionResult> Search([FromQuery] string keyword)
     {
@@ -49,7 +49,7 @@ public class StockController : ControllerBase
         var rateLimitKey = $"rate:stock_search:{clientIp}";
         if (!await CheckRateLimitAsync(rateLimitKey))
         {
-            _logger.LogWarning("股票搜索触发频率限制: {ClientIp}, Keyword: {Keyword}", clientIp, keyword);
+            _logger.LogWarning("心魔搜索触发频率限制: {ClientIp}, Keyword: {Keyword}", clientIp, keyword);
             return StatusCode(429, new
             {
                 success = false,
@@ -73,21 +73,21 @@ public class StockController : ControllerBase
             data = response,
             total = response.Count,
             message = response.Count > 0
-                ? $"找到 {response.Count} 只相关股票"
-                : "未找到相关股票，请尝试其他关键词"
+                ? $"找到 {response.Count} 只相关心魔"
+                : "未找到相关心魔，请尝试其他关键词"
         });
     }
 
     /// <summary>
-    /// 按股票代码获取股票详情（缓存策略：Redis → PostgreSQL → 第三方API）
+    /// 按心魔代码获取心魔详情（缓存策略：Redis → PostgreSQL → 第三方API）
     /// </summary>
-    /// <param name="stockCode">股票代码</param>
+    /// <param name="stockCode">心魔代码</param>
     [HttpGet("{stockCode}")]
     public async Task<IActionResult> GetByCode(string stockCode)
     {
         if (string.IsNullOrWhiteSpace(stockCode))
         {
-            return BadRequest(new { success = false, message = "股票代码不能为空" });
+            return BadRequest(new { success = false, message = "心魔代码不能为空" });
         }
 
         var stock = await _stockSearchService.GetStockByCodeAsync(stockCode.Trim());
@@ -97,7 +97,7 @@ public class StockController : ControllerBase
             return NotFound(new
             {
                 success = false,
-                message = $"未找到股票代码为 {stockCode} 的股票"
+                message = $"未找到心魔代码为 {stockCode} 的心魔"
             });
         }
 
@@ -118,7 +118,7 @@ public class StockController : ControllerBase
     }
 
     /// <summary>
-    /// 获取股票缓存统计信息
+    /// 获取心魔缓存统计信息
     /// </summary>
     [HttpGet("cache/stats")]
     public async Task<IActionResult> GetCacheStats()
@@ -131,14 +131,14 @@ public class StockController : ControllerBase
             data = new StockCacheStatsResponse
             {
                 CachedStockCount = count,
-                Message = count > 0 ? $"当前缓存 {count} 只股票基础信息" : "缓存为空，请先刷新缓存"
+                Message = count > 0 ? $"当前缓存 {count} 只心魔基础信息" : "缓存为空，请先刷新缓存"
             },
             message = "查询缓存统计成功"
         });
     }
 
     /// <summary>
-    /// 刷新股票缓存（从数据库重新加载到 Redis）
+    /// 刷新心魔缓存（从数据库重新加载到 Redis）
     /// </summary>
     [HttpPost("cache/refresh")]
     public async Task<IActionResult> RefreshCache()
@@ -152,9 +152,9 @@ public class StockController : ControllerBase
             data = new StockCacheStatsResponse
             {
                 CachedStockCount = count,
-                Message = $"缓存刷新成功，当前缓存 {count} 只股票"
+                Message = $"缓存刷新成功，当前缓存 {count} 只心魔"
             },
-            message = "股票缓存刷新成功"
+            message = "心魔缓存刷新成功"
         });
     }
 

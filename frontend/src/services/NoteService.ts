@@ -30,7 +30,7 @@ export class NoteService {
     };
   }
 
-  /** 搜索笔记（关键字/日期/股票代码） */
+  /** 搜索笔记（关键字/日期/心魔代码） */
   async search(params: {
     keyword?: string;
     date?: string;
@@ -53,7 +53,7 @@ export class NoteService {
     return response.json();
   }
 
-  /** 获取指定股票的笔记 */
+  /** 获取指定心魔的笔记 */
   async getByStockCode(stockCode: string): Promise<NoteApiResponse<NoteResponse[]>> {
     const response = await fetch(`${API_BASE}/stock/${encodeURIComponent(stockCode)}`, {
       headers: this.getAuthHeaders(),

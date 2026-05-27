@@ -37,7 +37,7 @@ const ConfigPage = observer(() => {
       <header className="config-header">
         <div>
           <h1 className="config-title">系统配置</h1>
-          <p className="config-subtitle">管理同花顺股票详情页链接前缀</p>
+          <p className="config-subtitle">管理同花顺心魔详情页链接前缀</p>
         </div>
       </header>
 
@@ -113,7 +113,7 @@ const ConfigPage = observer(() => {
               </button>
             </div>
             <p className="config-hint">
-              配置后，在交易列表和统计汇总页面点击股票代码即可跳转至同花顺股票详情页。
+              配置后，在交易列表和统计汇总页面点击心魔代码即可跳转至同花顺心魔详情页。
               常见值：https://www.10jqka.com.cn/ 或 https://stockpage.10jqka.com.cn/
             </p>
           </div>

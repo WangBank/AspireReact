@@ -105,7 +105,7 @@ const StatisticsPage = observer(() => {
     if (list.length === 0) {
       return (
         <div className="sp-section">
-          <p className="sp-section-title">按股票汇总</p>
+          <p className="sp-section-title">按心魔汇总</p>
           <p className="sp-empty">暂无数据</p>
         </div>
       );
@@ -113,13 +113,13 @@ const StatisticsPage = observer(() => {
 
     return (
       <div className="sp-section">
-        <p className="sp-section-title">按股票汇总</p>
+        <p className="sp-section-title">按心魔汇总</p>
         <div className="sp-table-wrap">
           <table className="sp-table">
             <thead>
               <tr>
-                <th>股票代码</th>
-                <th>股票名称</th>
+                <th>心魔代码</th>
+                <th>心魔名称</th>
                 <th>板块</th>
                 <th className="sp-num">交易笔数</th>
                 <th className="sp-num">持仓盈亏</th>
@@ -130,10 +130,10 @@ const StatisticsPage = observer(() => {
             <tbody>
               {list.map((item) => (
                 <tr key={item.stockCode}>
-                  <td data-label="股票代码">
+                  <td data-label="心魔代码">
                     <StockLink stockCode={item.stockCode} stockName={item.stockName} />
                   </td>
-                  <td data-label="股票名称">{item.stockName}</td>
+                  <td data-label="心魔名称">{item.stockName}</td>
                   <td data-label="板块">
                     <span className={`sp-board-tag sp-board-tag--${item.board}`}>{item.board}</span>
                   </td>
@@ -320,7 +320,7 @@ const StatisticsPage = observer(() => {
         {/* 统计卡片 */}
         {!store.loading && !store.error && store.data && renderStatCards()}
 
-        {/* 按股票汇总表格 */}
+        {/* 按心魔汇总表格 */}
         {!store.loading && !store.error && store.data && renderByStockTable()}
 
         {/* 按板块汇总表格 */}

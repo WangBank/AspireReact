@@ -9,12 +9,21 @@ public class RegisterRequest
     [MaxLength(50, ErrorMessage = "用户名最多50个字符")]
     public string Username { get; set; } = string.Empty;
 
+    [Required(ErrorMessage = "邮箱不能为空")]
+    [EmailAddress(ErrorMessage = "邮箱格式不正确")]
+    [MaxLength(100, ErrorMessage = "邮箱最多100个字符")]
+    public string Email { get; set; } = string.Empty;
+
     [Required(ErrorMessage = "密码不能为空")]
     [MinLength(6, ErrorMessage = "密码至少6个字符")]
     [MaxLength(100, ErrorMessage = "密码最多100个字符")]
     public string Password { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "验证码不能为空")]
+    [Required(ErrorMessage = "确认密码不能为空")]
+    [Compare("Password", ErrorMessage = "两次密码输入不一致")]
+    public string ConfirmPassword { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "验证码ID不能为空")]
     public string CaptchaId { get; set; } = string.Empty;
 
     [Required(ErrorMessage = "验证码不能为空")]

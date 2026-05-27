@@ -19,7 +19,7 @@ const ENTRY_ITEMS = [
   },
   {
     key: 'trade',
-    title: '股票交易',
+    title: '心魔交易',
     desc: '录入买卖记录、持仓盈亏、复盘笔记',
     link: '/trade',
     color: '#f59e0b',

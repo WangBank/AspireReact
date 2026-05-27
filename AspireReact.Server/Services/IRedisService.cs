@@ -4,11 +4,11 @@ namespace AspireReact.Server.Services;
 
 public interface IRedisService
 {
-    // 股票搜索缓存
+    // 心魔搜索缓存
     Task<List<StockBasic>?> SearchStocksAsync(string keyword);
     Task CacheStockSearchAsync(string keyword, List<StockBasic> stocks);
     
-    // 股票基础信息缓存
+    // 心魔基础信息缓存
     Task<StockBasic?> GetStockBasicAsync(string stockCode);
     Task CacheStockBasicAsync(StockBasic stock);
     Task CacheStockBasicsAsync(List<StockBasic> stocks);

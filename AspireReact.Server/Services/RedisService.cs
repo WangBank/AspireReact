@@ -30,7 +30,7 @@ public class RedisService : IRedisService
         
         if (!string.IsNullOrEmpty(cached))
         {
-            _logger.LogDebug("从Redis缓存命中股票搜索: {Keyword}", keyword);
+            _logger.LogDebug("从Redis缓存命中心魔搜索: {Keyword}", keyword);
             return JsonSerializer.Deserialize<List<StockBasic>>(cached, _jsonOptions);
         }
         
@@ -47,7 +47,7 @@ public class RedisService : IRedisService
             AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1) // 搜索缓存1小时
         });
         
-        _logger.LogDebug("股票搜索缓存已更新: {Keyword}, 数量: {Count}", keyword, stocks.Count);
+        _logger.LogDebug("心魔搜索缓存已更新: {Keyword}, 数量: {Count}", keyword, stocks.Count);
     }
 
     public async Task<StockBasic?> GetStockBasicAsync(string stockCode)
@@ -87,7 +87,7 @@ public class RedisService : IRedisService
             AbsoluteExpirationRelativeToNow = RedisConfig.DefaultExpiry
         });
         
-        _logger.LogInformation("已缓存 {Count} 只股票基础信息", stocks.Count);
+        _logger.LogInformation("已缓存 {Count} 只心魔基础信息", stocks.Count);
     }
 
     public async Task<bool> ClearStockCacheAsync()
@@ -95,7 +95,7 @@ public class RedisService : IRedisService
         // 在实际生产环境中，这里应该使用Redis的SCAN命令删除相关键
         // 简化实现：只清除全量缓存
         await _cache.RemoveAsync(RedisConfig.CacheKeys.StockAll);
-        _logger.LogInformation("股票缓存已清除");
+        _logger.LogInformation("心魔缓存已清除");
         return true;
     }
 

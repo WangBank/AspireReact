@@ -54,15 +54,17 @@ export class AuthService {
   }
 
   async register(
+    email: string,
     username: string,
     password: string,
+    confirmPassword: string,
     captchaId: string,
     captchaCode: string
   ): Promise<AuthResponse> {
     const response = await fetch(`${API_BASE}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, captchaId, captchaCode }),
+      body: JSON.stringify({ email, username, password, confirmPassword, captchaId, captchaCode }),
     });
 
     const json: AuthResponse = await response.json();

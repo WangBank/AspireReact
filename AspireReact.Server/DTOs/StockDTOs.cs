@@ -1,7 +1,7 @@
 namespace AspireReact.Server.DTOs;
 
 /// <summary>
-/// 股票搜索响应
+/// 心魔搜索响应
 /// </summary>
 public class StockSearchResponse
 {
@@ -12,7 +12,7 @@ public class StockSearchResponse
 }
 
 /// <summary>
-/// 股票缓存统计响应
+/// 心魔缓存统计响应
 /// </summary>
 public class StockCacheStatsResponse
 {

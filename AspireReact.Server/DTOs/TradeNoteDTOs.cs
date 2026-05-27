@@ -11,9 +11,9 @@ public class NoteRequest
     public DateTime Date { get; set; }
 
     /// <summary>
-    /// 股票代码（可选，为空时表示全局笔记）
+    /// 心魔代码（可选，为空时表示全局笔记）
     /// </summary>
-    [MaxLength(10, ErrorMessage = "股票代码最多10个字符")]
+    [MaxLength(10, ErrorMessage = "心魔代码最多10个字符")]
     public string? StockCode { get; set; }
 
     [Required(ErrorMessage = "笔记内容不能为空")]

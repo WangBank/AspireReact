@@ -25,8 +25,8 @@ const TradeEntryPage = observer(() => {
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
     if (!tradeDate) newErrors.tradeDate = '请选择交易日期';
-    if (!stockCode) newErrors.stockCode = '请搜索并选择股票';
-    if (!board) newErrors.board = '请先选择股票以自动填充板块';
+    if (!stockCode) newErrors.stockCode = '请搜索并选择心魔';
+    if (!board) newErrors.board = '请先选择心魔以自动填充板块';
 
     const bp = Number(buyPrice) || 0;
     const bq = Number(buyQuantity) || 0;
@@ -97,8 +97,8 @@ const TradeEntryPage = observer(() => {
 
   return (
     <div className="entry-page-container">
-      <h1 className="entry-page-title">股票交易录入</h1>
-      <p className="entry-page-subtitle">录入股票买卖交易记录</p>
+      <h1 className="entry-page-title">心魔交易录入</h1>
+      <p className="entry-page-subtitle">录入心魔买卖交易记录</p>
 
       <form className="entry-form" onSubmit={handleSubmit} noValidate>
         {tradeEntryStore.error && (
@@ -125,11 +125,11 @@ const TradeEntryPage = observer(() => {
         </div>
 
         <div className="form-group">
-          <label className="form-label">股票搜索 <span className="required-star">*</span></label>
+          <label className="form-label">心魔搜索 <span className="required-star">*</span></label>
           <StockSearchInput
             value={stockCode ? `${stockCode} - ${stockName}` : ''}
             onChange={handleStockSelect}
-            placeholder="输入股票代码/名称/简称搜索"
+            placeholder="输入心魔代码/名称/简称搜索"
           />
           {errors.stockCode && <span className="form-error">{errors.stockCode}</span>}
         </div>

@@ -3,19 +3,19 @@ using System.ComponentModel.DataAnnotations;
 namespace AspireReact.Server.DTOs;
 
 /// <summary>
-/// 新增/修改股票交易记录请求
+/// 新增/修改心魔交易记录请求
 /// </summary>
 public class StockTradeRequest : IValidatableObject
 {
     [Required(ErrorMessage = "交易日期不能为空")]
     public DateTime TradeDate { get; set; }
 
-    [Required(ErrorMessage = "股票代码不能为空")]
-    [MaxLength(10, ErrorMessage = "股票代码最多10个字符")]
+    [Required(ErrorMessage = "心魔代码不能为空")]
+    [MaxLength(10, ErrorMessage = "心魔代码最多10个字符")]
     public string StockCode { get; set; } = string.Empty;
 
-    [Required(ErrorMessage = "股票名称不能为空")]
-    [MaxLength(50, ErrorMessage = "股票名称最多50个字符")]
+    [Required(ErrorMessage = "心魔名称不能为空")]
+    [MaxLength(50, ErrorMessage = "心魔名称最多50个字符")]
     public string StockName { get; set; } = string.Empty;
 
     [Required(ErrorMessage = "板块不能为空")]
@@ -86,7 +86,7 @@ public class StockTradeRequest : IValidatableObject
 }
 
 /// <summary>
-/// 股票交易记录响应
+/// 心魔交易记录响应
 /// </summary>
 public class StockTradeResponse
 {
@@ -106,7 +106,7 @@ public class StockTradeResponse
 }
 
 /// <summary>
-/// 股票交易操作结果
+/// 心魔交易操作结果
 /// </summary>
 public class StockTradeResult
 {
@@ -144,7 +144,7 @@ public class TradeSummaryRequest
     public DateTime? EndDate { get; set; }
 
     /// <summary>
-    /// 按股票聚合（默认按股票汇总盈亏）
+    /// 按心魔聚合（默认按心魔汇总盈亏）
     /// </summary>
     public string? StockCode { get; set; }
 
@@ -155,7 +155,7 @@ public class TradeSummaryRequest
 }
 
 /// <summary>
-/// 统计汇总响应（单只股票的盈亏汇总）
+/// 统计汇总响应（单只心魔的盈亏汇总）
 /// </summary>
 public class TradeSummaryItem
 {

@@ -5,8 +5,11 @@ import './LoginPage.css';
 
 const LoginPage = observer(() => {
   const { authStore } = useStore();
+  const [isRegister, setIsRegister] = useState(false);
+  const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [captchaCode, setCaptchaCode] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -17,15 +20,38 @@ const LoginPage = observer(() => {
     };
   }, []);
 
+  const toggleMode = () => {
+    setIsRegister((prev) => !prev);
+    setErrors({});
+    authStore.clearError();
+    setEmail('');
+    setUsername('');
+    setPassword('');
+    setConfirmPassword('');
+    setCaptchaCode('');
+  };
+
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
     if (!username.trim()) {
       newErrors.username = '请输入用户名';
+    } else if (username.trim().length < 3) {
+      newErrors.username = '用户名至少3个字符';
+    }
+    if (isRegister && !email.trim()) {
+      newErrors.email = '请输入邮箱';
+    } else if (isRegister && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = '邮箱格式不正确';
     }
     if (!password) {
       newErrors.password = '请输入密码';
     } else if (password.length < 6) {
       newErrors.password = '密码至少6个字符';
+    }
+    if (isRegister && !confirmPassword) {
+      newErrors.confirmPassword = '请确认密码';
+    } else if (isRegister && password !== confirmPassword) {
+      newErrors.confirmPassword = '两次密码输入不一致';
     }
     if (!captchaCode.trim()) {
       newErrors.captcha = '请输入验证码';
@@ -36,10 +62,22 @@ const LoginPage = observer(() => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    await authStore.login(username.trim(), password);
+
+    if (isRegister) {
+      await authStore.register(
+        email.trim(),
+        username.trim(),
+        password,
+        confirmPassword,
+        authStore.captcha?.captchaId ?? '',
+        captchaCode
+      );
+    } else {
+      await authStore.login(username.trim(), password);
+    }
   };
 
   const handleRefreshCaptcha = () => {
@@ -54,13 +92,29 @@ const LoginPage = observer(() => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1 className="login-title">股票交易记录管理系统</h1>
-        <p className="login-subtitle">请登录您的账户</p>
+        <h1 className="login-title">碎银录</h1>
+        <p className="login-subtitle">{isRegister ? '创建新账户' : '请登录您的账户'}</p>
 
-        <form className="login-form" onSubmit={handleLogin} noValidate>
+        <form className="login-form" onSubmit={handleSubmit} noValidate>
           {authStore.error && (
             <div className="login-error-banner" role="alert">
               {authStore.error}
+            </div>
+          )}
+
+          {isRegister && (
+            <div className="form-group">
+              <label htmlFor="email" className="form-label">邮箱</label>
+              <input
+                id="email"
+                type="email"
+                className={`form-input ${errors.email ? 'form-input-error' : ''}`}
+                placeholder="请输入邮箱"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); setErrors((prev) => ({ ...prev, email: '' })); }}
+                autoComplete="email"
+              />
+              {errors.email && <span className="form-error">{errors.email}</span>}
             </div>
           )}
 
@@ -88,10 +142,26 @@ const LoginPage = observer(() => {
               placeholder="请输入密码"
               value={password}
               onChange={(e) => { setPassword(e.target.value); setErrors((prev) => ({ ...prev, password: '' })); }}
-              autoComplete="current-password"
+              autoComplete={isRegister ? 'new-password' : 'current-password'}
             />
             {errors.password && <span className="form-error">{errors.password}</span>}
           </div>
+
+          {isRegister && (
+            <div className="form-group">
+              <label htmlFor="confirmPassword" className="form-label">确认密码</label>
+              <input
+                id="confirmPassword"
+                type="password"
+                className={`form-input ${errors.confirmPassword ? 'form-input-error' : ''}`}
+                placeholder="请再次输入密码"
+                value={confirmPassword}
+                onChange={(e) => { setConfirmPassword(e.target.value); setErrors((prev) => ({ ...prev, confirmPassword: '' })); }}
+                autoComplete="new-password"
+              />
+              {errors.confirmPassword && <span className="form-error">{errors.confirmPassword}</span>}
+            </div>
+          )}
 
           <div className="form-group">
             <label htmlFor="captcha" className="form-label">验证码</label>
@@ -141,8 +211,16 @@ const LoginPage = observer(() => {
             className="login-submit"
             disabled={authStore.loading}
           >
-            {authStore.loading ? '登录中...' : '登 录'}
+            {authStore.loading
+              ? (isRegister ? '注册中...' : '登录中...')
+              : (isRegister ? '注 册' : '登 录')}
           </button>
+
+          <div className="mode-toggle">
+            <button type="button" className="toggle-link" onClick={toggleMode}>
+              {isRegister ? '已有账户？去登录' : '没有账户？去注册'}
+            </button>
+          </div>
         </form>
       </div>
     </div>

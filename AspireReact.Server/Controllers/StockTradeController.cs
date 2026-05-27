@@ -81,7 +81,7 @@ public class StockTradeController : ControllerBase
     }
 
     /// <summary>
-    /// 统计汇总接口（按日期范围、股票、板块统计盈亏）
+    /// 统计汇总接口（按日期范围、心魔、板块统计盈亏）
     /// </summary>
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary(

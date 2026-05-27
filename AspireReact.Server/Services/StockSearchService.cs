@@ -100,13 +100,13 @@ public class StockSearchService : IStockSearchService
 
     public async Task RefreshStockCacheAsync()
     {
-        // 从数据库加载所有股票
+        // 从数据库加载所有心魔
         var allStocks = await _dbContext.StockBasics.ToListAsync();
         
         // 更新Redis缓存
         await _redisService.CacheStockBasicsAsync(allStocks);
         
-        _logger.LogInformation("已刷新股票缓存，数量: {Count}", allStocks.Count);
+        _logger.LogInformation("已刷新心魔缓存，数量: {Count}", allStocks.Count);
     }
 
     public async Task<int> GetCachedStockCountAsync()
@@ -164,7 +164,7 @@ public class StockSearchService : IStockSearchService
                 stocks.Add(stock);
             }
 
-            _logger.LogDebug("从第三方API获取到 {Count} 只股票", stocks.Count);
+            _logger.LogDebug("从第三方API获取到 {Count} 只心魔", stocks.Count);
             return stocks;
         }
         catch (Exception ex)
@@ -196,7 +196,7 @@ public class StockSearchService : IStockSearchService
         }
         
         await _dbContext.SaveChangesAsync();
-        _logger.LogDebug("已保存 {Count} 只股票到数据库", stocks.Count);
+        _logger.LogDebug("已保存 {Count} 只心魔到数据库", stocks.Count);
     }
 
     private string DetermineBoard(string stockCode)

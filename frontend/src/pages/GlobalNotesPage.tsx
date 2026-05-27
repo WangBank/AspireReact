@@ -105,7 +105,7 @@ const GlobalNotesPage = observer(() => {
             value={store.searchDate}
             onChange={(e) => store.setSearchDate(e.target.value)}
           />
-          <label>股票代码</label>
+          <label>心魔代码</label>
           <input
             type="text"
             placeholder="如 000001"
@@ -175,7 +175,7 @@ const GlobalNotesPage = observer(() => {
                 />
               </div>
               <div className="gnp-form-group">
-                <label>关联股票</label>
+                <label>关联心魔</label>
                 <input
                   type="text"
                   placeholder="可选，如 000001"

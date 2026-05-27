@@ -94,7 +94,7 @@ const TradeListPage = observer(() => {
       <header className="tlp-header">
         <div>
           <h1 className="tlp-title">交易记录列表</h1>
-          <p className="tlp-subtitle">股票交易明细与盈亏统计</p>
+          <p className="tlp-subtitle">心魔交易明细与盈亏统计</p>
         </div>
         <button className="tlp-refresh-btn" onClick={() => store.fetch()} disabled={store.loading}>
           刷新
@@ -102,7 +102,7 @@ const TradeListPage = observer(() => {
       </header>
 
       <div className="tlp-filter-bar">
-        <label>股票代码</label>
+        <label>心魔代码</label>
         <input
           type="text"
           placeholder="如 000001"

@@ -60,6 +60,40 @@ export class AuthStore {
     }
   };
 
+  register = async (
+    email: string,
+    username: string,
+    password: string,
+    confirmPassword: string,
+    captchaId: string,
+    captchaCode: string
+  ) => {
+    this.loading = true;
+    this.error = null;
+    try {
+      const result = await authService.register(
+        email,
+        username,
+        password,
+        confirmPassword,
+        captchaId,
+        captchaCode
+      );
+      runInAction(() => {
+        this.token = result.data.token;
+        this.username = result.data.username;
+        this.loading = false;
+      });
+      localStorage.setItem(TOKEN_KEY, result.data.token);
+      localStorage.setItem(USERNAME_KEY, result.data.username);
+    } catch (err) {
+      runInAction(() => {
+        this.error = err instanceof Error ? err.message : '注册失败';
+        this.loading = false;
+      });
+    }
+  };
+
   logout = () => {
     this.token = null;
     this.username = null;

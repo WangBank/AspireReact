@@ -13,7 +13,7 @@ interface StockSearchInputProps {
 const StockSearchInput = ({
   value,
   onChange,
-  placeholder = '输入股票代码/名称/简称搜索',
+  placeholder = '输入心魔代码/名称/简称搜索',
   disabled = false,
 }: StockSearchInputProps) => {
   const [keyword, setKeyword] = useState(value);
@@ -113,7 +113,7 @@ const StockSearchInput = ({
         </ul>
       )}
       {showDropdown && !loading && noResult && (
-        <div className="stock-search-empty">未找到相关股票，请尝试其他关键词</div>
+        <div className="stock-search-empty">未找到相关心魔，请尝试其他关键词</div>
       )}
     </div>
   );
