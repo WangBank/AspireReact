@@ -38,6 +38,10 @@ public class StockTradeRequest : IValidatableObject
 
     public decimal CumulativePnL { get; set; }
 
+    public decimal CostPrice { get; set; }
+
+    public decimal CurrentPrice { get; set; }
+
     [MaxLength(2000, ErrorMessage = "交易笔记最多2000个字符")]
     public string? TradeNote { get; set; }
 
@@ -45,17 +49,24 @@ public class StockTradeRequest : IValidatableObject
     public string? TonghuashunLink { get; set; }
 
     /// <summary>
-    /// 自定义验证：必须至少有一方（买入或卖出）有有效数据
+    /// 自定义验证：允许三种模式 — 纯买入、纯卖出、纯持仓（买入卖出均为0但PositionPnL不为0）
     /// </summary>
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         var hasBuy = BuyPrice > 0 && BuyQuantity > 0;
         var hasSell = SellPrice > 0 && SellQuantity > 0;
+        var isPositionOnly = !hasBuy && !hasSell && PositionPnL != 0;
+
+        // 纯持仓模式：买入卖出均为0，仅记录持仓市值，跳过交易验证
+        if (isPositionOnly)
+        {
+            yield break;
+        }
 
         if (!hasBuy && !hasSell)
         {
             yield return new ValidationResult(
-                "买入或卖出至少需要填写一方（价格>0 且 数量>0）",
+                "买入或卖出至少需要填写一方（价格>0 且 数量>0），或填写持仓市值",
                 new[] { nameof(BuyPrice), nameof(SellPrice) });
         }
 
@@ -86,6 +97,11 @@ public class StockTradeRequest : IValidatableObject
 }
 
 /// <summary>
+/// 修改心魔交易记录请求（复用 StockTradeRequest，此处为别名，便于语义区分）
+/// </summary>
+public class StockTradeUpdateRequest : StockTradeRequest { }
+
+/// <summary>
 /// 心魔交易记录响应
 /// </summary>
 public class StockTradeResponse
@@ -101,6 +117,8 @@ public class StockTradeResponse
     public int SellQuantity { get; set; }
     public decimal PositionPnL { get; set; }
     public decimal CumulativePnL { get; set; }
+    public decimal CostPrice { get; set; }
+    public decimal CurrentPrice { get; set; }
     public string? TradeNote { get; set; }
     public string? TonghuashunLink { get; set; }
 }
@@ -113,6 +131,51 @@ public class StockTradeResult
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
     public StockTradeResponse? Data { get; set; }
+}
+
+/// <summary>
+/// 批量新增交易记录请求
+/// </summary>
+public class BatchStockTradeRequest
+{
+    [Required(ErrorMessage = "交易记录列表不能为空")]
+    [MinLength(1, ErrorMessage = "至少需要一条交易记录")]
+    public List<StockTradeRequest> Trades { get; set; } = new();
+}
+
+/// <summary>
+/// 批量修改交易记录中的单条（ID + 数据）
+/// </summary>
+public class BatchTradeUpdateItem
+{
+    [Required(ErrorMessage = "记录 ID 不能为空")]
+    public int Id { get; set; }
+
+    [Required(ErrorMessage = "交易数据不能为空")]
+    public StockTradeRequest Data { get; set; } = new();
+}
+
+/// <summary>
+/// 批量修改交易记录请求
+/// </summary>
+public class BatchTradeUpdateRequest
+{
+    [Required(ErrorMessage = "交易记录列表不能为空")]
+    [MinLength(1, ErrorMessage = "至少需要一条交易记录")]
+    public List<BatchTradeUpdateItem> Trades { get; set; } = new();
+}
+
+/// <summary>
+/// 批量操作结果
+/// </summary>
+public class BatchStockTradeResult
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public int SuccessCount { get; set; }
+    public int FailCount { get; set; }
+    public List<StockTradeResponse>? Data { get; set; }
+    public List<string>? Errors { get; set; }
 }
 
 /// <summary>

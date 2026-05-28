@@ -20,6 +20,40 @@ export interface CaptchaResponse {
   data: CaptchaData;
 }
 
+export interface UserProfile {
+  id: number;
+  username: string;
+  email: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export interface ProfileResponse {
+  success: boolean;
+  message: string;
+  data: UserProfile;
+}
+
+export interface UpdateProfileRequest {
+  username: string;
+  email: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+export interface UpdateProfileResponse {
+  success: boolean;
+  message: string;
+  data?: {
+    username: string;
+    email: string;
+  };
+}
+
 export class AuthService {
   async getCaptcha(): Promise<CaptchaData> {
     const response = await fetch(`${API_BASE}/captcha`);
@@ -71,6 +105,61 @@ export class AuthService {
 
     if (!response.ok || !json.success) {
       throw new Error(json.message || '注册失败');
+    }
+
+    return json;
+  }
+
+  async getProfile(): Promise<UserProfile> {
+    const token = localStorage.getItem('jwt_token');
+    const response = await fetch(`${API_BASE}/profile`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+
+    const json: ProfileResponse = await response.json();
+
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || '获取个人信息失败');
+    }
+
+    return json.data;
+  }
+
+  async updateProfile(data: UpdateProfileRequest): Promise<UpdateProfileResponse> {
+    const token = localStorage.getItem('jwt_token');
+    const response = await fetch(`${API_BASE}/profile`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(data),
+    });
+
+    const json = await response.json();
+
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || '更新个人信息失败');
+    }
+
+    return json;
+  }
+
+  async changePassword(data: ChangePasswordRequest): Promise<UpdateProfileResponse> {
+    const token = localStorage.getItem('jwt_token');
+    const response = await fetch(`${API_BASE}/password`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(data),
+    });
+
+    const json = await response.json();
+
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || '修改密码失败');
     }
 
     return json;

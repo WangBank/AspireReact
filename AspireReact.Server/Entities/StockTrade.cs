@@ -15,6 +15,8 @@ public class StockTrade
     public int SellQuantity { get; set; }
     public decimal PositionPnL { get; set; }
     public decimal CumulativePnL { get; set; }
+    public decimal CostPrice { get; set; }
+    public decimal CurrentPrice { get; set; }
     public string? TradeNote { get; set; }
     public string? TonghuashunLink { get; set; }
 }

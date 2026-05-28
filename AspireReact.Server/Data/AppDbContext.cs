@@ -16,6 +16,20 @@ public class AppDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // 配置所有 DateTime 属性使用 UTC
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.GetProperties()
+                .Where(p => p.ClrType == typeof(DateTime) || p.ClrType == typeof(DateTime?)))
+            {
+                property.SetValueConverter(
+                    new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<DateTime, DateTime>(
+                        v => v.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : v.ToUniversalTime(),
+                        v => v.Kind == DateTimeKind.Utc ? v : DateTime.SpecifyKind(v, DateTimeKind.Utc)
+                    ));
+            }
+        }
+
         modelBuilder.Entity<AccountDaily>().HasIndex(a => a.Date).IsUnique();
         modelBuilder.Entity<BankFlow>().HasIndex(b => b.Date);
         modelBuilder.Entity<StockTrade>().HasIndex(s => new { s.TradeDate, s.StockCode });

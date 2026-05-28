@@ -36,4 +36,14 @@ public interface IStockTradeService
     /// 统计汇总（按日期范围、心魔、板块统计盈亏）
     /// </summary>
     Task<TradeSummaryResponse> GetSummaryAsync(TradeSummaryRequest request);
+
+    /// <summary>
+    /// 批量新增交易记录
+    /// </summary>
+    Task<BatchStockTradeResult> BatchCreateAsync(BatchStockTradeRequest request);
+
+    /// <summary>
+    /// 批量修改交易记录
+    /// </summary>
+    Task<BatchStockTradeResult> BatchUpdateAsync(BatchTradeUpdateRequest request);
 }

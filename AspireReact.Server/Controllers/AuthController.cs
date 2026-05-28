@@ -124,4 +124,63 @@ public class AuthController : ControllerBase
         sb.Append("</svg>");
         return sb.ToString();
     }
+
+    /// <summary>
+    /// 获取当前用户个人信息
+    /// </summary>
+    [HttpGet("profile")]
+    public async Task<IActionResult> GetProfile()
+    {
+        var userIdStr = HttpContext.Items["UserId"]?.ToString();
+        if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out var userId))
+            return Unauthorized(new { success = false, message = "未登录或Token无效" });
+
+        var profile = await _authService.GetProfileAsync(userId);
+        if (profile == null)
+            return NotFound(new { success = false, message = "用户不存在" });
+
+        return Ok(new { success = true, data = profile, message = "获取个人信息成功" });
+    }
+
+    /// <summary>
+    /// 更新个人信息（用户名、邮箱）
+    /// </summary>
+    [HttpPut("profile")]
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(new { success = false, message = "参数验证失败", errors = ModelState });
+
+        var userIdStr = HttpContext.Items["UserId"]?.ToString();
+        if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out var userId))
+            return Unauthorized(new { success = false, message = "未登录或Token无效" });
+
+        var result = await _authService.UpdateProfileAsync(userId, request);
+
+        if (!result.Success)
+            return BadRequest(new { success = false, message = result.Message });
+
+        return Ok(new { success = true, data = new { username = result.Username, email = result.Email }, message = result.Message });
+    }
+
+    /// <summary>
+    /// 修改密码
+    /// </summary>
+    [HttpPut("password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(new { success = false, message = "参数验证失败", errors = ModelState });
+
+        var userIdStr = HttpContext.Items["UserId"]?.ToString();
+        if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out var userId))
+            return Unauthorized(new { success = false, message = "未登录或Token无效" });
+
+        var result = await _authService.ChangePasswordAsync(userId, request);
+
+        if (!result.Success)
+            return BadRequest(new { success = false, message = result.Message });
+
+        return Ok(new { success = true, message = result.Message });
+    }
 }

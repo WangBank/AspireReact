@@ -5,6 +5,7 @@ var server = builder.AddProject<Projects.AspireReact_Server>("server")
     .WithExternalHttpEndpoints();
 
 var webfrontend = builder.AddViteApp("webfrontend", "../frontend")
+    .WithEndpoint(port: 5516, scheme: "http")
     .WithReference(server)
     .WaitFor(server);
 

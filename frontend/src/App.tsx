@@ -1,8 +1,10 @@
 import { observer } from 'mobx-react-lite';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useStore } from './stores/StoreProvider';
+import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
+import UnifiedEntryPage from './pages/UnifiedEntryPage';
 import AccountEntryPage from './pages/AccountEntryPage';
 import BankFlowEntryPage from './pages/BankFlowEntryPage';
 import TradeEntryPage from './pages/TradeEntryPage';
@@ -13,6 +15,8 @@ import StatisticsPage from './pages/StatisticsPage';
 import GlobalNotesPage from './pages/GlobalNotesPage';
 import StockNotesPage from './pages/StockNotesPage';
 import ConfigPage from './pages/ConfigPage';
+import ProfilePage from './pages/ProfilePage';
+import UnifiedListPage from './pages/UnifiedListPage';
 import './App.css';
 
 const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) => {
@@ -38,7 +42,9 @@ const App = observer(() => {
         path="/dashboard"
         element={
           <ProtectedRoute>
-            <DashboardPage />
+            <Layout>
+              <DashboardPage />
+            </Layout>
           </ProtectedRoute>
         }
       />
@@ -46,7 +52,9 @@ const App = observer(() => {
         path="/entry/account"
         element={
           <ProtectedRoute>
-            <AccountEntryPage />
+            <Layout>
+              <AccountEntryPage />
+            </Layout>
           </ProtectedRoute>
         }
       />
@@ -54,7 +62,9 @@ const App = observer(() => {
         path="/entry/bankflow"
         element={
           <ProtectedRoute>
-            <BankFlowEntryPage />
+            <Layout>
+              <BankFlowEntryPage />
+            </Layout>
           </ProtectedRoute>
         }
       />
@@ -62,7 +72,19 @@ const App = observer(() => {
         path="/entry/trade"
         element={
           <ProtectedRoute>
-            <TradeEntryPage />
+            <Layout>
+              <TradeEntryPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/entry/unified/:id?"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <UnifiedEntryPage />
+            </Layout>
           </ProtectedRoute>
         }
       />
@@ -70,7 +92,9 @@ const App = observer(() => {
         path="/list/account"
         element={
           <ProtectedRoute>
-            <AccountListPage />
+            <Layout>
+              <AccountListPage />
+            </Layout>
           </ProtectedRoute>
         }
       />
@@ -78,7 +102,9 @@ const App = observer(() => {
         path="/list/bankflow"
         element={
           <ProtectedRoute>
-            <BankFlowListPage />
+            <Layout>
+              <BankFlowListPage />
+            </Layout>
           </ProtectedRoute>
         }
       />
@@ -86,7 +112,19 @@ const App = observer(() => {
         path="/list/trade"
         element={
           <ProtectedRoute>
-            <TradeListPage />
+            <Layout>
+              <TradeListPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/list/unified"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <UnifiedListPage />
+            </Layout>
           </ProtectedRoute>
         }
       />
@@ -94,7 +132,9 @@ const App = observer(() => {
         path="/statistics"
         element={
           <ProtectedRoute>
-            <StatisticsPage />
+            <Layout>
+              <StatisticsPage />
+            </Layout>
           </ProtectedRoute>
         }
       />
@@ -102,7 +142,9 @@ const App = observer(() => {
         path="/notes/global"
         element={
           <ProtectedRoute>
-            <GlobalNotesPage />
+            <Layout>
+              <GlobalNotesPage />
+            </Layout>
           </ProtectedRoute>
         }
       />
@@ -110,7 +152,9 @@ const App = observer(() => {
         path="/notes/stock"
         element={
           <ProtectedRoute>
-            <StockNotesPage />
+            <Layout>
+              <StockNotesPage />
+            </Layout>
           </ProtectedRoute>
         }
       />
@@ -118,7 +162,19 @@ const App = observer(() => {
         path="/config"
         element={
           <ProtectedRoute>
-            <ConfigPage />
+            <Layout>
+              <ConfigPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <ProfilePage />
+            </Layout>
           </ProtectedRoute>
         }
       />

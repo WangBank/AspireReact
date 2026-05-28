@@ -44,6 +44,8 @@ public class StockTradeService : IStockTradeService
             SellQuantity = request.SellQuantity,
             PositionPnL = request.PositionPnL,
             CumulativePnL = request.CumulativePnL,
+            CostPrice = request.CostPrice,
+            CurrentPrice = request.CurrentPrice,
             TradeNote = request.TradeNote,
             TonghuashunLink = request.TonghuashunLink
         };
@@ -56,6 +58,69 @@ public class StockTradeService : IStockTradeService
             Success = true,
             Message = "交易记录添加成功",
             Data = ToResponse(entity)
+        };
+    }
+
+    /// <summary>
+    /// 批量新增交易记录
+    /// </summary>
+    public async Task<BatchStockTradeResult> BatchCreateAsync(BatchStockTradeRequest request)
+    {
+        var results = new List<StockTradeResponse>();
+        var errors = new List<string>();
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var tradeRequest in request.Trades)
+        {
+            // 验证：同一心魔在同一天不应重复录入
+            var exists = await _db.StockTrades.AnyAsync(t =>
+                t.TradeDate == tradeRequest.TradeDate.Date &&
+                t.StockCode == tradeRequest.StockCode);
+            if (exists)
+            {
+                failCount++;
+                errors.Add($"心魔 {tradeRequest.StockCode} 在 {tradeRequest.TradeDate:yyyy-MM-dd} 已有交易记录，已跳过");
+                continue;
+            }
+
+            var entity = new StockTrade
+            {
+                TradeDate = tradeRequest.TradeDate.Date,
+                StockCode = tradeRequest.StockCode,
+                StockName = tradeRequest.StockName,
+                Board = ParseBoard(tradeRequest.Board),
+                BuyPrice = tradeRequest.BuyPrice,
+                BuyQuantity = tradeRequest.BuyQuantity,
+                SellPrice = tradeRequest.SellPrice,
+                SellQuantity = tradeRequest.SellQuantity,
+                PositionPnL = tradeRequest.PositionPnL,
+                CumulativePnL = tradeRequest.CumulativePnL,
+                CostPrice = tradeRequest.CostPrice,
+                CurrentPrice = tradeRequest.CurrentPrice,
+                TradeNote = tradeRequest.TradeNote,
+                TonghuashunLink = tradeRequest.TonghuashunLink
+            };
+
+            _db.StockTrades.Add(entity);
+            results.Add(ToResponse(entity));
+            successCount++;
+        }
+
+        if (successCount > 0)
+        {
+            await _db.SaveChangesAsync();
+        }
+
+        var total = successCount + failCount;
+        return new BatchStockTradeResult
+        {
+            Success = successCount > 0,
+            Message = $"批量录入完成：成功 {successCount} 条，跳过 {failCount} 条（共 {total} 条）",
+            SuccessCount = successCount,
+            FailCount = failCount,
+            Data = results,
+            Errors = errors.Count > 0 ? errors : null
         };
     }
 
@@ -101,6 +166,8 @@ public class StockTradeService : IStockTradeService
         entity.SellQuantity = request.SellQuantity;
         entity.PositionPnL = request.PositionPnL;
         entity.CumulativePnL = request.CumulativePnL;
+        entity.CostPrice = request.CostPrice;
+        entity.CurrentPrice = request.CurrentPrice;
         entity.TradeNote = request.TradeNote;
         entity.TonghuashunLink = request.TonghuashunLink;
 
@@ -111,6 +178,77 @@ public class StockTradeService : IStockTradeService
             Success = true,
             Message = "交易记录修改成功",
             Data = ToResponse(entity)
+        };
+    }
+
+    /// <summary>
+    /// 批量修改交易记录
+    /// </summary>
+    public async Task<BatchStockTradeResult> BatchUpdateAsync(BatchTradeUpdateRequest request)
+    {
+        var results = new List<StockTradeResponse>();
+        var errors = new List<string>();
+        int successCount = 0;
+        int failCount = 0;
+
+        foreach (var item in request.Trades)
+        {
+            var entity = await _db.StockTrades.FindAsync(item.Id);
+            if (entity == null)
+            {
+                failCount++;
+                errors.Add($"未找到 ID 为 {item.Id} 的交易记录，已跳过");
+                continue;
+            }
+
+            var req = item.Data;
+            // 如果修改了日期或股票代码，检查是否与其他记录冲突
+            if (entity.TradeDate != req.TradeDate.Date || entity.StockCode != req.StockCode)
+            {
+                var conflict = await _db.StockTrades.AnyAsync(t =>
+                    t.Id != item.Id &&
+                    t.TradeDate == req.TradeDate.Date &&
+                    t.StockCode == req.StockCode);
+                if (conflict)
+                {
+                    failCount++;
+                    errors.Add($"股票 {req.StockCode} 在 {req.TradeDate:yyyy-MM-dd} 已有其他记录，跳过 ID {item.Id}");
+                    continue;
+                }
+            }
+
+            entity.TradeDate = req.TradeDate.Date;
+            entity.StockCode = req.StockCode;
+            entity.StockName = req.StockName;
+            entity.Board = ParseBoard(req.Board);
+            entity.BuyPrice = req.BuyPrice;
+            entity.BuyQuantity = req.BuyQuantity;
+            entity.SellPrice = req.SellPrice;
+            entity.SellQuantity = req.SellQuantity;
+            entity.PositionPnL = req.PositionPnL;
+            entity.CumulativePnL = req.CumulativePnL;
+            entity.CostPrice = req.CostPrice;
+            entity.CurrentPrice = req.CurrentPrice;
+            entity.TradeNote = req.TradeNote;
+            entity.TonghuashunLink = req.TonghuashunLink;
+
+            results.Add(ToResponse(entity));
+            successCount++;
+        }
+
+        if (successCount > 0)
+        {
+            await _db.SaveChangesAsync();
+        }
+
+        return new BatchStockTradeResult
+        {
+            Success = successCount > 0,
+            Message = $"批量修改完成：成功 {successCount} 条，失败 {failCount} 条",
+            SuccessCount = successCount,
+            FailCount = failCount,
+            Data = results,
+            Errors = errors.Count > 0 ? errors : null
         };
     }
 
@@ -341,6 +479,8 @@ public class StockTradeService : IStockTradeService
             SellQuantity = entity.SellQuantity,
             PositionPnL = entity.PositionPnL,
             CumulativePnL = entity.CumulativePnL,
+            CostPrice = entity.CostPrice,
+            CurrentPrice = entity.CurrentPrice,
             TradeNote = entity.TradeNote,
             TonghuashunLink = entity.TonghuashunLink
         };

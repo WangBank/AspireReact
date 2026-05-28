@@ -1,0 +1,314 @@
+/* UnifiedListPage.css */
+
+/* ======================== 容器 ======================== */
+.ulp-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 32px;
+}
+
+/* ======================== 头部 ======================== */
+.ulp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.ulp-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  margin: 0 0 4px;
+}
+
+.ulp-subtitle {
+  font-size: 0.875rem;
+  color: #888;
+  margin: 0;
+}
+
+.ulp-refresh-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1677ff, #4096ff);
+  color: #fff;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.ulp-refresh-btn:hover:not(:disabled) { opacity: 0.85; }
+.ulp-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ======================== 筛选栏 ======================== */
+.ulp-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.ulp-filter-bar label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #555;
+}
+
+.ulp-filter-bar input[type="date"],
+.ulp-input-text {
+  padding: 7px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: #fafafa;
+  transition: border-color 0.2s;
+}
+.ulp-filter-bar input[type="date"]:focus,
+.ulp-input-text:focus {
+  outline: none;
+  border-color: #1677ff;
+  background: #fff;
+}
+.ulp-input-text {
+  width: 160px;
+}
+
+.ulp-btn-primary {
+  padding: 7px 20px;
+  border: none;
+  border-radius: 6px;
+  background: #1677ff;
+  color: #fff;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.ulp-btn-primary:hover:not(:disabled) { background: #4096ff; }
+.ulp-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ulp-btn-secondary {
+  padding: 7px 20px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #555;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.ulp-btn-secondary:hover:not(:disabled) { border-color: #1677ff; color: #1677ff; }
+.ulp-btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ======================== 状态 ======================== */
+.ulp-status,
+.ulp-error,
+.ulp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #888;
+  font-size: 0.9375rem;
+}
+
+.ulp-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(22, 119, 255, 0.2);
+  border-top-color: #1677ff;
+  border-radius: 50%;
+  animation: ulp-spin 0.7s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes ulp-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ulp-error {
+  color: #ff4d4f;
+}
+.ulp-error button {
+  margin-top: 12px;
+  padding: 6px 18px;
+  border: 1px solid #ff4d4f;
+  border-radius: 6px;
+  background: #fff;
+  color: #ff4d4f;
+  cursor: pointer;
+}
+
+/* ======================== 表格 ======================== */
+.ulp-table-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  background: #fff;
+}
+
+.ulp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.ulp-table thead {
+  background: #f0f5ff;
+}
+
+.ulp-table th {
+  padding: 12px 14px;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+  border-bottom: 2px solid #d6e4ff;
+}
+
+.ulp-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #444;
+  vertical-align: middle;
+}
+
+.ulp-table tbody tr:hover {
+  background: #f5f9ff;
+}
+
+.ulp-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.ulp-sortable:hover {
+  color: #1677ff;
+}
+
+/* ======================== 类型徽章 ======================== */
+.ulp-type-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.5px;
+}
+
+/* ======================== 数字/颜色 ======================== */
+.ulp-num {
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  text-align: right;
+}
+
+.ulp-positive { color: #f5222d; font-weight: 600; }
+.ulp-negative { color: #52c41a; font-weight: 600; }
+
+.ulp-in  { color: #13c2c2; font-weight: 600; }
+.ulp-out { color: #f5222d; font-weight: 600; }
+
+.ulp-mono { font-family: 'SF Mono', 'Monaco', 'Menlo', monospace; }
+
+.ulp-remark {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ======================== 操作按钮 ======================== */
+.ulp-btn-danger-sm {
+  padding: 4px 12px;
+  border: 1px solid #ff4d4f;
+  border-radius: 4px;
+  background: #fff;
+  color: #ff4d4f;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.ulp-btn-danger-sm:hover {
+  background: #ff4d4f;
+  color: #fff;
+}
+
+.ulp-btn-secondary-sm {
+  padding: 4px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: #fff;
+  color: #555;
+  font-size: 0.75rem;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: border-color 0.2s;
+}
+.ulp-btn-secondary-sm:hover {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+
+.ulp-actions-confirm {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+/* ======================== 分页 ======================== */
+.ulp-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 0 4px;
+}
+
+.ulp-pagination button {
+  padding: 5px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #333;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.ulp-pagination button:hover:not(:disabled):not(.ulp-pagination__active) {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+.ulp-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ulp-pagination__active {
+  background: #1677ff;
+  color: #fff;
+  border-color: #1677ff;
+}
+
+.ulp-pagination__ellipsis {
+  padding: 0 4px;
+  color: #aaa;
+}
+
+.ulp-pagination__info {
+  margin-left: 12px;
+  font-size: 0.8125rem;
+  color: #888;
+}
+
+/* ======================== 响应式 ======================== */
+@media (max-width: 768px) {
+  .ulp-container { padding: 16px; }
+  .ulp-filter-bar { flex-direction: column; align-items: stretch; }
+  .ulp-table th, .ulp-table td { padding: 8px 10px; font-size: 0.8125rem; }
+}

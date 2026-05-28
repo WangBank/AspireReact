@@ -11,8 +11,23 @@ export interface StockTradeRequest {
   sellQuantity: number;
   positionPnL: number;
   cumulativePnL: number;
+  costPrice: number;
+  currentPrice: number;
   tradeNote?: string;
   tonghuashunLink?: string;
+}
+
+export interface BatchTradeRequest {
+  trades: StockTradeRequest[];
+}
+
+export interface BatchTradeResult {
+  success: boolean;
+  message: string;
+  successCount: number;
+  failCount: number;
+  data?: StockTradeResponse[];
+  errors?: string[];
 }
 
 export interface StockTradeResponse {
@@ -27,6 +42,8 @@ export interface StockTradeResponse {
   sellQuantity: number;
   positionPnL: number;
   cumulativePnL: number;
+  costPrice: number;
+  currentPrice: number;
   tradeNote?: string;
   tonghuashunLink?: string;
 }
@@ -65,6 +82,15 @@ export class TradeService {
     return response.json();
   }
 
+  async batchCreate(request: BatchTradeRequest): Promise<BatchTradeResult> {
+    const response = await fetch(`${API_BASE}/batch`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return response.json();
+  }
+
   async query(params: {
     stockCode?: string;
     tradeDate?: string;
@@ -83,10 +109,35 @@ export class TradeService {
     return response.json();
   }
 
+  async getById(id: number): Promise<StockTradeApiResponse<StockTradeResponse>> {
+    const response = await fetch(`${API_BASE}/${id}`, {
+      headers: this.getAuthHeaders(),
+    });
+    return response.json();
+  }
+
   async delete(id: number): Promise<StockTradeApiResponse<null>> {
     const response = await fetch(`${API_BASE}/${id}`, {
       method: 'DELETE',
       headers: this.getAuthHeaders(),
+    });
+    return response.json();
+  }
+
+  async update(id: number, request: StockTradeRequest): Promise<StockTradeApiResponse<StockTradeResponse>> {
+    const response = await fetch(`${API_BASE}/${id}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return response.json();
+  }
+
+  async batchUpdate(trades: { id: number; data: StockTradeRequest }[]): Promise<BatchTradeResult> {
+    const response = await fetch(`${API_BASE}/batch`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ trades }),
     });
     return response.json();
   }

@@ -52,3 +52,40 @@ public class CaptchaResponse
     public string CaptchaId { get; set; } = string.Empty;
     public string CaptchaImage { get; set; } = string.Empty;
 }
+
+public class UserProfileResponse
+{
+    public int Id { get; set; }
+    public string Username { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public DateTime? LastLoginAt { get; set; }
+}
+
+public class UpdateProfileRequest
+{
+    [Required(ErrorMessage = "用户名不能为空")]
+    [MinLength(3, ErrorMessage = "用户名至少3个字符")]
+    [MaxLength(50, ErrorMessage = "用户名最多50个字符")]
+    public string Username { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "邮箱不能为空")]
+    [EmailAddress(ErrorMessage = "邮箱格式不正确")]
+    [MaxLength(100, ErrorMessage = "邮箱最多100个字符")]
+    public string Email { get; set; } = string.Empty;
+}
+
+public class ChangePasswordRequest
+{
+    [Required(ErrorMessage = "当前密码不能为空")]
+    public string CurrentPassword { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "新密码不能为空")]
+    [MinLength(6, ErrorMessage = "新密码至少6个字符")]
+    [MaxLength(100, ErrorMessage = "新密码最多100个字符")]
+    public string NewPassword { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "确认密码不能为空")]
+    [Compare("NewPassword", ErrorMessage = "两次密码输入不一致")]
+    public string ConfirmPassword { get; set; } = string.Empty;
+}

@@ -74,11 +74,4 @@ app.MapDefaultEndpoints();
 
 app.UseFileServer();
 
-// 初始化数据库
-using (var scope = app.Services.CreateScope())
-{
-    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await DatabaseInitializer.InitializeAsync(dbContext);
-}
-
 await app.RunAsync();

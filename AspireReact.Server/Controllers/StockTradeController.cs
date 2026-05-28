@@ -140,6 +140,64 @@ public class StockTradeController : ControllerBase
     }
 
     /// <summary>
+    /// 批量新增交易记录
+    /// </summary>
+    [HttpPost("batch")]
+    public async Task<IActionResult> BatchCreate([FromBody] BatchStockTradeRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "参数验证失败",
+                errors = ModelState
+            });
+        }
+
+        var result = await _tradeService.BatchCreateAsync(request);
+
+        return Ok(new
+        {
+            success = result.Success,
+            data = result.Data,
+            message = result.Message,
+            successCount = result.SuccessCount,
+            failCount = result.FailCount,
+            errors = result.Errors
+        });
+    }
+
+    /// <summary>
+    /// 批量修改交易记录
+    /// </summary>
+    [HttpPut("batch")]
+    public async Task<IActionResult> BatchUpdate([FromBody] BatchTradeUpdateRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                message = "参数验证失败",
+                errors = ModelState
+            });
+        }
+
+        var result = await _tradeService.BatchUpdateAsync(request);
+
+        return Ok(new
+        {
+            success = result.Success,
+            data = result.Data,
+            message = result.Message,
+            successCount = result.SuccessCount,
+            failCount = result.FailCount,
+            errors = result.Errors
+        });
+    }
+
+    /// <summary>
     /// 修改交易记录
     /// </summary>
     [HttpPut("{id:int}")]

@@ -13,6 +13,17 @@ public interface IAuthService
 {
     Task<AuthResponse> RegisterAsync(RegisterRequest request);
     Task<AuthResponse> LoginAsync(LoginRequest request);
+    Task<UserProfileResponse?> GetProfileAsync(int userId);
+    Task<UpdateProfileResponse> UpdateProfileAsync(int userId, UpdateProfileRequest request);
+    Task<UpdateProfileResponse> ChangePasswordAsync(int userId, ChangePasswordRequest request);
+}
+
+public class UpdateProfileResponse
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public string? Username { get; set; }
+    public string? Email { get; set; }
 }
 
 public class AuthService : IAuthService
@@ -136,5 +147,68 @@ public class AuthService : IAuthService
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    public async Task<UserProfileResponse?> GetProfileAsync(int userId)
+    {
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null || !user.IsActive)
+            return null;
+
+        return new UserProfileResponse
+        {
+            Id = user.Id,
+            Username = user.Username,
+            Email = user.Email,
+            CreatedAt = user.CreatedAt,
+            LastLoginAt = user.LastLoginAt
+        };
+    }
+
+    public async Task<UpdateProfileResponse> UpdateProfileAsync(int userId, UpdateProfileRequest request)
+    {
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null || !user.IsActive)
+            return new UpdateProfileResponse { Success = false, Message = "用户不存在或已被禁用" };
+
+        // 检查用户名是否被其他用户占用
+        var existingUsername = await _db.Users
+            .FirstOrDefaultAsync(u => u.Username == request.Username && u.Id != userId);
+        if (existingUsername != null)
+            return new UpdateProfileResponse { Success = false, Message = "用户名已存在" };
+
+        // 检查邮箱是否被其他用户占用
+        var existingEmail = await _db.Users
+            .FirstOrDefaultAsync(u => u.Email == request.Email && u.Id != userId);
+        if (existingEmail != null)
+            return new UpdateProfileResponse { Success = false, Message = "该邮箱已被注册" };
+
+        user.Username = request.Username;
+        user.Email = request.Email;
+        await _db.SaveChangesAsync();
+
+        return new UpdateProfileResponse
+        {
+            Success = true,
+            Message = "个人信息更新成功",
+            Username = user.Username,
+            Email = user.Email
+        };
+    }
+
+    public async Task<UpdateProfileResponse> ChangePasswordAsync(int userId, ChangePasswordRequest request)
+    {
+        var user = await _db.Users.FindAsync(userId);
+        if (user == null || !user.IsActive)
+            return new UpdateProfileResponse { Success = false, Message = "用户不存在或已被禁用" };
+
+        // 验证当前密码
+        if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
+            return new UpdateProfileResponse { Success = false, Message = "当前密码错误" };
+
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        await _db.SaveChangesAsync();
+
+        return new UpdateProfileResponse { Success = true, Message = "密码修改成功" };
     }
 }
