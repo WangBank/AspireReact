@@ -59,6 +59,22 @@ export class AccountService {
     return response.json();
   }
 
+  async getById(id: number): Promise<AccountApiResponse<AccountDailyResponse>> {
+    const response = await fetch(`${API_BASE}/${id}`, {
+      headers: this.getAuthHeaders(),
+    });
+    return response.json();
+  }
+
+  async update(id: number, request: AccountDailyRequest): Promise<AccountApiResponse<AccountDailyResponse>> {
+    const response = await fetch(`${API_BASE}/${id}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return response.json();
+  }
+
   async delete(id: number): Promise<AccountApiResponse<null>> {
     const response = await fetch(`${API_BASE}/${id}`, {
       method: 'DELETE',

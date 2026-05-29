@@ -16,7 +16,7 @@ const QuickEntry = observer(() => {
           style={{ '--card-accent': '#6366f1' } as React.CSSProperties}
         >
           <span className="quick-entry-card__title">统一录入</span>
-          <span className="quick-entry-card__desc">一次性录入账户资金、银证流水、多股票持仓</span>
+          <span className="quick-entry-card__desc">一次性录入账户资金、银证流水、多心魔持仓</span>
         </button>
       </div>
     </section>

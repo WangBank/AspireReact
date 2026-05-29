@@ -3,6 +3,7 @@ using System;
 using AspireReact.Server.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AspireReact.Server.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260528064633_AddPositionQuantityAndDailyPnL")]
+    partial class AddPositionQuantityAndDailyPnL
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -164,9 +167,6 @@ namespace AspireReact.Server.Migrations
 
                     b.Property<decimal>("DailyPnL")
                         .HasColumnType("numeric");
-
-                    b.Property<bool>("IsLiquidated")
-                        .HasColumnType("boolean");
 
                     b.Property<decimal>("PositionPnL")
                         .HasColumnType("numeric");

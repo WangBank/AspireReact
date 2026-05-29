@@ -162,6 +162,18 @@ public class AccountService : IAccountService
     }
 
     /// <summary>
+    /// 根据 ID 获取账户资金记录
+    /// </summary>
+    public async Task<AccountDailyResponse?> GetByIdAsync(int id)
+    {
+        var entity = await _db.AccountDailies
+            .AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == id);
+
+        return entity == null ? null : ToResponse(entity);
+    }
+
+    /// <summary>
     /// 将实体映射为响应 DTO
     /// </summary>
     private static AccountDailyResponse ToResponse(AccountDaily entity)

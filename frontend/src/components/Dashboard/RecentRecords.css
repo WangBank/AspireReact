@@ -81,6 +81,11 @@
   color: #7c92f5;
 }
 
+.recent-item__tag--hold {
+  background: rgba(124, 146, 245, 0.12);
+  color: #7c92f5;
+}
+
 .recent-item__tag--in {
   background: rgba(34, 197, 94, 0.12);
   color: #16a34a;

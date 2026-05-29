@@ -136,6 +136,18 @@ public class BankFlowService : IBankFlowService
     }
 
     /// <summary>
+    /// 根据 ID 获取银证流水记录
+    /// </summary>
+    public async Task<BankFlowResponse?> GetByIdAsync(int id)
+    {
+        var entity = await _db.BankFlows
+            .AsNoTracking()
+            .FirstOrDefaultAsync(b => b.Id == id);
+
+        return entity == null ? null : ToResponse(entity);
+    }
+
+    /// <summary>
     /// 将实体映射为响应 DTO
     /// </summary>
     private static BankFlowResponse ToResponse(BankFlow entity)

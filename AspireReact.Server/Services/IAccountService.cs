@@ -32,6 +32,11 @@ public interface IAccountService
     /// 获取最新一条账户资金记录
     /// </summary>
     Task<AccountDailyResponse?> GetLatestAsync();
+
+    /// <summary>
+    /// 根据 ID 获取账户资金记录
+    /// </summary>
+    Task<AccountDailyResponse?> GetByIdAsync(int id);
 }
 
 /// <summary>

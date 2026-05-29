@@ -13,6 +13,9 @@ export interface StockTradeRequest {
   cumulativePnL: number;
   costPrice: number;
   currentPrice: number;
+  positionQuantity: number;
+  dailyPnL: number;
+  isLiquidated: boolean;
   tradeNote?: string;
   tonghuashunLink?: string;
 }
@@ -44,6 +47,9 @@ export interface StockTradeResponse {
   cumulativePnL: number;
   costPrice: number;
   currentPrice: number;
+  positionQuantity: number;
+  dailyPnL: number;
+  isLiquidated: boolean;
   tradeNote?: string;
   tonghuashunLink?: string;
 }

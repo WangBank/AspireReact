@@ -55,6 +55,22 @@ export class BankFlowService {
     return response.json();
   }
 
+  async getById(id: number): Promise<BankFlowApiResponse<BankFlowResponse>> {
+    const response = await fetch(`${API_BASE}/${id}`, {
+      headers: this.getAuthHeaders(),
+    });
+    return response.json();
+  }
+
+  async update(id: number, request: BankFlowRequest): Promise<BankFlowApiResponse<BankFlowResponse>> {
+    const response = await fetch(`${API_BASE}/${id}`, {
+      method: 'PUT',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(request),
+    });
+    return response.json();
+  }
+
   async delete(id: number): Promise<BankFlowApiResponse<null>> {
     const response = await fetch(`${API_BASE}/${id}`, {
       method: 'DELETE',

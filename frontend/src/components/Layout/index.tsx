@@ -28,7 +28,7 @@ const NAV_ITEMS = [
     type: 'dropdown',
     children: [
       { label: '全局笔记', path: '/notes/global' },
-      { label: '股票笔记', path: '/notes/stock' },
+      { label: '心魔笔记', path: '/notes/stock' },
     ],
   },
   { label: '设置', path: '/config', type: 'link' },

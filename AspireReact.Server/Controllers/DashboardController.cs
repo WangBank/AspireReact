@@ -73,11 +73,15 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
-    /// 按日期范围计算账户盈亏总和
+    /// 按日期范围计算持仓盈亏总和（基于 StockTrade.PositionPnL）
     /// </summary>
     private async Task<decimal> CalculatePnL(DateTime? startDate, DateTime? endDate)
     {
-        var records = await _accountService.GetByDateRangeAsync(startDate, endDate);
-        return records.Sum(r => r.DailyPnL);
+        var summary = await _tradeService.GetSummaryAsync(new TradeSummaryRequest
+        {
+            StartDate = startDate,
+            EndDate = endDate
+        });
+        return summary.TotalPnL;
     }
 }

@@ -42,6 +42,16 @@ public class StockTradeRequest : IValidatableObject
 
     public decimal CurrentPrice { get; set; }
 
+    [Range(0, int.MaxValue, ErrorMessage = "持仓数量不能为负数")]
+    public int PositionQuantity { get; set; }
+
+    public decimal DailyPnL { get; set; }
+
+    /// <summary>
+    /// 是否清仓：清仓模式下只记录盈亏，不记录持仓相关数据
+    /// </summary>
+    public bool IsLiquidated { get; set; }
+
     [MaxLength(2000, ErrorMessage = "交易笔记最多2000个字符")]
     public string? TradeNote { get; set; }
 
@@ -49,10 +59,17 @@ public class StockTradeRequest : IValidatableObject
     public string? TonghuashunLink { get; set; }
 
     /// <summary>
-    /// 自定义验证：允许三种模式 — 纯买入、纯卖出、纯持仓（买入卖出均为0但PositionPnL不为0）
+    /// 自定义验证
+    /// 支持四种模式：纯买入、纯卖出、纯持仓（买入卖出均为0但PositionPnL不为0）、清仓模式
     /// </summary>
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        // 清仓模式：允许只填写盈亏相关字段，跳过持仓验证
+        if (IsLiquidated)
+        {
+            yield break;
+        }
+
         var hasBuy = BuyPrice > 0 && BuyQuantity > 0;
         var hasSell = SellPrice > 0 && SellQuantity > 0;
         var isPositionOnly = !hasBuy && !hasSell && PositionPnL != 0;
@@ -66,7 +83,7 @@ public class StockTradeRequest : IValidatableObject
         if (!hasBuy && !hasSell)
         {
             yield return new ValidationResult(
-                "买入或卖出至少需要填写一方（价格>0 且 数量>0），或填写持仓市值",
+                "买入或卖出至少需要填写一方（价格>0 且 数量>0），或填写持仓市值，或勾选清仓",
                 new[] { nameof(BuyPrice), nameof(SellPrice) });
         }
 
@@ -119,6 +136,9 @@ public class StockTradeResponse
     public decimal CumulativePnL { get; set; }
     public decimal CostPrice { get; set; }
     public decimal CurrentPrice { get; set; }
+    public int PositionQuantity { get; set; }
+    public decimal DailyPnL { get; set; }
+    public bool IsLiquidated { get; set; }
     public string? TradeNote { get; set; }
     public string? TonghuashunLink { get; set; }
 }
@@ -236,6 +256,7 @@ public class TradeSummaryItem
 /// </summary>
 public class TradeSummaryResponse
 {
+    // ── 交易统计（仅包含有实际买卖操作的记录） ──
     public int TotalTrades { get; set; }
     public decimal TotalPnL { get; set; }
     public int WinTrades { get; set; }
@@ -243,6 +264,29 @@ public class TradeSummaryResponse
     public decimal OverallWinRate { get; set; }
     public List<TradeSummaryItem> ByStock { get; set; } = new();
     public List<TradeSummaryItem> ByBoard { get; set; } = new();
+
+    // ── 持仓汇总（仅包含纯持仓记录：无买卖操作、未清仓、有持仓数量） ──
+    public int PositionCount { get; set; }
+    public decimal TotalPositionValue { get; set; }
+    public decimal TotalPositionPnL { get; set; }
+    public decimal TotalDailyPnL { get; set; }
+    public List<PositionSummaryItem> Positions { get; set; } = new();
+}
+
+/// <summary>
+/// 持仓汇总项
+/// </summary>
+public class PositionSummaryItem
+{
+    public string StockCode { get; set; } = string.Empty;
+    public string StockName { get; set; } = string.Empty;
+    public string Board { get; set; } = string.Empty;
+    public int PositionQuantity { get; set; }
+    public decimal CostPrice { get; set; }
+    public decimal CurrentPrice { get; set; }
+    public decimal PositionPnL { get; set; }
+    public decimal DailyPnL { get; set; }
+    public DateTime LastUpdateDate { get; set; }
 }
 
 /// <summary>

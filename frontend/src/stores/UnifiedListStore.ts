@@ -8,6 +8,8 @@ import type { StockTradeResponse } from '../services/TradeService';
 
 export type UnifiedItemType = 'account' | 'bankflow' | 'trade';
 
+export type UnifiedActiveType = UnifiedItemType | 'all';
+
 export interface UnifiedListItem {
   id: number;
   type: UnifiedItemType;
@@ -20,17 +22,15 @@ export interface UnifiedListItem {
   // 银证流水
   flowType?: string;
   amount?: number;
-  // 交易
+  // 交易：与 UnifiedEntryPage 表单字段对齐
   stockCode?: string;
   stockName?: string;
   board?: string;
-  buyPrice?: number;
-  buyQuantity?: number;
-  sellPrice?: number;
-  sellQuantity?: number;
-  positionPnL?: number;
-  cumulativePnL?: number;
-  tradeNote?: string;
+  tradePositionValue?: number;  // 持仓市值（表单 positionValue）
+  positionQuantity?: number;    // 持仓数量（股）
+  costPrice?: number;            // 成本价
+  currentPrice?: number;         // 现价
+  cumulativePnL?: number;       // 累计盈亏
   // 通用
   remark?: string;
   raw: AccountDailyResponse | BankFlowResponse | StockTradeResponse;
@@ -51,6 +51,7 @@ export class UnifiedListStore {
   page = 1;
   pageSize = 20;
   totalPages = 1;
+  activeType: UnifiedActiveType = 'account'; // 当前选中的列表类型
 
   constructor() {
     makeAutoObservable(this);
@@ -60,84 +61,158 @@ export class UnifiedListStore {
     this.loading = true;
     this.error = null;
     try {
-      const [accountRes, bankFlowRes, tradeRes] = await Promise.all([
-        accountService.getByDateRange(
-          this.startDate || undefined,
-          this.endDate || undefined
-        ),
-        bankFlowService.getByDateRange(
-          this.startDate || undefined,
-          this.endDate || undefined
-        ),
-        tradeService.query({
-          stockCode: this.keyword || undefined,
-          tradeDate: this.startDate || undefined,
-          board: '',
-          page: 1,
-          pageSize: 1000,
-        }),
-      ]);
+      let items: UnifiedListItem[] = [];
 
-      runInAction(() => {
-        const items: UnifiedListItem[] = [];
+      if (this.activeType === 'all') {
+        // 全部：并行加载三种数据
+        const [accountRes, bankFlowRes, tradeRes] = await Promise.all([
+          accountService.getByDateRange(
+            this.startDate || undefined,
+            this.endDate || undefined
+          ),
+          bankFlowService.getByDateRange(
+            this.startDate || undefined,
+            this.endDate || undefined
+          ),
+          tradeService.query({
+            stockCode: this.keyword || undefined,
+            tradeDate: this.startDate || undefined,
+            board: '',
+            page: 1,
+            pageSize: 1000,
+          }),
+        ]);
+        runInAction(() => {
+          const fmtDate = (d: string) => d?.split('T')[0] ?? '';
 
-        if (accountRes.success && accountRes.data) {
-          for (const d of accountRes.data) {
-            items.push({
+          if (accountRes.success && accountRes.data) {
+            for (const d of accountRes.data) {
+              items.push({
+                id: d.id,
+                type: 'account',
+                date: fmtDate(d.date),
+                totalAssets: d.totalAssets,
+                dailyPnL: d.dailyPnL,
+                positionValue: d.positionValue,
+                availableFunds: d.availableFunds,
+                remark: d.remark,
+                raw: d,
+              });
+            }
+          }
+
+          if (bankFlowRes.success && bankFlowRes.data) {
+            for (const d of bankFlowRes.data) {
+              items.push({
+                id: d.id,
+                type: 'bankflow',
+                date: fmtDate(d.date),
+                flowType: d.flowType,
+                amount: d.amount,
+                remark: d.remark,
+                raw: d,
+              });
+            }
+          }
+
+          if (tradeRes.success && tradeRes.data) {
+            for (const d of tradeRes.data) {
+              if (this.endDate && d.tradeDate > this.endDate) continue;
+              items.push({
+                id: d.id,
+                type: 'trade',
+                date: fmtDate(d.tradeDate),
+                stockCode: d.stockCode,
+                stockName: d.stockName,
+                board: d.board,
+                tradePositionValue: d.positionPnL,
+                positionQuantity: d.positionQuantity,
+                costPrice: d.costPrice,
+                currentPrice: d.currentPrice,
+                cumulativePnL: d.cumulativePnL,
+                dailyPnL: d.dailyPnL,
+                remark: d.tradeNote,
+                raw: d,
+              });
+            }
+          }
+          this.data = items;
+          this.loading = false;
+        });
+      } else {
+        // 只加载当前选中类型的数据
+        const fmtDate = (d: string) => d?.split('T')[0] ?? '';
+        
+        if (this.activeType === 'account') {
+          const res = await accountService.getByDateRange(
+            this.startDate || undefined,
+            this.endDate || undefined
+          );
+          if (res.success && res.data) {
+            items = res.data.map(d => ({
               id: d.id,
-              type: 'account',
-              date: d.date,
+              type: 'account' as const,
+              date: fmtDate(d.date),
               totalAssets: d.totalAssets,
               dailyPnL: d.dailyPnL,
               positionValue: d.positionValue,
               availableFunds: d.availableFunds,
               remark: d.remark,
               raw: d,
-            });
+            }));
           }
-        }
-
-        if (bankFlowRes.success && bankFlowRes.data) {
-          for (const d of bankFlowRes.data) {
-            items.push({
+        } else if (this.activeType === 'bankflow') {
+          const res = await bankFlowService.getByDateRange(
+            this.startDate || undefined,
+            this.endDate || undefined
+          );
+          if (res.success && res.data) {
+            items = res.data.map(d => ({
               id: d.id,
-              type: 'bankflow',
-              date: d.date,
+              type: 'bankflow' as const,
+              date: fmtDate(d.date),
               flowType: d.flowType,
               amount: d.amount,
               remark: d.remark,
               raw: d,
-            });
+            }));
+          }
+        } else if (this.activeType === 'trade') {
+          const res = await tradeService.query({
+            stockCode: this.keyword || undefined,
+            tradeDate: this.startDate || undefined,
+            board: '',
+            page: 1,
+            pageSize: 1000,
+          });
+          if (res.success && res.data) {
+            items = res.data
+              .filter(d => !(this.endDate && d.tradeDate > this.endDate))
+              .map(d => ({
+                id: d.id,
+                type: 'trade' as const,
+                date: fmtDate(d.tradeDate),
+                stockCode: d.stockCode,
+                stockName: d.stockName,
+                board: d.board,
+                tradePositionValue: d.positionPnL,
+                positionQuantity: d.positionQuantity,
+                costPrice: d.costPrice,
+                currentPrice: d.currentPrice,
+                cumulativePnL: d.cumulativePnL,
+                dailyPnL: d.dailyPnL,
+                tradeNote: d.tradeNote,
+                remark: d.tradeNote,
+                raw: d,
+              }));
           }
         }
 
-        if (tradeRes.success && tradeRes.data) {
-          for (const d of tradeRes.data) {
-            // 用 tradeDate 过滤结束日期（后端暂不支持 endDate 参数）
-            if (this.endDate && d.tradeDate > this.endDate) continue;
-            items.push({
-              id: d.id,
-              type: 'trade',
-              date: d.tradeDate,
-              stockCode: d.stockCode,
-              stockName: d.stockName,
-              board: d.board,
-              buyPrice: d.buyPrice,
-              buyQuantity: d.buyQuantity,
-              sellPrice: d.sellPrice,
-              sellQuantity: d.sellQuantity,
-              positionPnL: d.positionPnL,
-              cumulativePnL: d.cumulativePnL,
-              tradeNote: d.tradeNote,
-              remark: d.tradeNote,
-              raw: d,
-            });
-          }
-        }
-
-        this.data = items;
-        this.loading = false;
-      });
+        runInAction(() => {
+          this.data = items;
+          this.loading = false;
+        });
+      }
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '网络错误';
@@ -257,6 +332,12 @@ export class UnifiedListStore {
 
   setPage = (p: number) => {
     this.page = Math.max(1, Math.min(p, this.totalPages));
+  };
+
+  setActiveType = (type: UnifiedActiveType) => {
+    this.activeType = type;
+    this.page = 1;
+    this.fetch();
   };
 
   clearError = () => {

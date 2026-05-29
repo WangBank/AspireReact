@@ -50,6 +50,31 @@ public class BankFlowController : ControllerBase
     }
 
     /// <summary>
+    /// 根据 ID 获取银证流水记录
+    /// </summary>
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        var data = await _bankFlowService.GetByIdAsync(id);
+
+        if (data == null)
+        {
+            return NotFound(new
+            {
+                success = false,
+                message = $"未找到 ID 为 {id} 的银证流水记录"
+            });
+        }
+
+        return Ok(new
+        {
+            success = true,
+            data,
+            message = "获取记录成功"
+        });
+    }
+
+    /// <summary>
     /// 新增银证流水记录
     /// </summary>
     [HttpPost]

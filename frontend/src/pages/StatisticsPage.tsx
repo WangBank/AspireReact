@@ -214,6 +214,69 @@ const StatisticsPage = observer(() => {
     );
   };
 
+  const renderPositionTable = () => {
+    if (!store.data || store.data.positionCount === 0) {
+      return (
+        <div className="sp-section">
+          <p className="sp-section-title">持仓汇总</p>
+          <p className="sp-empty">暂无持仓数据</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="sp-section">
+        <p className="sp-section-title">持仓汇总</p>
+        <div className="sp-table-wrap">
+          <table className="sp-table">
+            <thead>
+              <tr>
+                <th>心魔代码</th>
+                <th>心魔名称</th>
+                <th>板块</th>
+                <th className="sp-num">持仓数量</th>
+                <th className="sp-num">成本价</th>
+                <th className="sp-num">现价</th>
+                <th className="sp-num">持仓盈亏</th>
+                <th className="sp-num">当日盈亏</th>
+                <th className="sp-num">最后更新</th>
+              </tr>
+            </thead>
+            <tbody>
+              {store.data.positions.map((item) => (
+                <tr key={item.stockCode}>
+                  <td data-label="心魔代码">
+                    <StockLink stockCode={item.stockCode} stockName={item.stockName} />
+                  </td>
+                  <td data-label="心魔名称">{item.stockName}</td>
+                  <td data-label="板块">
+                    <span className={`sp-board-tag sp-board-tag--${item.board}`}>{item.board}</span>
+                  </td>
+                  <td className="sp-num" data-label="持仓数量">{item.positionQuantity.toLocaleString()}</td>
+                  <td className="sp-num" data-label="成本价">{item.costPrice.toFixed(2)}</td>
+                  <td className="sp-num" data-label="现价">{item.currentPrice.toFixed(2)}</td>
+                  <td
+                    className={`sp-num ${store.isPnLPositive(item.positionPnL) ? 'sp-positive' : 'sp-negative'}`}
+                    data-label="持仓盈亏"
+                  >
+                    {store.formatMoney(item.positionPnL)}
+                  </td>
+                  <td
+                    className={`sp-num ${store.isPnLPositive(item.dailyPnL) ? 'sp-positive' : 'sp-negative'}`}
+                    data-label="当日盈亏"
+                  >
+                    {store.formatMoney(item.dailyPnL)}
+                  </td>
+                  <td className="sp-num" data-label="最后更新">{item.lastUpdateDate}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="sp-container">
       <div className="sp-header">
@@ -323,8 +386,8 @@ const StatisticsPage = observer(() => {
         {/* 按心魔汇总表格 */}
         {!store.loading && !store.error && store.data && renderByStockTable()}
 
-        {/* 按板块汇总表格 */}
-        {!store.loading && !store.error && store.data && renderByBoardTable()}
+        {/* 持仓汇总表格 */}
+        {!store.loading && !store.error && store.data && renderPositionTable()}
 
         {/* 空状态 */}
         {!store.loading && !store.error && !store.data && (

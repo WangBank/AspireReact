@@ -17,6 +17,9 @@ public class StockTrade
     public decimal CumulativePnL { get; set; }
     public decimal CostPrice { get; set; }
     public decimal CurrentPrice { get; set; }
+    public int PositionQuantity { get; set; }
+    public decimal DailyPnL { get; set; }
+    public bool IsLiquidated { get; set; }
     public string? TradeNote { get; set; }
     public string? TonghuashunLink { get; set; }
 }

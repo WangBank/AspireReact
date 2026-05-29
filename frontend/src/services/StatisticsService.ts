@@ -10,6 +10,18 @@ export interface TradeSummaryItem {
   winRate: number;
 }
 
+export interface PositionSummaryItem {
+  stockCode: string;
+  stockName: string;
+  board: string;
+  positionQuantity: number;
+  costPrice: number;
+  currentPrice: number;
+  positionPnL: number;
+  dailyPnL: number;
+  lastUpdateDate: string;
+}
+
 export interface TradeSummaryResponse {
   totalTrades: number;
   totalPnL: number;
@@ -18,6 +30,11 @@ export interface TradeSummaryResponse {
   overallWinRate: number;
   byStock: TradeSummaryItem[];
   byBoard: TradeSummaryItem[];
+  positionCount: number;
+  totalPositionValue: number;
+  totalPositionPnL: number;
+  totalDailyPnL: number;
+  positions: PositionSummaryItem[];
 }
 
 export interface StatisticsApiResponse {

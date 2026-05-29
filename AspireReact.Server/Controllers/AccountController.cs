@@ -60,6 +60,31 @@ public class AccountController : ControllerBase
     }
 
     /// <summary>
+    /// 根据 ID 获取账户资金记录
+    /// </summary>
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetById(int id)
+    {
+        var data = await _accountService.GetByIdAsync(id);
+
+        if (data == null)
+        {
+            return NotFound(new
+            {
+                success = false,
+                message = $"未找到 ID 为 {id} 的账户资金记录"
+            });
+        }
+
+        return Ok(new
+        {
+            success = true,
+            data,
+            message = "获取记录成功"
+        });
+    }
+
+    /// <summary>
     /// 新增当日账户资金
     /// </summary>
     [HttpPost]

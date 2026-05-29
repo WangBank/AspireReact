@@ -31,4 +31,9 @@ public interface IBankFlowService
     /// 获取最近10条流水
     /// </summary>
     Task<List<BankFlowResponse>> GetRecentAsync();
+
+    /// <summary>
+    /// 根据 ID 获取银证流水记录
+    /// </summary>
+    Task<BankFlowResponse?> GetByIdAsync(int id);
 }

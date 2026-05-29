@@ -2,20 +2,15 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../stores/StoreProvider';
+import type { UnifiedItemType } from '../stores/UnifiedListStore';
 import StockLink from '../components/StockLink';
 import './UnifiedListPage.css';
 
-const TYPE_LABELS: Record<string, string> = {
-  account: '账户',
-  bankflow: '流水',
-  trade: '交易',
-};
-
-const TYPE_COLORS: Record<string, string> = {
-  account: '#1677ff',
-  bankflow: '#13c2c2',
-  trade: '#fa8c16',
-};
+const TYPE_OPTIONS: { value: 'account' | 'bankflow' | 'trade'; label: string }[] = [
+  { value: 'account', label: '账户列表' },
+  { value: 'bankflow', label: '流水列表' },
+  { value: 'trade', label: '交易列表' },
+];
 
 const UnifiedListPage = observer(() => {
   const { unifiedListStore: store } = useStore();
@@ -25,9 +20,16 @@ const UnifiedListPage = observer(() => {
   const [keyword, setKeyword] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: number } | null>(null);
 
+  // 初始加载：默认加载账户列表
   useEffect(() => {
-    store.fetch();
-  }, [store]);
+    store.setActiveType('account');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value as 'account' | 'bankflow' | 'trade';
+    store.setActiveType(val);
+  };
 
   const handleSearch = () => {
     store.setDateRange(startDate, endDate);
@@ -46,58 +48,133 @@ const UnifiedListPage = observer(() => {
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    await store.delete(deleteConfirm.type as 'account' | 'bankflow' | 'trade', deleteConfirm.id);
+    await store.delete(deleteConfirm.type as UnifiedItemType, deleteConfirm.id);
     setDeleteConfirm(null);
   };
 
   const formatMoney = (val: number) =>
     new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(val);
 
-  const renderTypeBadge = (type: string) => (
-    <span
-      className="ulp-type-badge"
-      style={{ backgroundColor: TYPE_COLORS[type] || '#999' }}
-    >
-      {TYPE_LABELS[type] || type}
-    </span>
+  const isTrade = store.activeType === 'trade';
+  const isAccount = store.activeType === 'account';
+  const isBankFlow = store.activeType === 'bankflow';
+
+  const renderTableHeader = () => (
+    <tr>
+      <th
+        className="ulp-sortable"
+        onClick={() => store.toggleSort('date')}
+      >
+        日期{store.sortField === 'date' ? (store.sortOrder === 'asc' ? ' ↑' : ' ↓') : ' ↕'}
+      </th>
+      <th>备注</th>
+      {isAccount && (
+        <>
+          <th>总资产</th>
+          <th>持仓市值</th>
+          <th>可用资金</th>
+          <th>当日盈亏</th>
+        </>
+      )}
+      {isBankFlow && (
+        <>
+          <th>流水类型</th>
+          <th>金额</th>
+        </>
+      )}
+      {isTrade && (
+        <>
+          <th>代码</th>
+          <th>名称</th>
+          <th>板块</th>
+          <th>持仓盈亏</th>
+          <th>持仓数量</th>
+          <th>成本价</th>
+          <th>现价</th>
+          <th>当日盈亏</th>
+          <th>累计盈亏</th>
+        </>
+      )}
+      <th>操作</th>
+    </tr>
   );
 
-  const renderAccountRow = (item: any) => (
-    <>
-      <td data-label="总资产" className="ulp-num">{formatMoney(item.totalAssets)}</td>
-      <td data-label="当日盈亏" className={`ulp-num ${item.dailyPnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{formatMoney(item.dailyPnL)}</td>
-      <td data-label="持仓市值" className="ulp-num">{formatMoney(item.positionValue)}</td>
-      <td data-label="可用资金" className="ulp-num">{formatMoney(item.availableFunds)}</td>
-    </>
-  );
+  const renderRow = (item: any) => {
+    const isTradeItem = item.type === 'trade';
+    const isAccountItem = item.type === 'account';
+    const isBankFlowItem = item.type === 'bankflow';
 
-  const renderBankFlowRow = (item: any) => (
-    <>
-      <td data-label="类型">
-        <span className={item.flowType === '转入' ? 'ulp-in' : 'ulp-out'}>
-          {item.flowType}
-        </span>
-      </td>
-      <td data-label="金额" className="ulp-num">{formatMoney(item.amount)}</td>
-      <td colSpan={4} />
-    </>
-  );
+    return (
+      <tr key={`${item.type}-${item.id}`}>
+        <td data-label="日期">{item.date}</td>
+        <td data-label="备注" className="ulp-remark">{item.remark || '-'}</td>
 
-  const renderTradeRow = (item: any) => (
-    <>
-      <td data-label="代码" className="ulp-mono">
-        <StockLink stockCode={item.stockCode} stockName={item.stockName} />
-      </td>
-      <td data-label="名称">{item.stockName}</td>
-      <td data-label="板块">{item.board}</td>
-      <td data-label="买入价" className="ulp-num">{item.buyPrice?.toFixed(2)}</td>
-      <td data-label="买入量" className="ulp-num">{item.buyQuantity}</td>
-      <td data-label="卖出价" className="ulp-num">{item.sellPrice?.toFixed(2)}</td>
-      <td data-label="卖出量" className="ulp-num">{item.sellQuantity}</td>
-      <td data-label="持仓盈亏" className={`ulp-num ${item.positionPnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{formatMoney(item.positionPnL)}</td>
-      <td data-label="累计盈亏" className={`ulp-num ${item.cumulativePnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{formatMoney(item.cumulativePnL)}</td>
-    </>
-  );
+        {isAccountItem && (
+          <>
+            <td data-label="总资产" className="ulp-num">{formatMoney(item.totalAssets)}</td>
+            <td data-label="持仓市值" className="ulp-num">{formatMoney(item.positionValue)}</td>
+            <td data-label="可用资金" className="ulp-num">{formatMoney(item.availableFunds)}</td>
+            <td data-label="当日盈亏" className={`ulp-num ${item.dailyPnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{formatMoney(item.dailyPnL)}</td>
+          </>
+        )}
+
+        {isBankFlowItem && (
+          <>
+            <td data-label="类型">
+              <span className={item.flowType === '转入' ? 'ulp-in' : 'ulp-out'}>
+                {item.flowType}
+              </span>
+            </td>
+            <td data-label="金额" className="ulp-num">{formatMoney(item.amount)}</td>
+          </>
+        )}
+
+        {isTradeItem && (
+          <>
+            <td data-label="代码" className="ulp-mono">
+              <StockLink stockCode={item.stockCode} stockName={item.stockName} />
+            </td>
+            <td data-label="名称">{item.stockName}</td>
+            <td data-label="板块">{item.board}</td>
+            <td data-label="持仓盈亏" className="ulp-num">{item.tradePositionValue != null ? formatMoney(item.tradePositionValue) : '-'}</td>
+            <td data-label="持仓数量" className="ulp-num">{item.positionQuantity ?? '-'}</td>
+            <td data-label="成本价" className="ulp-num">{item.costPrice?.toFixed(3) ?? '-'}</td>
+            <td data-label="现价" className="ulp-num">{item.currentPrice?.toFixed(3) ?? '-'}</td>
+            <td data-label="当日盈亏" className={`ulp-num ${item.dailyPnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{item.dailyPnL != null ? formatMoney(item.dailyPnL) : '-'}</td>
+            <td data-label="累计盈亏" className={`ulp-num ${item.cumulativePnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{item.cumulativePnL != null ? formatMoney(item.cumulativePnL) : '-'}</td>
+          </>
+        )}
+
+        <td data-label="操作">
+          <div className="ulp-actions">
+            <button
+              className="ulp-btn-secondary-sm"
+              onClick={() => navigate(`/entry/unified?type=${item.type}&id=${item.id}`)}
+            >
+              编辑
+            </button>
+            {deleteConfirm?.type === item.type && deleteConfirm?.id === item.id ? (
+              <span className="ulp-actions-confirm">
+                <button className="ulp-btn-danger-sm" onClick={handleDelete}>
+                  确认删除
+                </button>
+                <button className="ulp-btn-secondary-sm" onClick={() => setDeleteConfirm(null)}>
+                  取消
+                </button>
+              </span>
+            ) : (
+              <button
+                className="ulp-btn-danger-sm"
+                onClick={() => setDeleteConfirm({ type: item.type, id: item.id })}
+              >
+                删除
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  };
 
   const renderPagination = () => {
     const tp = store.totalPages;
@@ -147,26 +224,58 @@ const UnifiedListPage = observer(() => {
       <header className="ulp-header">
         <div>
           <h1 className="ulp-title">数据列表</h1>
-          <p className="ulp-subtitle">账户资金、银证流水、交易记录统一视图</p>
+          <p className="ulp-subtitle">
+            {TYPE_OPTIONS.find(t => t.value === store.activeType)?.label || '数据'}视图
+          </p>
         </div>
         <button className="ulp-refresh-btn" onClick={() => store.fetch()} disabled={store.loading}>
           刷新
         </button>
       </header>
 
+      {/* ── 类型选择器 ── */}
       <div className="ulp-filter-bar">
+        <label>数据类型</label>
+        <select
+          className="ulp-select"
+          value={store.activeType}
+          onChange={handleTypeChange}
+        >
+          {TYPE_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+
         <label>开始日期</label>
         <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         <label>结束日期</label>
         <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        <label>搜索</label>
-        <input
-          type="text"
-          placeholder="代码/名称/备注"
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          className="ulp-input-text"
-        />
+
+        {(isAccount || isBankFlow) && (
+          <>
+            <label>搜索</label>
+            <input
+              type="text"
+              placeholder="备注关键词"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              className="ulp-input-text"
+            />
+          </>
+        )}
+        {isTrade && (
+          <>
+            <label>搜索</label>
+            <input
+              type="text"
+              placeholder="代码/名称/板块"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              className="ulp-input-text"
+            />
+          </>
+        )}
+
         <button className="ulp-btn-primary" onClick={handleSearch} disabled={store.loading}>
           查询
         </button>
@@ -201,76 +310,10 @@ const UnifiedListPage = observer(() => {
             <div className="ulp-table-wrap">
               <table className="ulp-table">
                 <thead>
-                  <tr>
-                    <th
-                      className="ulp-sortable"
-                      onClick={() => store.toggleSort('date')}
-                    >
-                      日期{store.sortField === 'date' ? (store.sortOrder === 'asc' ? ' ↑' : ' ↓') : ' ↕'}
-                    </th>
-                    <th>类型</th>
-                    <th>备注</th>
-                    {/* 账户字段 */}
-                    <th>总资产</th>
-                    <th>当日盈亏</th>
-                    <th>持仓市值</th>
-                    <th>可用资金</th>
-                    {/* 流水字段 */}
-                    <th>流水类型</th>
-                    <th>金额</th>
-                    {/* 交易字段 */}
-                    <th>代码</th>
-                    <th>名称</th>
-                    <th>板块</th>
-                    <th>买入价</th>
-                    <th>买入量</th>
-                    <th>卖出价</th>
-                    <th>卖出量</th>
-                    <th>持仓盈亏</th>
-                    <th>累计盈亏</th>
-                    <th>操作</th>
-                  </tr>
+                  {renderTableHeader()}
                 </thead>
                 <tbody>
-                  {store.displayedData.map((item) => (
-                    <tr key={`${item.type}-${item.id}`}>
-                      <td data-label="日期">{item.date}</td>
-                      <td data-label="类型">{renderTypeBadge(item.type)}</td>
-                      <td data-label="备注" className="ulp-remark">{item.remark || '-'}</td>
-                      {item.type === 'account' && renderAccountRow(item)}
-                      {item.type === 'bankflow' && renderBankFlowRow(item)}
-                      {item.type === 'trade' && renderTradeRow(item)}
-                      <td data-label="操作">
-                        <div className="ulp-actions">
-                          {item.type === 'trade' && (
-                            <button
-                              className="ulp-btn-secondary-sm"
-                              onClick={() => navigate(`/entry/unified/${item.id}`)}
-                            >
-                              编辑
-                            </button>
-                          )}
-                          {deleteConfirm?.type === item.type && deleteConfirm?.id === item.id ? (
-                            <span className="ulp-actions-confirm">
-                              <button className="ulp-btn-danger-sm" onClick={handleDelete}>
-                                确认删除
-                              </button>
-                              <button className="ulp-btn-secondary-sm" onClick={() => setDeleteConfirm(null)}>
-                                取消
-                              </button>
-                            </span>
-                          ) : (
-                            <button
-                              className="ulp-btn-danger-sm"
-                              onClick={() => setDeleteConfirm({ type: item.type, id: item.id })}
-                            >
-                              删除
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {store.displayedData.map(renderRow)}
                 </tbody>
               </table>
             </div>
