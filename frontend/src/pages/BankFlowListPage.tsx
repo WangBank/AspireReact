@@ -129,7 +129,7 @@ const BankFlowListPage = observer(() => {
                   <tr>
                     <th>日期</th>
                     <th>类型</th>
-                    <th>金额</th>
+                    <th className="bflp-num">金额</th>
                     <th>备注</th>
                     <th>操作</th>
                   </tr>
@@ -137,7 +137,7 @@ const BankFlowListPage = observer(() => {
                 <tbody>
                   {store.pagedData.map((row) => (
                     <tr key={row.id}>
-                      <td data-label="日期">{row.date}</td>
+                      <td data-label="日期">{new Date(row.date).toISOString().split('T')[0]}</td>
                       <td data-label="类型">
                         <span className={row.flowType === '转入' ? 'bflp-in' : 'bflp-out'}>
                           {row.flowType}

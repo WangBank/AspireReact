@@ -420,14 +420,16 @@ public class StockTradeService : IStockTradeService
                     StockName = g.Key.StockName,
                     Board = g.Key.Board.ToString(),
                     TradeCount = g.Count(),
-                    // 持仓盈亏：取该心魔最新记录的 PositionPnL
-                    TotalPositionPnL = latest?.PositionPnL ?? 0,
+                    // 持仓盈亏：按公式 (现价 - 成本价) × 持仓数量 计算
+                    TotalPositionPnL = latest != null
+                        ? (latest.CurrentPrice - latest.CostPrice) * latest.PositionQuantity
+                        : 0,
                     // 累计盈亏：求和（累计值是累加的）
                     TotalCumulativePnL = g.Sum(t => t.CumulativePnL),
-                    // 胜率：基于该心魔全部记录中 PositionPnL 正负判断
-                    WinRate = g.Count(t => t.PositionPnL > 0 || t.PositionPnL < 0) > 0
-                        ? (decimal)g.Count(t => t.PositionPnL > 0) /
-                          g.Count(t => t.PositionPnL > 0 || t.PositionPnL < 0)
+                    // 胜率：基于该心魔全部记录中 CumulativePnL 正负判断
+                    WinRate = g.Count(t => t.CumulativePnL > 0 || t.CumulativePnL < 0) > 0
+                        ? (decimal)g.Count(t => t.CumulativePnL > 0) /
+                          g.Count(t => t.CumulativePnL > 0 || t.CumulativePnL < 0)
                         : 0
                 };
             })
@@ -439,19 +441,21 @@ public class StockTradeService : IStockTradeService
             .GroupBy(t => t.Board)
             .Select(g =>
             {
-                // 板块持仓盈亏：各心魔最新持仓盈亏之和
+                // 板块持仓盈亏：各心魔最新 (现价-成本价)×数量 之和
                 var boardPositionPnL = g
                     .GroupBy(t => new { t.StockCode, t.StockName })
                     .Sum(sg =>
                     {
                         var latest = sg.OrderByDescending(t => t.TradeDate).ThenByDescending(t => t.Id).FirstOrDefault();
-                        return latest?.PositionPnL ?? 0;
+                        return latest != null
+                            ? (latest.CurrentPrice - latest.CostPrice) * latest.PositionQuantity
+                            : 0;
                     });
                 // 板块累计盈亏：所有记录累计盈亏之和
                 var boardCumulativePnL = g.Sum(t => t.CumulativePnL);
-                // 板块胜率：基于该板块全部记录 PositionPnL 正负判断
-                var boardWinCount = g.Count(t => t.PositionPnL > 0);
-                var boardLoseCount = g.Count(t => t.PositionPnL < 0);
+                // 板块胜率：基于该板块全部记录 CumulativePnL 正负判断
+                var boardWinCount = g.Count(t => t.CumulativePnL > 0);
+                var boardLoseCount = g.Count(t => t.CumulativePnL < 0);
                 return new TradeSummaryItem
                 {
                     StockCode = "—",
@@ -468,12 +472,12 @@ public class StockTradeService : IStockTradeService
             .OrderByDescending(x => x.TotalPositionPnL)
             .ToList();
 
-        // ── 总盈亏：所有记录持仓盈亏之和 ──
-        var totalPnL = allRecords.Sum(t => t.PositionPnL);
+        // ── 总盈亏：所有记录累计盈亏之和（累计盈亏才是真实盈亏） ──
+        var totalPnL = allRecords.Sum(t => t.CumulativePnL);
 
-        // ── 盈亏笔数与胜率：基于全部记录的 PositionPnL 正负判断 ──
-        var winRecords = allRecords.Count(t => t.PositionPnL > 0);
-        var loseRecords = allRecords.Count(t => t.PositionPnL < 0);
+        // ── 盈亏笔数与胜率：基于全部记录的 CumulativePnL 正负判断 ──
+        var winRecords = allRecords.Count(t => t.CumulativePnL > 0);
+        var loseRecords = allRecords.Count(t => t.CumulativePnL < 0);
         var overallWinRate = (winRecords + loseRecords) > 0
             ? (decimal)winRecords / (winRecords + loseRecords)
             : 0;
@@ -491,7 +495,7 @@ public class StockTradeService : IStockTradeService
                 PositionQuantity = p.PositionQuantity,
                 CostPrice = p.CostPrice,
                 CurrentPrice = p.CurrentPrice,
-                PositionPnL = p.PositionPnL,
+                PositionPnL = (p.CurrentPrice - p.CostPrice) * p.PositionQuantity,
                 DailyPnL = p.DailyPnL,
                 LastUpdateDate = p.TradeDate
             })

@@ -208,6 +208,7 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 0.84rem;
+  table-layout: fixed;
 }
 
 .tlp-table thead {
@@ -221,6 +222,10 @@
   color: #374151;
   border-bottom: 2px solid #e5e7eb;
   white-space: nowrap;
+}
+
+.tlp-table th.tlp-num {
+  text-align: right;
 }
 
 .tlp-sortable {
@@ -253,12 +258,12 @@
 }
 
 .tlp-positive {
-  color: #16a34a;
+  color: #dc2626;
   font-weight: 600;
 }
 
 .tlp-negative {
-  color: #dc2626;
+  color: #16a34a;
   font-weight: 600;
 }
 

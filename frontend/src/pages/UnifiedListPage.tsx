@@ -70,16 +70,16 @@ const UnifiedListPage = observer(() => {
       <th>备注</th>
       {isAccount && (
         <>
-          <th>总资产</th>
-          <th>持仓市值</th>
-          <th>可用资金</th>
-          <th>当日盈亏</th>
+          <th className="ulp-num">总资产</th>
+          <th className="ulp-num">持仓市值</th>
+          <th className="ulp-num">可用资金</th>
+          <th className="ulp-num">当日盈亏</th>
         </>
       )}
       {isBankFlow && (
         <>
           <th>流水类型</th>
-          <th>金额</th>
+          <th className="ulp-num">金额</th>
         </>
       )}
       {isTrade && (
@@ -87,12 +87,10 @@ const UnifiedListPage = observer(() => {
           <th>代码</th>
           <th>名称</th>
           <th>板块</th>
-          <th>持仓盈亏</th>
-          <th>持仓数量</th>
-          <th>成本价</th>
-          <th>现价</th>
-          <th>当日盈亏</th>
-          <th>累计盈亏</th>
+          <th className="ulp-num">持仓盈亏</th>
+          <th className="ulp-num">持仓数量</th>
+          <th className="ulp-num">当日盈亏</th>
+          <th className="ulp-num">累计盈亏</th>
         </>
       )}
       <th>操作</th>
@@ -136,10 +134,8 @@ const UnifiedListPage = observer(() => {
             </td>
             <td data-label="名称">{item.stockName}</td>
             <td data-label="板块">{item.board}</td>
-            <td data-label="持仓盈亏" className="ulp-num">{item.tradePositionValue != null ? formatMoney(item.tradePositionValue) : '-'}</td>
+            <td data-label="持仓盈亏" className={`ulp-num ${item.tradePositionValue >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{item.tradePositionValue != null ? formatMoney(item.tradePositionValue) : '-'}</td>
             <td data-label="持仓数量" className="ulp-num">{item.positionQuantity ?? '-'}</td>
-            <td data-label="成本价" className="ulp-num">{item.costPrice?.toFixed(3) ?? '-'}</td>
-            <td data-label="现价" className="ulp-num">{item.currentPrice?.toFixed(3) ?? '-'}</td>
             <td data-label="当日盈亏" className={`ulp-num ${item.dailyPnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{item.dailyPnL != null ? formatMoney(item.dailyPnL) : '-'}</td>
             <td data-label="累计盈亏" className={`ulp-num ${item.cumulativePnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{item.cumulativePnL != null ? formatMoney(item.cumulativePnL) : '-'}</td>
           </>

@@ -188,6 +188,10 @@
   border-bottom: 2px solid #d6e4ff;
 }
 
+.ulp-table th.ulp-num {
+  text-align: right;
+}
+
 .ulp-table td {
   padding: 10px 14px;
   border-bottom: 1px solid #f0f0f0;
@@ -224,8 +228,8 @@
   text-align: right;
 }
 
-.ulp-positive { color: #f5222d; font-weight: 600; }
-.ulp-negative { color: #52c41a; font-weight: 600; }
+.ulp-positive { color: #dc2626; font-weight: 600; }
+.ulp-negative { color: #16a34a; font-weight: 600; }
 
 .ulp-in  { color: #13c2c2; font-weight: 600; }
 .ulp-out { color: #f5222d; font-weight: 600; }

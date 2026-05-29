@@ -235,8 +235,6 @@ const StatisticsPage = observer(() => {
                 <th>心魔名称</th>
                 <th>板块</th>
                 <th className="sp-num">持仓数量</th>
-                <th className="sp-num">成本价</th>
-                <th className="sp-num">现价</th>
                 <th className="sp-num">持仓盈亏</th>
                 <th className="sp-num">当日盈亏</th>
                 <th className="sp-num">最后更新</th>
@@ -253,8 +251,6 @@ const StatisticsPage = observer(() => {
                     <span className={`sp-board-tag sp-board-tag--${item.board}`}>{item.board}</span>
                   </td>
                   <td className="sp-num" data-label="持仓数量">{item.positionQuantity.toLocaleString()}</td>
-                  <td className="sp-num" data-label="成本价">{item.costPrice.toFixed(2)}</td>
-                  <td className="sp-num" data-label="现价">{item.currentPrice.toFixed(2)}</td>
                   <td
                     className={`sp-num ${store.isPnLPositive(item.positionPnL) ? 'sp-positive' : 'sp-negative'}`}
                     data-label="持仓盈亏"
@@ -267,7 +263,9 @@ const StatisticsPage = observer(() => {
                   >
                     {store.formatMoney(item.dailyPnL)}
                   </td>
-                  <td className="sp-num" data-label="最后更新">{item.lastUpdateDate}</td>
+                  <td className="sp-num" data-label="最后更新">
+                    {new Date(item.lastUpdateDate).toISOString().split('T')[0]}
+                  </td>
                 </tr>
               ))}
             </tbody>

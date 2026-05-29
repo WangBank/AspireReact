@@ -149,11 +149,11 @@
 }
 
 .text-gain {
-  color: #16a34a !important;
+  color: #dc2626 !important;
 }
 
 .text-loss {
-  color: #dc2626 !important;
+  color: #16a34a !important;
 }
 
 .empty-state {

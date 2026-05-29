@@ -146,8 +146,8 @@ const AccountListPage = observer(() => {
                     <th className="alp-sortable" onClick={() => handleSort('dailyPnL')}>
                       当日盈亏{sortIndicator('dailyPnL')}
                     </th>
-                    <th>持仓市值</th>
-                    <th>可用资金</th>
+                    <th className="alp-num">持仓市值</th>
+                    <th className="alp-num">可用资金</th>
                     <th>备注</th>
                     <th>操作</th>
                   </tr>
@@ -155,7 +155,7 @@ const AccountListPage = observer(() => {
                 <tbody>
                   {store.pagedData.map((row) => (
                     <tr key={row.id}>
-                      <td data-label="日期">{row.date}</td>
+                      <td data-label="日期">{new Date(row.date).toISOString().split('T')[0]}</td>
                       <td data-label="总资产" className="alp-num">{formatMoney(row.totalAssets)}</td>
                       <td
                         data-label="当日盈亏"

@@ -322,11 +322,11 @@
 }
 
 .sp-card-value--positive {
-  color: #16a34a;
+  color: #dc2626;
 }
 
 .sp-card-value--negative {
-  color: #dc2626;
+  color: #16a34a;
 }
 
 .sp-card-sub {
@@ -377,6 +377,10 @@
   user-select: none;
 }
 
+.sp-table th.sp-num {
+  text-align: right;
+}
+
 .sp-table td {
   padding: 10px 14px;
   border-bottom: 1px solid #f3f4f6;
@@ -399,12 +403,12 @@
 }
 
 .sp-positive {
-  color: #16a34a;
+  color: #dc2626;
   font-weight: 600;
 }
 
 .sp-negative {
-  color: #dc2626;
+  color: #16a34a;
   font-weight: 600;
 }
 

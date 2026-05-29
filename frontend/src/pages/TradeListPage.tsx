@@ -166,11 +166,11 @@ const TradeListPage = observer(() => {
                     <th className="tlp-sortable" onClick={() => handleSort('buyPrice')}>
                       买入价{sortIndicator('buyPrice')}
                     </th>
-                    <th>买入量</th>
+                    <th className="tlp-num">买入量</th>
                     <th className="tlp-sortable" onClick={() => handleSort('sellPrice')}>
                       卖出价{sortIndicator('sellPrice')}
                     </th>
-                    <th>卖出量</th>
+                    <th className="tlp-num">卖出量</th>
                     <th className="tlp-sortable" onClick={() => handleSort('positionPnL')}>
                       持仓盈亏{sortIndicator('positionPnL')}
                     </th>
@@ -182,7 +182,7 @@ const TradeListPage = observer(() => {
                 <tbody>
                   {store.displayedData.map((row) => (
                     <tr key={row.id}>
-                      <td data-label="日期">{row.tradeDate}</td>
+                      <td data-label="日期">{new Date(row.tradeDate).toISOString().split('T')[0]}</td>
                       <td data-label="代码" className="tlp-mono">
                         <StockLink stockCode={row.stockCode} stockName={row.stockName} />
                       </td>
