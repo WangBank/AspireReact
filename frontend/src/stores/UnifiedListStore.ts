@@ -50,7 +50,6 @@ export class UnifiedListStore {
   sortOrder: UnifiedSortOrder = 'desc';
   page = 1;
   pageSize = 20;
-  totalPages = 1;
   activeType: UnifiedActiveType = 'account'; // 当前选中的列表类型
 
   constructor() {

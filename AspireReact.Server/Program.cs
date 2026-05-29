@@ -35,6 +35,12 @@ builder.Services.AddHttpClient("StockSearch", client =>
     client.Timeout = TimeSpan.FromSeconds(10);
     client.DefaultRequestHeaders.Add("User-Agent", "StockTradingSystem/1.0");
 });
+builder.Services.AddHttpClient("RapidOcrModels", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(5);
+});
+
+builder.Services.Configure<RapidOcrOptions>(builder.Configuration.GetSection("RapidOcr"));
 
 // 注册自定义服务
 builder.Services.AddScoped<IRedisService, RedisService>();
@@ -45,6 +51,7 @@ builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<IBankFlowService, BankFlowService>();
 builder.Services.AddScoped<IStockTradeService, StockTradeService>();
 builder.Services.AddScoped<ITradeNoteService, TradeNoteService>();
+builder.Services.AddScoped<IPortfolioScreenshotImportService, PortfolioScreenshotImportService>();
 
 // 添加控制器支持
 builder.Services.AddControllers();

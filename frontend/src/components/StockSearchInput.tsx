@@ -24,6 +24,10 @@ const StockSearchInput = ({
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    setKeyword(value);
+  }, [value]);
+
   // 点击外部关闭下拉
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {

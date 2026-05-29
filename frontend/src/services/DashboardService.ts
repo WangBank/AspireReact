@@ -31,6 +31,11 @@ export interface StockTradeResponse {
   sellQuantity: number;
   positionPnL: number;
   cumulativePnL: number;
+  costPrice: number;
+  currentPrice: number;
+  positionQuantity: number;
+  dailyPnL: number;
+  isLiquidated: boolean;
   tradeNote: string | null;
   tonghuashunLink: string | null;
 }

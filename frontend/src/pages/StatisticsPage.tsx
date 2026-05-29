@@ -384,6 +384,9 @@ const StatisticsPage = observer(() => {
         {/* 按心魔汇总表格 */}
         {!store.loading && !store.error && store.data && renderByStockTable()}
 
+        {/* 按板块汇总表格 */}
+        {!store.loading && !store.error && store.data && renderByBoardTable()}
+
         {/* 持仓汇总表格 */}
         {!store.loading && !store.error && store.data && renderPositionTable()}
 

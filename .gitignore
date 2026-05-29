@@ -57,3 +57,5 @@ Thumbs.db
 *.dcp
 *.dcp.json
 aspire-runtime/
+RuntimeData/
+**/RuntimeData/

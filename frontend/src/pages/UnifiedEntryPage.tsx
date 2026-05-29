@@ -1,10 +1,14 @@
 import { observer } from 'mobx-react-lite';
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../stores/StoreProvider';
 import { accountService } from '../services/AccountService';
 import { bankFlowService } from '../services/BankFlowService';
 import { tradeService } from '../services/TradeService';
+import type { AccountDailyRequest } from '../services/AccountService';
+import { imageImportService } from '../services/ImageImportService';
+import type { PortfolioImportResponse } from '../services/ImageImportService';
+import type { StockTradeRequest } from '../services/TradeService';
 import StockSearchInput from '../components/StockSearchInput';
 import './AccountEntryPage.css';
 import './UnifiedEntryPage.css';
@@ -84,6 +88,14 @@ const UnifiedEntryPage = observer(() => {
   // 交易持仓（多行）
   const [tradeDate, setTradeDate] = useState(today);
   const [tradeRows, setTradeRows] = useState<TradeRow[]>([emptyTradeRow()]);
+  const [importDate, setImportDate] = useState(today);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [isImportingImage, setIsImportingImage] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [importNotice, setImportNotice] = useState('');
+  const [lastImportResult, setLastImportResult] = useState<PortfolioImportResponse | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -187,16 +199,19 @@ const UnifiedEntryPage = observer(() => {
     setTradeRows(prev => prev.filter(r => r.id !== id));
   };
 
-  const updateTradeRow = (id: number, field: keyof Omit<TradeRow, 'id' | 'stockName'>, value: string) => {
+  const updateTradeRow = <K extends keyof Omit<TradeRow, 'id'>>(id: number, field: K, value: TradeRow[K]) => {
     setTradeRows(prev => prev.map(r => (r.id === id ? { ...r, [field]: value } : r)));
   };
 
-  // ── 提交 ──
-  const handleSubmitAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateAccount()) return;
-    store.clearMessages();
-    const req = {
+  const buildAccountRequest = (): AccountDailyRequest | null => {
+    const hasAccountData = [acTotalAssets, acPositionValue, acAvailable, acDailyPnL]
+      .some(value => value.trim() !== '');
+
+    if (!hasAccountData) {
+      return null;
+    }
+
+    return {
       date: acDate,
       totalAssets: Number(acTotalAssets),
       positionValue: Number(acPositionValue),
@@ -204,6 +219,130 @@ const UnifiedEntryPage = observer(() => {
       dailyPnL: Number(acDailyPnL),
       remark: acRemark.trim() || undefined,
     };
+  };
+
+  const buildTradeRequests = (): StockTradeRequest[] => (
+    tradeRows
+      .filter(r => r.stockCode && r.board)
+      .map(r => ({
+        tradeDate,
+        stockCode: r.stockCode,
+        stockName: r.stockName,
+        board: r.board,
+        buyPrice: 0,
+        buyQuantity: 0,
+        sellPrice: 0,
+        sellQuantity: 0,
+        positionPnL: Number(r.positionValue) || 0,
+        cumulativePnL: Number(r.cumulativePnL) || 0,
+        costPrice: Number(r.costPrice) || 0,
+        currentPrice: Number(r.currentPrice) || 0,
+        positionQuantity: Number(r.positionQuantity) || 0,
+        dailyPnL: Number(r.dailyPnL) || 0,
+        isLiquidated: r.isLiquidated,
+        tradeNote: undefined,
+        tonghuashunLink: undefined,
+      }))
+  );
+
+  const applyImportedData = (data: PortfolioImportResponse) => {
+    setAcDate(importDate);
+    setTradeDate(importDate);
+
+    if (data.account) {
+      setAcTotalAssets(String(data.account.totalAssets));
+      setAcPositionValue(String(data.account.positionValue));
+      setAcAvailable(String(data.account.availableFunds));
+      setAcDailyPnL(String(data.account.dailyPnL));
+    }
+
+    if (data.positions.length > 0) {
+      setTradeRows(data.positions.map(position => ({
+        id: nextRowId++,
+        stockCode: position.stockCode,
+        stockName: position.stockName,
+        board: position.board,
+        positionValue: String(position.positionPnL),
+        positionQuantity: String(position.positionQuantity),
+        costPrice: String(position.costPrice),
+        currentPrice: String(position.currentPrice),
+        dailyPnL: String(position.dailyPnL),
+        cumulativePnL: String(position.cumulativePnL),
+        isLiquidated: position.isLiquidated,
+      })));
+    } else {
+      setTradeRows([emptyTradeRow()]);
+    }
+
+    setEntryType('account');
+    setErrors({});
+    setImportWarnings(data.warnings || []);
+    setImportNotice(`识别完成，已回填到账户资金和交易持仓表单。当前识别到 ${data.positions.length} 条持仓。`);
+    setLastImportResult(data);
+  };
+
+  const handleImportScreenshot = async () => {
+    if (!importFile) {
+      setImportError('请先选择一张券商持仓截图');
+      return;
+    }
+
+    setIsImportingImage(true);
+    setImportError('');
+    setImportWarnings([]);
+    setImportNotice('');
+    store.clearMessages();
+
+    try {
+      const data = await imageImportService.importScreenshot(importFile);
+      applyImportedData(data);
+    } catch (err) {
+      setLastImportResult(null);
+      setImportError(err instanceof Error ? err.message : '图片识别失败，请稍后重试');
+    } finally {
+      setIsImportingImage(false);
+    }
+  };
+
+  const handleSaveImportedData = async () => {
+    const accountRequest = buildAccountRequest();
+    const tradeRequests = buildTradeRequests();
+
+    if (!accountRequest && tradeRequests.length === 0) {
+      setImportError('当前没有可保存的识别结果');
+      return;
+    }
+
+    const accountValid = accountRequest ? validateAccount() : true;
+    const tradeError = tradeRequests.length > 0 ? validateTrades() : null;
+
+    if (tradeError) {
+      setErrors(prev => ({ ...prev, trade: tradeError }));
+    }
+
+    if (!accountValid || tradeError) {
+      setImportError('识别结果里还有待确认字段，请检查表单后再保存');
+      setEntryType(!accountValid ? 'account' : 'trade');
+      return;
+    }
+
+    setErrors({});
+    setImportError('');
+    store.clearMessages();
+
+    const result = await store.submitAll(accountRequest, null, tradeRequests);
+    if (result.account || result.trades) {
+      setImportNotice(`识别结果已写入：${result.account ? '账户资金已保存' : ''}${result.account && result.trades ? '，' : ''}${result.trades ? `持仓成功 ${store.batchResult?.successCount || 0} 条` : ''}`);
+    }
+  };
+
+  // ── 提交 ──
+  const handleSubmitAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateAccount()) return;
+    store.clearMessages();
+    const req = buildAccountRequest();
+    if (!req) return;
     if (isEditMode && editingId) {
       const res = await accountService.update(editingId, req);
       if (res.success) {
@@ -247,28 +386,7 @@ const UnifiedEntryPage = observer(() => {
     }
     setErrors({});
     store.clearMessages();
-
-    const trades = tradeRows
-      .filter(r => r.stockCode && r.board)
-      .map(r => ({
-        tradeDate,
-        stockCode: r.stockCode,
-        stockName: r.stockName,
-        board: r.board,
-        buyPrice: 0,
-        buyQuantity: 0,
-        sellPrice: 0,
-        sellQuantity: 0,
-        positionPnL: Number(r.positionValue) || 0,
-        cumulativePnL: Number(r.cumulativePnL) || 0,
-        costPrice: Number(r.costPrice) || 0,
-        currentPrice: Number(r.currentPrice) || 0,
-        positionQuantity: Number(r.positionQuantity) || 0,
-        dailyPnL: Number(r.dailyPnL) || 0,
-        isLiquidated: r.isLiquidated,
-        tradeNote: undefined,
-        tonghuashunLink: undefined,
-      }));
+    const trades = buildTradeRequests();
 
     if (isEditMode && editingId) {
       const single = trades[0];
@@ -298,6 +416,16 @@ const UnifiedEntryPage = observer(() => {
     setBfRemark('');
     setTradeDate(today);
     setTradeRows([emptyTradeRow()]);
+    setImportDate(today);
+    setImportFile(null);
+    setIsImportingImage(false);
+    setImportError('');
+    setImportWarnings([]);
+    setImportNotice('');
+    setLastImportResult(null);
+    if (importFileInputRef.current) {
+      importFileInputRef.current.value = '';
+    }
     setErrors({});
     store.clearMessages();
   };
@@ -312,6 +440,96 @@ const UnifiedEntryPage = observer(() => {
       <p className="entry-page-subtitle">
         {isEditMode ? '修改已有记录' : `录入${PAGE_TITLES[entryType]?.create?.replace('录入', '') || ''}数据`}
       </p>
+
+      {!isEditMode && (
+        <section className="image-import-panel">
+          <div className="image-import-panel__header">
+            <div>
+              <h2 className="image-import-panel__title">图片识别导入</h2>
+              <p className="image-import-panel__subtitle">上传同花顺手机端持仓页截图，自动回填每日盈亏、总资产、可用资金和持仓明细</p>
+            </div>
+            {lastImportResult && (
+              <button
+                type="button"
+                className="image-import-panel__save"
+                onClick={handleSaveImportedData}
+                disabled={store.loading || isImportingImage}
+              >
+                {store.loading ? '保存中...' : '一键保存识别结果'}
+              </button>
+            )}
+          </div>
+
+          <div className="image-import-panel__grid">
+            <div className="form-group form-group-half">
+              <label htmlFor="ue-import-date" className="form-label">导入日期</label>
+              <input
+                id="ue-import-date"
+                type="date"
+                className="form-input"
+                value={importDate}
+                onChange={e => setImportDate(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group form-group-half">
+              <label htmlFor="ue-import-file" className="form-label">券商截图</label>
+              <input
+                ref={importFileInputRef}
+                id="ue-import-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="form-input image-import-panel__file"
+                onChange={e => {
+                  const nextFile = e.target.files?.[0] || null;
+                  setImportFile(nextFile);
+                  setImportError('');
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="image-import-panel__actions">
+            <button
+              type="button"
+              className="entry-submit-all-btn"
+              onClick={handleImportScreenshot}
+              disabled={!importFile || isImportingImage || store.loading}
+            >
+              {isImportingImage ? '识别中...' : '识别并回填'}
+            </button>
+            {importFile && (
+              <span className="image-import-panel__filename">{importFile.name}</span>
+            )}
+          </div>
+
+          <p className="image-import-panel__hint">
+            当前版本针对同花顺手机端持仓页整屏截图优化。请尽量保留“总资产、总市值、可用、当日参考盈亏”和完整持仓列表，识别结果会先回填表单，确认后再保存入库。
+          </p>
+
+          {importError && <div className="entry-error-banner">{importError}</div>}
+          {importNotice && <div className="entry-success-banner">{importNotice}</div>}
+
+          {lastImportResult && (
+            <div className="image-import-panel__summary">
+              <span>账户汇总：{lastImportResult.account ? '已识别' : '未识别完整'}</span>
+              <span>持仓条数：{lastImportResult.positions.length}</span>
+              <span>回填日期：{importDate}</span>
+            </div>
+          )}
+
+          {importWarnings.length > 0 && (
+            <div className="image-import-panel__warnings">
+              <p className="image-import-panel__warnings-title">识别提醒</p>
+              <ul className="image-import-panel__warnings-list">
+                {importWarnings.map((warning, index) => (
+                  <li key={`${warning}-${index}`}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ── 类型切换标签 ── */}
       {!isEditMode && (
@@ -532,9 +750,9 @@ const UnifiedEntryPage = observer(() => {
 
             <button type="button" className="entry-add-row-btn" onClick={addTradeRow}>+ 添加心魔</button>
 
-            {store.batchResult && store.batchResult.Errors && store.batchResult.Errors.length > 0 && (
+            {store.batchResult && store.batchResult.errors && store.batchResult.errors.length > 0 && (
               <div className="entry-error-banner">
-                {store.batchResult.Errors.map((err, i) => (
+                {store.batchResult.errors.map((err: string, i: number) => (
                   <div key={i}>{err}</div>
                 ))}
               </div>

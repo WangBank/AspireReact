@@ -75,6 +75,11 @@ const TradeEntryPage = observer(() => {
       sellQuantity: Number(sellQuantity) || 0,
       positionPnL: Number(positionPnL) || 0,
       cumulativePnL: Number(cumulativePnL) || 0,
+      costPrice: 0,
+      currentPrice: 0,
+      positionQuantity: 0,
+      dailyPnL: 0,
+      isLiquidated: false,
       tradeNote: tradeNote.trim() || undefined,
       tonghuashunLink: tonghuashunLink.trim() || undefined,
     });
