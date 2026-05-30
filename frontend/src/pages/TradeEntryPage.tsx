@@ -2,12 +2,13 @@ import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import StockSearchInput from '../components/StockSearchInput';
+import { formatLocalDate } from '../utils/date';
 import './AccountEntryPage.css';
 
 const TradeEntryPage = observer(() => {
   const { tradeEntryStore } = useStore();
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatLocalDate();
   const [tradeDate, setTradeDate] = useState(today);
   const [stockCode, setStockCode] = useState('');
   const [stockName, setStockName] = useState('');

@@ -2,6 +2,7 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import type { SortField } from '../stores/AccountListStore';
+import { extractDatePart } from '../utils/date';
 import './AccountListPage.css';
 
 const AccountListPage = observer(() => {
@@ -155,7 +156,7 @@ const AccountListPage = observer(() => {
                 <tbody>
                   {store.pagedData.map((row) => (
                     <tr key={row.id}>
-                      <td data-label="日期">{new Date(row.date).toISOString().split('T')[0]}</td>
+                      <td data-label="日期">{extractDatePart(row.date)}</td>
                       <td data-label="总资产" className="alp-num">{formatMoney(row.totalAssets)}</td>
                       <td
                         data-label="当日盈亏"

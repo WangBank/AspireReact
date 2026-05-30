@@ -70,6 +70,45 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         "账户余额"
     ];
 
+    private static readonly string[] FlowHeaderOrder =
+    [
+        "证券名称",
+        "当日盈亏",
+        "当日盈亏比",
+        "持仓数量",
+        "当日买入",
+        "当日卖出",
+        "买入均价",
+        "卖出均价",
+        "收盘价"
+    ];
+
+    private static readonly Dictionary<string, string[]> HeaderAliases = new()
+    {
+        ["证券名称"] = ["证券名称", "证券名", "股票名称", "名称"],
+        ["当日盈亏"] = ["当日盈亏", "日盈亏"],
+        ["当日盈亏比"] = ["当日盈亏比", "日盈亏比", "盈亏比"],
+        ["持仓数量"] = ["持仓数量", "持仓股数", "持仓数", "持仓"],
+        ["当日买入"] = ["当日买入", "日买入", "买入数量", "买入"],
+        ["当日卖出"] = ["当日卖出", "日卖出", "卖出数量", "卖出"],
+        ["买入均价"] = ["买入均价", "买均价"],
+        ["卖出均价"] = ["卖出均价", "卖均价"],
+        ["收盘价"] = ["收盘价", "收盘"],
+        ["日期"] = ["日期"],
+        ["费用合计"] = ["费用合计", "费用"],
+        ["市值"] = ["市值"],
+        ["总资产"] = ["总资产"],
+        ["净流入"] = ["净流入"],
+        ["账户余额"] = ["账户余额", "余额"]
+    };
+
+    private static readonly Regex[] DatePatterns =
+    [
+        new Regex(@"(?<year>(?:19|20)\d{2})\D+(?<month>0?[1-9]|1[0-2])\D+(?<day>0?[1-9]|[12]\d|3[01])", RegexOptions.Compiled),
+        new Regex(@"(?<year>(?:19|20)\d{2})(?<month>0[1-9]|1[0-2])(?<day>0[1-9]|[12]\d|3[01])", RegexOptions.Compiled)
+    ];
+    private static readonly Regex ThreeDecimalPriceRegex = new(@"\d+\.\d{2,3}", RegexOptions.Compiled);
+
     public PortfolioScreenshotImportService(
         AppDbContext db,
         IStockSearchService stockSearchService,
@@ -440,16 +479,11 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             return null;
         }
 
-        var detailDate = ParseSelectedDetailDate(rightTokens) ?? importDate.Date;
-        warnings.Add(detailDate != importDate.Date
-            ? $"已按右侧明细日期 {detailDate:yyyy-MM-dd} 匹配左侧账户行并回填当日数据。"
-            : $"已识别右侧明细日期 {detailDate:yyyy-MM-dd}，并按该日期回填左侧账户与右侧流水。");
-
-        var accountRow = ParseSelectedAccountHistoryRow(leftTokens, detailDate, warnings);
+        var accountRows = ParseAccountHistoryRows(leftTokens, warnings);
+        var detailDate = ResolveCompositeDetailDate(rightTokens, accountRows, importDate, warnings);
+        var accountRow = SelectAccountHistoryRow(accountRows, detailDate, warnings);
         var positions = await ParseDailyFlowPositionsAsync(rightTokens, detailDate, warnings, cancellationToken);
-        var dailyPnL = positions.Count > 0
-            ? positions.Sum(position => position.DailyPnL)
-            : ParseFlowSummaryDailyPnL(rightTokens) ?? 0;
+        var dailyPnL = ResolveDailyFlowDailyPnL(positions, rightTokens, warnings);
 
         if (accountRow == null && positions.Count == 0)
         {
@@ -519,22 +553,21 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         return GroupLines(rightTokens, 26f).Any(IsDailyFlowHeaderLine);
     }
 
-    private static AccountHistoryRow? ParseSelectedAccountHistoryRow(
+    private static List<AccountHistoryRow> ParseAccountHistoryRows(
         List<OcrToken> tokens,
-        DateTime importDate,
         List<string> warnings)
     {
         var lines = GroupLines(tokens, 26f);
         var headerIndex = lines.FindIndex(IsAccountHistoryHeaderLine);
         if (headerIndex < 0)
         {
-            return null;
+            return [];
         }
 
         if (!TryBuildAccountHistoryLayout(lines[headerIndex], out var layout))
         {
             warnings.Add("账户汇总列表列位置识别失败，请确认截图左侧包含日期、总资产和账户余额列。");
-            return null;
+            return [];
         }
 
         var rows = new List<AccountHistoryRow>();
@@ -546,7 +579,8 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
                 continue;
             }
 
-            if (!TryParseDateText(JoinTokensInRange(line, null, layout.DateRightBoundary), out var rowDate))
+            var dateText = JoinTokensInRange(line, null, layout.DateRightBoundary);
+            if (!TryParseDateText(dateText, out var rowDate))
             {
                 continue;
             }
@@ -582,6 +616,19 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         if (rows.Count == 0)
         {
             warnings.Add("未识别到账户汇总列表中的有效日期行。");
+            return [];
+        }
+
+        return rows;
+    }
+
+    private static AccountHistoryRow? SelectAccountHistoryRow(
+        List<AccountHistoryRow> rows,
+        DateTime importDate,
+        List<string> warnings)
+    {
+        if (rows.Count == 0)
+        {
             return null;
         }
 
@@ -592,6 +639,61 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         }
 
         return selectedRow;
+    }
+
+    private static DateTime ResolveCompositeDetailDate(
+        List<OcrToken> rightTokens,
+        List<AccountHistoryRow> accountRows,
+        DateTime importDate,
+        List<string> warnings)
+    {
+        var visibleDates = accountRows
+            .Select(row => row.Date.Date)
+            .Distinct()
+            .OrderBy(date => date)
+            .ToList();
+        var detailDateCandidate = FindSelectedDetailDateCandidate(rightTokens);
+        if (detailDateCandidate != null
+            && TryMatchVisibleDateFromRawText(detailDateCandidate.RawText, visibleDates, out var correctedVisibleDate))
+        {
+            if (detailDateCandidate.Date.HasValue && detailDateCandidate.Date.Value.Date != correctedVisibleDate.Date)
+            {
+                warnings.Add($"右侧顶部日期识别已结合左侧账户列表纠正为 {correctedVisibleDate:yyyy-MM-dd}。");
+            }
+            else
+            {
+                warnings.Add($"已识别右侧明细日期 {correctedVisibleDate:yyyy-MM-dd}，并按该日期回填左侧账户与右侧流水。");
+            }
+
+            return correctedVisibleDate.Date;
+        }
+
+        if (detailDateCandidate?.Date is DateTime recognizedDate)
+        {
+            if (visibleDates.Contains(recognizedDate.Date)
+                || Math.Abs((recognizedDate.Date - importDate.Date).TotalDays) <= 31)
+            {
+                warnings.Add(recognizedDate.Date != importDate.Date
+                    ? $"已按右侧明细日期 {recognizedDate:yyyy-MM-dd} 匹配左侧账户行并回填当日数据。"
+                    : $"已识别右侧明细日期 {recognizedDate:yyyy-MM-dd}，并按该日期回填左侧账户与右侧流水。");
+                return recognizedDate.Date;
+            }
+
+            if (visibleDates.Contains(importDate.Date))
+            {
+                warnings.Add($"右侧顶部日期识别为 {recognizedDate:yyyy-MM-dd}，但与左侧账户列表不一致，已改用录入日期 {importDate:yyyy-MM-dd}。");
+                return importDate.Date;
+            }
+        }
+
+        if (visibleDates.Contains(importDate.Date))
+        {
+            warnings.Add($"右侧顶部日期未稳定识别，已改用录入日期 {importDate:yyyy-MM-dd}。");
+            return importDate.Date;
+        }
+
+        warnings.Add($"未识别到稳定的右侧明细日期，已按录入日期 {importDate:yyyy-MM-dd} 回填。");
+        return importDate.Date;
     }
 
     private async Task<List<PortfolioPositionImportResponse>> ParseDailyFlowPositionsAsync(
@@ -633,6 +735,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             }
 
             var flowTexts = BuildFlowRowTexts(line, layout);
+            RepairMergedFlowPriceTexts(flowTexts);
             var candidate = new FlowPositionCandidate
             {
                 StockCode = stockCode,
@@ -1084,28 +1187,36 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             return false;
         }
 
-        var match = Regex.Match(text, @"(?<year>\d{4})\D?(?<month>\d{1,2})\D?(?<day>\d{1,2})");
-        if (!match.Success)
+        var normalizedText = NormalizeDateTextForParsing(text);
+        foreach (var pattern in DatePatterns)
         {
-            return false;
+            foreach (Match match in pattern.Matches(normalizedText))
+            {
+                if (!match.Success)
+                {
+                    continue;
+                }
+
+                if (!int.TryParse(match.Groups["year"].Value, out var year)
+                    || !int.TryParse(match.Groups["month"].Value, out var month)
+                    || !int.TryParse(match.Groups["day"].Value, out var day))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    date = new DateTime(year, month, day);
+                    return true;
+                }
+                catch
+                {
+                    // 继续尝试后续候选日期
+                }
+            }
         }
 
-        if (!int.TryParse(match.Groups["year"].Value, out var year)
-            || !int.TryParse(match.Groups["month"].Value, out var month)
-            || !int.TryParse(match.Groups["day"].Value, out var day))
-        {
-            return false;
-        }
-
-        try
-        {
-            date = new DateTime(year, month, day);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
+        return false;
     }
 
     private static bool IsDailyFlowHeaderLine(List<OcrToken> line)
@@ -1124,48 +1235,51 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
     {
         layout = new FlowColumnLayout();
 
-        var stockNameCenter = FindHeaderCenter(headerLine, "证券名称");
-        var dailyPnLCenter = FindHeaderCenter(headerLine, "当日盈亏");
-        var dailyPnLRatioCenter = FindHeaderCenter(headerLine, "当日盈亏比");
-        var positionQuantityCenter = FindHeaderCenter(headerLine, "持仓数量");
-        var buyQuantityCenter = FindHeaderCenter(headerLine, "当日买入");
-        var sellQuantityCenter = FindHeaderCenter(headerLine, "当日卖出");
-        var buyPriceCenter = FindHeaderCenter(headerLine, "买入均价");
-        var sellPriceCenter = FindHeaderCenter(headerLine, "卖出均价");
-        var closePriceCenter = FindHeaderCenter(headerLine, "收盘价");
+        var centers = FlowHeaderOrder.ToDictionary(label => label, label => FindHeaderCenter(headerLine, label));
+        InferMissingFlowCenters(centers);
 
-        if (stockNameCenter == null
-            || dailyPnLCenter == null
-            || positionQuantityCenter == null
-            || buyQuantityCenter == null
-            || sellQuantityCenter == null
-            || buyPriceCenter == null
-            || sellPriceCenter == null
-            || closePriceCenter == null)
+        if (centers["证券名称"] == null
+            || centers["当日盈亏"] == null
+            || centers["持仓数量"] == null
+            || centers["当日买入"] == null
+            || centers["当日卖出"] == null
+            || centers["买入均价"] == null
+            || centers["卖出均价"] == null
+            || centers["收盘价"] == null)
         {
             return false;
         }
 
-        layout.NameRightBoundary = GetMidPoint(stockNameCenter.Value, dailyPnLCenter.Value);
-        layout.DailyPnLCenter = dailyPnLCenter.Value;
-        layout.DailyPnLRatioCenter = dailyPnLRatioCenter ?? GetMidPoint(dailyPnLCenter.Value, positionQuantityCenter.Value);
-        layout.PositionQuantityCenter = positionQuantityCenter.Value;
-        layout.BuyQuantityCenter = buyQuantityCenter.Value;
-        layout.SellQuantityCenter = sellQuantityCenter.Value;
-        layout.BuyPriceCenter = buyPriceCenter.Value;
-        layout.SellPriceCenter = sellPriceCenter.Value;
-        layout.ClosePriceCenter = closePriceCenter.Value;
+        var stockNameCenter = centers["证券名称"]!.Value;
+        var dailyPnLCenter = centers["当日盈亏"]!.Value;
+        var dailyPnLRatioCenter = centers["当日盈亏比"];
+        var positionQuantityCenter = centers["持仓数量"]!.Value;
+        var buyQuantityCenter = centers["当日买入"]!.Value;
+        var sellQuantityCenter = centers["当日卖出"]!.Value;
+        var buyPriceCenter = centers["买入均价"]!.Value;
+        var sellPriceCenter = centers["卖出均价"]!.Value;
+        var closePriceCenter = centers["收盘价"]!.Value;
+
+        layout.NameRightBoundary = GetMidPoint(stockNameCenter, dailyPnLCenter);
+        layout.DailyPnLCenter = dailyPnLCenter;
+        layout.DailyPnLRatioCenter = dailyPnLRatioCenter ?? GetMidPoint(dailyPnLCenter, positionQuantityCenter);
+        layout.PositionQuantityCenter = positionQuantityCenter;
+        layout.BuyQuantityCenter = buyQuantityCenter;
+        layout.SellQuantityCenter = sellQuantityCenter;
+        layout.BuyPriceCenter = buyPriceCenter;
+        layout.SellPriceCenter = sellPriceCenter;
+        layout.ClosePriceCenter = closePriceCenter;
         layout.DailyPnLRightBoundary = dailyPnLRatioCenter != null
-            ? GetMidPoint(dailyPnLCenter.Value, dailyPnLRatioCenter.Value)
-            : GetMidPoint(dailyPnLCenter.Value, positionQuantityCenter.Value);
+            ? GetMidPoint(dailyPnLCenter, dailyPnLRatioCenter.Value)
+            : GetMidPoint(dailyPnLCenter, positionQuantityCenter);
         layout.DailyPnLRatioRightBoundary = dailyPnLRatioCenter != null
-            ? GetMidPoint(dailyPnLRatioCenter.Value, positionQuantityCenter.Value)
-            : GetMidPoint(dailyPnLCenter.Value, positionQuantityCenter.Value);
-        layout.PositionQuantityRightBoundary = GetMidPoint(positionQuantityCenter.Value, buyQuantityCenter.Value);
-        layout.BuyQuantityRightBoundary = GetMidPoint(buyQuantityCenter.Value, sellQuantityCenter.Value);
-        layout.SellQuantityRightBoundary = GetMidPoint(sellQuantityCenter.Value, buyPriceCenter.Value);
-        layout.BuyPriceRightBoundary = GetMidPoint(buyPriceCenter.Value, sellPriceCenter.Value);
-        layout.SellPriceRightBoundary = GetMidPoint(sellPriceCenter.Value, closePriceCenter.Value);
+            ? GetMidPoint(dailyPnLRatioCenter.Value, positionQuantityCenter)
+            : GetMidPoint(dailyPnLCenter, positionQuantityCenter);
+        layout.PositionQuantityRightBoundary = GetMidPoint(positionQuantityCenter, buyQuantityCenter);
+        layout.BuyQuantityRightBoundary = GetMidPoint(buyQuantityCenter, sellQuantityCenter);
+        layout.SellQuantityRightBoundary = GetMidPoint(sellQuantityCenter, buyPriceCenter);
+        layout.BuyPriceRightBoundary = GetMidPoint(buyPriceCenter, sellPriceCenter);
+        layout.SellPriceRightBoundary = GetMidPoint(sellPriceCenter, closePriceCenter);
 
         return true;
     }
@@ -1195,51 +1309,271 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
 
     private static float? FindHeaderCenter(List<OcrToken> headerLine, string label)
     {
-        var normalizedLabel = NormalizeFlowHeaderText(label);
-        var maxSpan = Math.Min(3, headerLine.Count);
+        var aliases = GetHeaderAliases(label)
+            .Select(NormalizeFlowHeaderText)
+            .Where(alias => !string.IsNullOrWhiteSpace(alias))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(alias => alias.Length)
+            .ToList();
+
+        if (aliases.Count == 0)
+        {
+            return null;
+        }
+
+        HeaderMatchCandidate? bestCandidate = null;
+        var maxSpan = Math.Min(5, headerLine.Count);
 
         for (var span = 1; span <= maxSpan; span++)
         {
             for (var i = 0; i <= headerLine.Count - span; i++)
             {
-                var normalizedSpan = NormalizeFlowHeaderText(string.Concat(headerLine
+                var tokenSpan = headerLine
                     .Skip(i)
                     .Take(span)
-                    .Select(token => token.Text)));
-
-                if (!string.Equals(normalizedSpan, normalizedLabel, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                var normalizedSpan = NormalizeFlowHeaderText(string.Concat(tokenSpan.Select(token => token.Text)));
+                if (string.IsNullOrWhiteSpace(normalizedSpan))
                 {
                     continue;
                 }
 
-                return (headerLine[i].XMin + headerLine[i + span - 1].XMax) / 2f;
-            }
-        }
-
-        for (var span = 1; span <= maxSpan; span++)
-        {
-            for (var i = 0; i <= headerLine.Count - span; i++)
-            {
-                var normalizedSpan = NormalizeFlowHeaderText(string.Concat(headerLine
-                    .Skip(i)
-                    .Take(span)
-                    .Select(token => token.Text)));
-
-                if (!normalizedSpan.Contains(normalizedLabel, StringComparison.OrdinalIgnoreCase))
+                foreach (var alias in aliases)
                 {
-                    continue;
-                }
+                    if (!TryBuildHeaderMatchCandidate(tokenSpan, normalizedSpan, alias, out var candidate))
+                    {
+                        continue;
+                    }
 
-                return (headerLine[i].XMin + headerLine[i + span - 1].XMax) / 2f;
+                    if (bestCandidate == null || IsBetterHeaderCandidate(candidate, bestCandidate.Value))
+                    {
+                        bestCandidate = candidate;
+                    }
+                }
             }
         }
 
-        return null;
+        return bestCandidate?.Center;
     }
 
     private static string NormalizeFlowHeaderText(string text)
     {
         return Regex.Replace(text, @"[\s:：·\.\-_/]+", string.Empty);
+    }
+
+    private static IEnumerable<string> GetHeaderAliases(string label)
+    {
+        return HeaderAliases.TryGetValue(label, out var aliases)
+            ? aliases
+            : [label];
+    }
+
+    private static bool TryBuildHeaderMatchCandidate(
+        List<OcrToken> tokenSpan,
+        string normalizedSpan,
+        string normalizedLabel,
+        out HeaderMatchCandidate candidate)
+    {
+        candidate = default;
+
+        if (string.Equals(normalizedSpan, normalizedLabel, StringComparison.OrdinalIgnoreCase))
+        {
+            candidate = new HeaderMatchCandidate
+            {
+                Priority = 0,
+                Score = 0,
+                Center = (tokenSpan[0].XMin + tokenSpan[^1].XMax) / 2f
+            };
+
+            return true;
+        }
+
+        var containsIndex = normalizedSpan.IndexOf(normalizedLabel, StringComparison.OrdinalIgnoreCase);
+        if (containsIndex >= 0)
+        {
+            candidate = new HeaderMatchCandidate
+            {
+                Priority = 1,
+                Score = 0,
+                Center = EstimateHeaderSubstringCenter(tokenSpan, normalizedSpan, containsIndex, normalizedLabel.Length)
+            };
+
+            return true;
+        }
+
+        if (Math.Abs(normalizedSpan.Length - normalizedLabel.Length) > 2)
+        {
+            return false;
+        }
+
+        var distance = ComputeLevenshteinDistance(normalizedSpan, normalizedLabel);
+        var maxDistance = Math.Max(1, normalizedLabel.Length / 3);
+        if (distance > maxDistance)
+        {
+            return false;
+        }
+
+        candidate = new HeaderMatchCandidate
+        {
+            Priority = 2,
+            Score = distance,
+            Center = (tokenSpan[0].XMin + tokenSpan[^1].XMax) / 2f
+        };
+
+        return true;
+    }
+
+    private static bool IsBetterHeaderCandidate(HeaderMatchCandidate candidate, HeaderMatchCandidate currentBest)
+    {
+        if (candidate.Priority != currentBest.Priority)
+        {
+            return candidate.Priority < currentBest.Priority;
+        }
+
+        if (Math.Abs(candidate.Score - currentBest.Score) > 0.001)
+        {
+            return candidate.Score < currentBest.Score;
+        }
+
+        return false;
+    }
+
+    private static float EstimateHeaderSubstringCenter(
+        List<OcrToken> tokenSpan,
+        string normalizedSpan,
+        int substringIndex,
+        int substringLength)
+    {
+        var left = tokenSpan[0].XMin;
+        var right = tokenSpan[^1].XMax;
+        if (normalizedSpan.Length == 0 || right <= left)
+        {
+            return (left + right) / 2f;
+        }
+
+        var ratio = (substringIndex + (substringLength / 2f)) / normalizedSpan.Length;
+        return left + ((right - left) * ratio);
+    }
+
+    private static int ComputeLevenshteinDistance(string left, string right)
+    {
+        if (string.Equals(left, right, StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        if (left.Length == 0)
+        {
+            return right.Length;
+        }
+
+        if (right.Length == 0)
+        {
+            return left.Length;
+        }
+
+        var dp = new int[left.Length + 1, right.Length + 1];
+        for (var i = 0; i <= left.Length; i++)
+        {
+            dp[i, 0] = i;
+        }
+
+        for (var j = 0; j <= right.Length; j++)
+        {
+            dp[0, j] = j;
+        }
+
+        for (var i = 1; i <= left.Length; i++)
+        {
+            for (var j = 1; j <= right.Length; j++)
+            {
+                var cost = char.ToUpperInvariant(left[i - 1]) == char.ToUpperInvariant(right[j - 1]) ? 0 : 1;
+                dp[i, j] = Math.Min(
+                    Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1),
+                    dp[i - 1, j - 1] + cost);
+            }
+        }
+
+        return dp[left.Length, right.Length];
+    }
+
+    private static void InferMissingFlowCenters(Dictionary<string, float?> centers)
+    {
+        var spacingSamples = new List<float>();
+        for (var leftIndex = 0; leftIndex < FlowHeaderOrder.Length; leftIndex++)
+        {
+            var leftCenter = centers[FlowHeaderOrder[leftIndex]];
+            if (leftCenter == null)
+            {
+                continue;
+            }
+
+            for (var rightIndex = leftIndex + 1; rightIndex < FlowHeaderOrder.Length; rightIndex++)
+            {
+                var rightCenter = centers[FlowHeaderOrder[rightIndex]];
+                if (rightCenter == null)
+                {
+                    continue;
+                }
+
+                spacingSamples.Add((rightCenter.Value - leftCenter.Value) / (rightIndex - leftIndex));
+            }
+        }
+
+        var defaultSpacing = spacingSamples.Count > 0
+            ? spacingSamples.Average()
+            : 120f;
+
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+
+            for (var index = 0; index < FlowHeaderOrder.Length; index++)
+            {
+                var label = FlowHeaderOrder[index];
+                if (centers[label] != null)
+                {
+                    continue;
+                }
+
+                var leftKnownIndex = index - 1;
+                while (leftKnownIndex >= 0 && centers[FlowHeaderOrder[leftKnownIndex]] == null)
+                {
+                    leftKnownIndex--;
+                }
+
+                var rightKnownIndex = index + 1;
+                while (rightKnownIndex < FlowHeaderOrder.Length && centers[FlowHeaderOrder[rightKnownIndex]] == null)
+                {
+                    rightKnownIndex++;
+                }
+
+                if (leftKnownIndex >= 0 && rightKnownIndex < FlowHeaderOrder.Length)
+                {
+                    var leftCenter = centers[FlowHeaderOrder[leftKnownIndex]]!.Value;
+                    var rightCenter = centers[FlowHeaderOrder[rightKnownIndex]]!.Value;
+                    centers[label] = leftCenter + ((rightCenter - leftCenter) * (index - leftKnownIndex) / (rightKnownIndex - leftKnownIndex));
+                    changed = true;
+                    continue;
+                }
+
+                if (leftKnownIndex >= 0)
+                {
+                    var leftCenter = centers[FlowHeaderOrder[leftKnownIndex]]!.Value;
+                    centers[label] = leftCenter + (defaultSpacing * (index - leftKnownIndex));
+                    changed = true;
+                    continue;
+                }
+
+                if (rightKnownIndex < FlowHeaderOrder.Length)
+                {
+                    var rightCenter = centers[FlowHeaderOrder[rightKnownIndex]]!.Value;
+                    centers[label] = rightCenter - (defaultSpacing * (rightKnownIndex - index));
+                    changed = true;
+                }
+            }
+        }
     }
 
     private static decimal? ParseFlowSummaryDailyPnL(List<OcrToken> tokens)
@@ -1260,6 +1594,28 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             : string.Concat(summaryLine.Select(token => token.Text));
 
         return ExtractFirstNonPercentNumber(text);
+    }
+
+    private static decimal ResolveDailyFlowDailyPnL(
+        List<PortfolioPositionImportResponse> positions,
+        List<OcrToken> tokens,
+        List<string> warnings)
+    {
+        var summaryDailyPnL = ParseFlowSummaryDailyPnL(tokens);
+        if (positions.Count == 0)
+        {
+            return summaryDailyPnL ?? 0;
+        }
+
+        var detailDailyPnL = positions.Sum(position => position.DailyPnL);
+        if (summaryDailyPnL.HasValue
+            && Math.Abs(detailDailyPnL - summaryDailyPnL.Value) > 0.5m)
+        {
+            warnings.Add($"右侧流水逐笔合计为 {detailDailyPnL:F2}，与顶部当日盈亏 {summaryDailyPnL.Value:F2} 不一致，已优先采用顶部汇总值。");
+            return summaryDailyPnL.Value;
+        }
+
+        return detailDailyPnL;
     }
 
     private static FlowRowText BuildFlowRowTexts(List<OcrToken> line, FlowColumnLayout layout)
@@ -1298,6 +1654,45 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         texts.ClosePriceText = string.Concat(buckets["closePrice"].OrderBy(token => token.XMin).Select(token => token.Text));
 
         return texts;
+    }
+
+    private static void RepairMergedFlowPriceTexts(FlowRowText texts)
+    {
+        texts.BuyPriceText = ExtractSingleThreeDecimalPrice(texts.BuyPriceText) ?? texts.BuyPriceText;
+
+        var trailingPrices = ExtractThreeDecimalPrices($"{texts.SellPriceText}{texts.ClosePriceText}");
+        if (trailingPrices.Count >= 2)
+        {
+            texts.SellPriceText = trailingPrices[^2];
+            texts.ClosePriceText = trailingPrices[^1];
+            return;
+        }
+
+        if (trailingPrices.Count == 1)
+        {
+            if (string.IsNullOrWhiteSpace(texts.SellPriceText))
+            {
+                texts.SellPriceText = "0.000";
+            }
+
+            texts.ClosePriceText = trailingPrices[0];
+            return;
+        }
+
+        texts.SellPriceText = ExtractSingleThreeDecimalPrice(texts.SellPriceText) ?? texts.SellPriceText;
+        texts.ClosePriceText = ExtractSingleThreeDecimalPrice(texts.ClosePriceText) ?? texts.ClosePriceText;
+    }
+
+    private static List<string> ExtractThreeDecimalPrices(string text)
+    {
+        return ThreeDecimalPriceRegex.Matches(text ?? string.Empty)
+            .Select(match => match.Value)
+            .ToList();
+    }
+
+    private static string? ExtractSingleThreeDecimalPrice(string text)
+    {
+        return ExtractThreeDecimalPrices(text).LastOrDefault();
     }
 
     private static string GetNearestFlowColumnKey(float centerX, FlowColumnLayout layout)
@@ -1363,23 +1758,167 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         return leftValue > 0;
     }
 
-    private static DateTime? ParseSelectedDetailDate(List<OcrToken> tokens)
+    private static DetailDateCandidate? FindSelectedDetailDateCandidate(List<OcrToken> tokens)
     {
-        var line = GroupLines(tokens, 26f)
-            .FirstOrDefault(candidate => candidate.Any(token => TryParseDateText(token.Text, out _))
-                || TryParseDateText(string.Concat(candidate.Select(token => token.Text)), out _));
+        var lines = GroupLines(tokens, 26f);
+        var headerIndex = lines.FindIndex(IsDailyFlowHeaderLine);
+        var candidateLines = (headerIndex > 0 ? lines.Take(headerIndex) : lines)
+            .Take(6)
+            .Select(line =>
+            {
+                var rawText = string.Concat(line.Select(token => token.Text));
+                var score = ScoreDetailDateLine(rawText, line);
+                DateTime? parsedDate = null;
 
-        if (line == null)
+                if (TryParseDateText(rawText, out var lineDate))
+                {
+                    parsedDate = lineDate.Date;
+                }
+                else
+                {
+                    foreach (var token in line)
+                    {
+                        if (!TryParseDateText(token.Text, out var tokenDate))
+                        {
+                            continue;
+                        }
+
+                        parsedDate = tokenDate.Date;
+                        break;
+                    }
+                }
+
+                return new DetailDateCandidate
+                {
+                    RawText = rawText,
+                    Score = score,
+                    Top = line.Min(token => token.YMin),
+                    Date = parsedDate
+                };
+            })
+            .Where(candidate => candidate.Score > 0)
+            .OrderByDescending(candidate => candidate.Score)
+            .ThenByDescending(candidate => candidate.Date.HasValue)
+            .ThenBy(candidate => candidate.Top)
+            .ToList();
+
+        return candidateLines.FirstOrDefault();
+    }
+
+    private static int ScoreDetailDateLine(string rawText, List<OcrToken> line)
+    {
+        if (string.IsNullOrWhiteSpace(rawText) || line.Count == 0)
         {
-            return null;
+            return 0;
         }
 
-        if (TryParseDateText(string.Concat(line.Select(token => token.Text)), out var date))
+        var score = 0;
+        var normalizedDigits = NormalizeDateTextForComparison(rawText);
+        if (rawText.Contains("星期", StringComparison.OrdinalIgnoreCase)
+            || rawText.Contains("周", StringComparison.OrdinalIgnoreCase))
         {
-            return date.Date;
+            score += 5;
         }
 
-        return null;
+        if (Regex.IsMatch(rawText, @"(?:19|20)\d{2}"))
+        {
+            score += 4;
+        }
+
+        if (normalizedDigits.Length >= 6)
+        {
+            score += 3;
+        }
+
+        if (rawText.Contains('-') || rawText.Contains('/') || rawText.Contains('年'))
+        {
+            score += 1;
+        }
+
+        return score;
+    }
+
+    private static string NormalizeDateTextForParsing(string text)
+    {
+        return (text ?? string.Empty)
+            .Trim()
+            .ToUpperInvariant()
+            .Replace('O', '0')
+            .Replace('Q', '0')
+            .Replace('D', '0')
+            .Replace('I', '1')
+            .Replace('L', '1')
+            .Replace('|', '1')
+            .Replace('B', '8')
+            .Replace('S', '5')
+            .Replace('Z', '2');
+    }
+
+    private static string NormalizeDateTextForComparison(string text)
+    {
+        return Regex.Replace(NormalizeDateTextForParsing(text), "[^0-9]", string.Empty);
+    }
+
+    private static bool TryMatchVisibleDateFromRawText(
+        string rawText,
+        List<DateTime> visibleDates,
+        out DateTime matchedDate)
+    {
+        matchedDate = default;
+        if (visibleDates.Count == 0)
+        {
+            return false;
+        }
+
+        var normalized = NormalizeDateTextForComparison(rawText);
+        if (normalized.Length < 6)
+        {
+            return false;
+        }
+
+        var bestDate = default(DateTime);
+        var bestDistance = int.MaxValue;
+        foreach (var visibleDate in visibleDates)
+        {
+            var candidateDigits = visibleDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+            var distance = ComputeBestDateTextDistance(normalized, candidateDigits);
+            if (distance >= bestDistance)
+            {
+                continue;
+            }
+
+            bestDistance = distance;
+            bestDate = visibleDate.Date;
+        }
+
+        if (bestDistance > 2)
+        {
+            return false;
+        }
+
+        matchedDate = bestDate;
+        return true;
+    }
+
+    private static int ComputeBestDateTextDistance(string normalizedRawText, string candidateDigits)
+    {
+        if (normalizedRawText.Length <= candidateDigits.Length)
+        {
+            return ComputeLevenshteinDistance(normalizedRawText, candidateDigits);
+        }
+
+        var bestDistance = int.MaxValue;
+        for (var index = 0; index <= normalizedRawText.Length - candidateDigits.Length; index++)
+        {
+            var slice = normalizedRawText.Substring(index, candidateDigits.Length);
+            var distance = ComputeLevenshteinDistance(slice, candidateDigits);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+            }
+        }
+
+        return bestDistance;
     }
 
     private static bool TryGetFlowIdentity(
@@ -1658,5 +2197,20 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         public string BuyPriceText { get; set; } = string.Empty;
         public string SellPriceText { get; set; } = string.Empty;
         public string ClosePriceText { get; set; } = string.Empty;
+    }
+
+    private sealed class DetailDateCandidate
+    {
+        public string RawText { get; set; } = string.Empty;
+        public DateTime? Date { get; set; }
+        public int Score { get; set; }
+        public float Top { get; set; }
+    }
+
+    private readonly record struct HeaderMatchCandidate
+    {
+        public int Priority { get; init; }
+        public double Score { get; init; }
+        public float Center { get; init; }
     }
 }

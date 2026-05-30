@@ -61,16 +61,28 @@ const StatisticsPage = observer(() => {
         positive: d.totalPnL >= 0,
       },
       {
-        label: '持仓盈亏',
-        value: store.formatMoney(d.totalPositionPnL),
-        sub: `持仓市值 ${store.formatMoney(d.totalPositionValue)}`,
-        positive: d.totalPositionPnL >= 0,
+        label: '银证转账汇总',
+        value: store.formatMoney(d.netBankFlow),
+        sub: '转入减转出',
+        positive: d.netBankFlow >= 0,
       },
       {
-        label: '当日盈亏',
-        value: store.formatMoney(d.totalDailyPnL),
-        sub: '按各股票最新记录汇总',
-        positive: d.totalDailyPnL >= 0,
+        label: '银证转入汇总',
+        value: store.formatMoney(d.totalBankInflow),
+        sub: '当前统计区间转入金额',
+        positive: d.totalBankInflow >= 0,
+      },
+      {
+        label: '银证转出汇总',
+        value: store.formatMoney(d.totalBankOutflow),
+        sub: '当前统计区间转出金额',
+        positive: d.totalBankOutflow >= 0,
+      },
+      {
+        label: '当前总额',
+        value: store.formatMoney(d.currentTotalAmount),
+        sub: '最近账户资金记录总资产',
+        positive: d.currentTotalAmount >= 0,
       },
     ];
 

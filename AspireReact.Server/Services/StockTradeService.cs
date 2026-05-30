@@ -378,18 +378,21 @@ public class StockTradeService : IStockTradeService
     public async Task<TradeSummaryResponse> GetSummaryAsync(TradeSummaryRequest request)
     {
         var query = _db.StockTrades.AsNoTracking();
+        var bankFlowQuery = _db.BankFlows.AsNoTracking();
 
         // 按日期范围过滤
         if (request.StartDate.HasValue)
         {
             var start = request.StartDate.Value.Date;
             query = query.Where(t => t.TradeDate >= start);
+            bankFlowQuery = bankFlowQuery.Where(flow => flow.Date >= start);
         }
 
         if (request.EndDate.HasValue)
         {
             var end = request.EndDate.Value.Date;
             query = query.Where(t => t.TradeDate <= end);
+            bankFlowQuery = bankFlowQuery.Where(flow => flow.Date <= end);
         }
 
         // 按心魔过滤
@@ -407,6 +410,7 @@ public class StockTradeService : IStockTradeService
         }
 
         var allRecords = await query.ToListAsync();
+        var bankFlowRecords = await bankFlowQuery.ToListAsync();
 
         // 同一只股票的多日记录本质上都是“日终状态快照”，无论当天有没有买卖，
         // 连续持有期间都只应按该持仓周期最后一条累计盈亏计入统计，
@@ -519,11 +523,26 @@ public class StockTradeService : IStockTradeService
         var totalPositionValue = positionOnlyRecords.Sum(p => p.CurrentPrice * p.PositionQuantity);
         var totalPositionPnL = positionOnlyRecords.Sum(p => p.PositionPnL);
         var totalDailyPnL = latestRecordsByStock.Sum(p => p.DailyPnL);
+        var totalBankInflow = bankFlowRecords
+            .Where(flow => string.Equals(flow.FlowType, "转入", StringComparison.Ordinal))
+            .Sum(flow => flow.Amount);
+        var totalBankOutflow = bankFlowRecords
+            .Where(flow => string.Equals(flow.FlowType, "转出", StringComparison.Ordinal))
+            .Sum(flow => flow.Amount);
+        var currentTotalAmount = await _db.AccountDailies
+            .AsNoTracking()
+            .OrderByDescending(item => item.Date)
+            .Select(item => (decimal?)item.TotalAssets)
+            .FirstOrDefaultAsync() ?? 0;
 
         return new TradeSummaryResponse
         {
             TotalTrades = totalTrades,
             TotalPnL = totalPnL,
+            NetBankFlow = totalBankInflow - totalBankOutflow,
+            TotalBankInflow = totalBankInflow,
+            TotalBankOutflow = totalBankOutflow,
+            CurrentTotalAmount = currentTotalAmount,
             WinTrades = winRecords,
             LoseTrades = loseRecords,
             OverallWinRate = overallWinRate,

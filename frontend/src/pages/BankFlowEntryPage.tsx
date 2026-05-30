@@ -1,12 +1,13 @@
 import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
+import { formatLocalDate } from '../utils/date';
 import './AccountEntryPage.css';
 
 const BankFlowEntryPage = observer(() => {
   const { bankFlowEntryStore } = useStore();
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatLocalDate();
   const [date, setDate] = useState(today);
   const [flowType, setFlowType] = useState<'转入' | '转出'>('转入');
   const [amount, setAmount] = useState('');

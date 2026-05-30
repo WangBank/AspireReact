@@ -11,6 +11,7 @@ import type { PortfolioImportResponse } from '../services/ImageImportService';
 import type { BankFlowRequest } from '../services/BankFlowService';
 import type { StockTradeRequest } from '../services/TradeService';
 import StockSearchInput from '../components/StockSearchInput';
+import { formatLocalDate } from '../utils/date';
 import './AccountEntryPage.css';
 import './UnifiedEntryPage.css';
 
@@ -60,8 +61,17 @@ const PAGE_TITLES: Record<EntryType, { create: string; edit: string }> = {
   trade: { create: '录入交易持仓', edit: '编辑交易持仓' },
 };
 
+const parseOptionalNumber = (value: string): number | null => {
+  if (value.trim() === '') {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
 const UnifiedEntryPage = observer(() => {
-  const { unifiedEntryStore: store } = useStore();
+  const { unifiedEntryStore: store, dashboardStore } = useStore();
   const navigate = useNavigate();
 
   // 从 URL 读取 type 和 id 参数
@@ -78,7 +88,7 @@ const UnifiedEntryPage = observer(() => {
     if (isEditMode) setEntryType(urlType);
   }, [urlType, isEditMode]);
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatLocalDate();
 
   // 账户资金
   const [acDate, setAcDate] = useState(today);
@@ -115,6 +125,10 @@ const UnifiedEntryPage = observer(() => {
       URL.revokeObjectURL(importPreviewUrlRef.current);
     }
   }, []);
+
+  useEffect(() => {
+    void dashboardStore.fetchDashboard();
+  }, [dashboardStore]);
 
   // ── 编辑模式：加载已有数据 ──
   useEffect(() => {
@@ -492,12 +506,14 @@ const UnifiedEntryPage = observer(() => {
         && (tradeRequests.length === 0 || result.trades);
 
       if (allRequestedSucceeded) {
+        void dashboardStore.fetchDashboard();
         clearImportedBackfill({
           preserveImportDate: true,
           clearStoreMessages: false,
           notice: `识别结果已写入：${parts.join('，')}，已清空识别回填数据`,
         });
       } else {
+        void dashboardStore.fetchDashboard();
         setImportNotice(`识别结果已写入：${parts.join('，')}`);
       }
     }
@@ -514,11 +530,15 @@ const UnifiedEntryPage = observer(() => {
       const res = await accountService.update(editingId, req);
       if (res.success) {
         store.successMessage = '账户资金修改成功';
+        void dashboardStore.fetchDashboard();
       } else {
         store.error = res.message || '修改失败';
       }
     } else {
-      await store.submitAccount(req);
+      const success = await store.submitAccount(req);
+      if (success) {
+        void dashboardStore.fetchDashboard();
+      }
     }
   };
 
@@ -536,11 +556,15 @@ const UnifiedEntryPage = observer(() => {
       const res = await bankFlowService.update(editingId, req);
       if (res.success) {
         store.successMessage = '银证流水修改成功';
+        void dashboardStore.fetchDashboard();
       } else {
         store.error = res.message || '修改失败';
       }
     } else {
-      await store.submitBankFlow(req);
+      const success = await store.submitBankFlow(req);
+      if (success) {
+        void dashboardStore.fetchDashboard();
+      }
     }
   };
 
@@ -561,12 +585,16 @@ const UnifiedEntryPage = observer(() => {
         const res = await tradeService.update(editingId, single);
         if (res.success) {
           store.successMessage = '持仓修改成功';
+          void dashboardStore.fetchDashboard();
         } else {
           store.error = res.message || '修改失败';
         }
       }
     } else {
-      await store.submitTrades(trades);
+      const success = await store.submitTrades(trades);
+      if (success) {
+        void dashboardStore.fetchDashboard();
+      }
     }
   };
 
@@ -587,11 +615,68 @@ const UnifiedEntryPage = observer(() => {
   const showAccountSection = !isEditMode || entryType === 'account';
   const showBankFlowSection = !isEditMode || entryType === 'bankflow';
   const showTradeSection = !isEditMode || entryType === 'trade';
+  const hasDraftValues = isEditMode
+    || !!lastImportResult
+    || acTotalAssets.trim() !== ''
+    || acPositionValue.trim() !== ''
+    || acAvailable.trim() !== ''
+    || acDailyPnL.trim() !== ''
+    || acRemark.trim() !== ''
+    || bfAmount.trim() !== ''
+    || bfRemark.trim() !== ''
+    || tradeRows.some(row =>
+      row.stockCode.trim() !== ''
+      || row.stockName.trim() !== ''
+      || row.board.trim() !== ''
+      || row.buyPrice.trim() !== ''
+      || row.buyQuantity.trim() !== ''
+      || row.sellPrice.trim() !== ''
+      || row.sellQuantity.trim() !== ''
+      || row.positionValue.trim() !== ''
+      || row.positionQuantity.trim() !== ''
+      || row.costPrice.trim() !== ''
+      || row.currentPrice.trim() !== ''
+      || row.dailyPnL.trim() !== ''
+      || row.cumulativePnL.trim() !== ''
+      || row.isLiquidated);
+  const hasCustomDraftDate = tradeDate !== today || acDate !== today || bfDate !== today || importDate !== today;
+  const shouldShowDraftInsight = hasDraftValues || hasCustomDraftDate;
+  const currentRecordDateText = shouldShowDraftInsight
+    ? (tradeDate || acDate || bfDate || dashboardStore.formatRecordDate(dashboardStore.latestRecordDate))
+    : dashboardStore.formatRecordDate(dashboardStore.latestRecordDate);
+  const currentAccountPnL = parseOptionalNumber(acDailyPnL);
+  const currentTradePnL = tradeRows.reduce((sum, row) => sum + (parseOptionalNumber(row.dailyPnL) ?? 0), 0);
+  const hasTradePnL = tradeRows.some(row => parseOptionalNumber(row.dailyPnL) !== null);
+  const displayedDailyPnL = currentAccountPnL
+    ?? (hasTradePnL ? currentTradePnL : (dashboardStore.data ? dashboardStore.latestRecordDailyPnL : null));
+  const displayedDailyPnLText = displayedDailyPnL == null
+    ? '--'
+    : dashboardStore.formatPnL(displayedDailyPnL);
 
   return (
     <div className="unified-entry-container">
       <h1 className="entry-page-title">{pageTitle}</h1>
       <p className="entry-page-subtitle">{pageSubtitle}</p>
+      <section className="entry-insight-bar">
+        <div className="entry-insight-card">
+          <span className="entry-insight-label">{shouldShowDraftInsight ? '当前录入日期' : '最近交易日期'}</span>
+          <span className="entry-insight-value">{currentRecordDateText}</span>
+        </div>
+        <div className="entry-insight-card">
+          <span className="entry-insight-label">当日盈亏</span>
+          <span
+            className={`entry-insight-value ${
+              displayedDailyPnL != null
+                ? dashboardStore.isPnLPositive(displayedDailyPnL)
+                  ? 'entry-insight-value--positive'
+                  : 'entry-insight-value--negative'
+                : ''
+            }`}
+          >
+            {displayedDailyPnLText}
+          </span>
+        </div>
+      </section>
 
       {!isEditMode && (
         <section className="image-import-panel">

@@ -28,6 +28,16 @@ public class DashboardResponse
     public decimal CumulativePnL { get; set; }
 
     /// <summary>
+    /// 最近一次录入的业务日期
+    /// </summary>
+    public DateTime? LatestRecordDate { get; set; }
+
+    /// <summary>
+    /// 最近交易日期对应的当日盈亏
+    /// </summary>
+    public decimal LatestRecordDailyPnL { get; set; }
+
+    /// <summary>
     /// 最新账户资金记录
     /// </summary>
     public AccountDailyResponse? LatestAccount { get; set; }

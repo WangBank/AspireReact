@@ -258,6 +258,10 @@ public class TradeSummaryResponse
     // ── 交易统计（仅包含有实际买卖操作的记录） ──
     public int TotalTrades { get; set; }
     public decimal TotalPnL { get; set; }
+    public decimal NetBankFlow { get; set; }
+    public decimal TotalBankInflow { get; set; }
+    public decimal TotalBankOutflow { get; set; }
+    public decimal CurrentTotalAmount { get; set; }
     public int WinTrades { get; set; }
     public int LoseTrades { get; set; }
     public decimal OverallWinRate { get; set; }

@@ -9,6 +9,11 @@ import './DashboardPage.css';
 const DashboardPage = observer(() => {
   const { dashboardStore } = useStore();
 
+  const latestRecordDateText = dashboardStore.formatRecordDate(dashboardStore.latestRecordDate);
+  const latestRecordDailyPnLText = dashboardStore.data
+    ? dashboardStore.formatPnL(dashboardStore.latestRecordDailyPnL)
+    : '--';
+
   useEffect(() => {
     dashboardStore.fetchDashboard();
   }, [dashboardStore]);
@@ -19,6 +24,26 @@ const DashboardPage = observer(() => {
         <div>
           <h1 className="dashboard-title">首页概览</h1>
           <p className="dashboard-subtitle">心魔录</p>
+          <div className="dashboard-insight-bar">
+            <div className="dashboard-insight-card">
+              <span className="dashboard-insight-label">最近交易日期</span>
+              <span className="dashboard-insight-value">{latestRecordDateText}</span>
+            </div>
+            <div className="dashboard-insight-card">
+              <span className="dashboard-insight-label">当日盈亏</span>
+              <span
+                className={`dashboard-insight-value ${
+                  dashboardStore.data
+                    ? dashboardStore.isPnLPositive(dashboardStore.latestRecordDailyPnL)
+                      ? 'dashboard-insight-value--positive'
+                      : 'dashboard-insight-value--negative'
+                    : ''
+                }`}
+              >
+                {latestRecordDailyPnLText}
+              </span>
+            </div>
+          </div>
         </div>
         <button
           className="dashboard-refresh-btn"

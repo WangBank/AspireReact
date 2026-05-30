@@ -25,6 +25,10 @@ export interface PositionSummaryItem {
 export interface TradeSummaryResponse {
   totalTrades: number;
   totalPnL: number;
+  netBankFlow: number;
+  totalBankInflow: number;
+  totalBankOutflow: number;
+  currentTotalAmount: number;
   winTrades: number;
   loseTrades: number;
   overallWinRate: number;

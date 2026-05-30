@@ -45,9 +45,21 @@ export class DashboardStore {
     return this.data?.cumulativePnL ?? 0;
   }
 
+  get latestRecordDate(): string | null {
+    return this.data?.latestRecordDate ?? null;
+  }
+
+  get latestRecordDailyPnL(): number {
+    return this.data?.latestRecordDailyPnL ?? 0;
+  }
+
   formatPnL(value: number): string {
     const sign = value >= 0 ? '+' : '';
     return `${sign}${value.toFixed(2)}`;
+  }
+
+  formatRecordDate(value: string | null | undefined): string {
+    return value ? value.split('T')[0] : '暂无';
   }
 
   isPnLPositive(value: number): boolean {

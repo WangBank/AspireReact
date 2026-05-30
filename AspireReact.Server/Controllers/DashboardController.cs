@@ -1,5 +1,7 @@
+using AspireReact.Server.Data;
 using AspireReact.Server.DTOs;
 using AspireReact.Server.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AspireReact.Server.Controllers;
@@ -11,12 +13,15 @@ public class DashboardController : ControllerBase
     private readonly IAccountService _accountService;
     private readonly IBankFlowService _bankFlowService;
     private readonly IStockTradeService _tradeService;
+    private readonly AppDbContext _db;
 
     public DashboardController(
+        AppDbContext db,
         IAccountService accountService,
         IBankFlowService bankFlowService,
         IStockTradeService tradeService)
     {
+        _db = db;
         _accountService = accountService;
         _bankFlowService = bankFlowService;
         _tradeService = tradeService;
@@ -42,6 +47,8 @@ public class DashboardController : ControllerBase
         var monthPnL = await CalculateAccountDailyPnL(monthStart, today);
 
         var cumulativePnL = await CalculateCumulativePnL();
+        var latestRecordDate = await GetLatestTradeDateAsync() ?? latestAccount?.Date;
+        var latestRecordDailyPnL = await GetLatestRecordDailyPnLAsync(latestRecordDate, latestAccount);
 
         var recentBankFlows = await _bankFlowService.GetRecentAsync();
 
@@ -59,6 +66,8 @@ public class DashboardController : ControllerBase
             WeekPnL = weekPnL,
             MonthPnL = monthPnL,
             CumulativePnL = cumulativePnL,
+            LatestRecordDate = latestRecordDate,
+            LatestRecordDailyPnL = latestRecordDailyPnL,
             LatestAccount = latestAccount,
             RecentBankFlows = recentBankFlows,
             RecentTrades = recentTradesResult.Items
@@ -90,5 +99,53 @@ public class DashboardController : ControllerBase
         {
         });
         return summary.TotalPnL;
+    }
+
+    /// <summary>
+    /// 获取三类录入数据中最新的业务日期
+    /// </summary>
+    private async Task<DateTime?> GetLatestTradeDateAsync()
+    {
+        return await _db.StockTrades
+            .AsNoTracking()
+            .OrderByDescending(item => item.TradeDate)
+            .Select(item => (DateTime?)item.TradeDate)
+            .FirstOrDefaultAsync();
+    }
+
+    /// <summary>
+    /// 获取最近交易日期对应的当日盈亏
+    /// 优先取账户日表，其次回退为当日交易记录的 dailyPnL 汇总
+    /// </summary>
+    private async Task<decimal> GetLatestRecordDailyPnLAsync(DateTime? latestRecordDate, AccountDailyResponse? latestAccount)
+    {
+        if (!latestRecordDate.HasValue)
+        {
+            return 0;
+        }
+
+        var targetDate = latestRecordDate.Value.Date;
+        if (latestAccount?.Date.Date == targetDate)
+        {
+            return latestAccount.DailyPnL;
+        }
+
+        var matchedAccountPnL = await _db.AccountDailies
+            .AsNoTracking()
+            .Where(item => item.Date == targetDate)
+            .Select(item => (decimal?)item.DailyPnL)
+            .FirstOrDefaultAsync();
+
+        if (matchedAccountPnL.HasValue)
+        {
+            return matchedAccountPnL.Value;
+        }
+
+        var matchedTradePnL = await _db.StockTrades
+            .AsNoTracking()
+            .Where(item => item.TradeDate == targetDate)
+            .SumAsync(item => (decimal?)item.DailyPnL);
+
+        return matchedTradePnL ?? 0;
     }
 }

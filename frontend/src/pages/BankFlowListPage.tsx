@@ -1,6 +1,7 @@
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
+import { extractDatePart } from '../utils/date';
 import './BankFlowListPage.css';
 
 const BankFlowListPage = observer(() => {
@@ -137,7 +138,7 @@ const BankFlowListPage = observer(() => {
                 <tbody>
                   {store.pagedData.map((row) => (
                     <tr key={row.id}>
-                      <td data-label="日期">{new Date(row.date).toISOString().split('T')[0]}</td>
+                      <td data-label="日期">{extractDatePart(row.date)}</td>
                       <td data-label="类型">
                         <span className={row.flowType === '转入' ? 'bflp-in' : 'bflp-out'}>
                           {row.flowType}

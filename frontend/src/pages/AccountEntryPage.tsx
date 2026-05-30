@@ -1,12 +1,13 @@
 import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
+import { formatLocalDate } from '../utils/date';
 import './AccountEntryPage.css';
 
 const AccountEntryPage = observer(() => {
   const { accountEntryStore } = useStore();
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatLocalDate();
   const [date, setDate] = useState(today);
   const [totalAssets, setTotalAssets] = useState('');
   const [positionValue, setPositionValue] = useState('');

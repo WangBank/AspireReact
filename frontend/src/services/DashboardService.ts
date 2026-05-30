@@ -45,6 +45,8 @@ export interface DashboardData {
   weekPnL: number;
   monthPnL: number;
   cumulativePnL: number;
+  latestRecordDate: string | null;
+  latestRecordDailyPnL: number;
   latestAccount: AccountDailyResponse | null;
   recentBankFlows: BankFlowResponse[];
   recentTrades: StockTradeResponse[];

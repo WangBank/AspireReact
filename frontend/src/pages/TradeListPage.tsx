@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import type { TradeSortField } from '../stores/TradeListStore';
 import StockLink from '../components/StockLink';
+import { extractDatePart } from '../utils/date';
 import './TradeListPage.css';
 
 const TradeListPage = observer(() => {
@@ -189,7 +190,7 @@ const TradeListPage = observer(() => {
                 <tbody>
                   {store.displayedData.map((row) => (
                     <tr key={row.id}>
-                      <td data-label="日期">{new Date(row.tradeDate).toISOString().split('T')[0]}</td>
+                      <td data-label="日期">{extractDatePart(row.tradeDate)}</td>
                       <td data-label="代码" className="tlp-mono">
                         <StockLink stockCode={row.stockCode} stockName={row.stockName} />
                       </td>
