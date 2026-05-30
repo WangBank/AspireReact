@@ -173,7 +173,11 @@
 
 /* ======================== 表格 ======================== */
 .ulp-table-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   border-radius: 12px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   background: #fff;
@@ -235,13 +239,22 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
 .ulp-group-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 0 4px;
+}
+
+.ulp-group-header-main {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .ulp-group-date {
@@ -250,9 +263,23 @@
   color: #1f2937;
 }
 
+.ulp-group-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ulp-group-summary-item {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
 .ulp-group-meta {
   font-size: 0.8125rem;
   color: #6b7280;
+  white-space: nowrap;
 }
 
 .ulp-batch-bar {
@@ -450,5 +477,35 @@
   .ulp-filter-bar { flex-direction: column; align-items: stretch; }
   .ulp-type-switch { width: 100%; }
   .ulp-batch-bar { flex-direction: column; align-items: stretch; }
-  .ulp-table th, .ulp-table td { padding: 8px 10px; font-size: 0.8125rem; }
+  .ulp-group-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .ulp-group-header-main {
+    align-items: flex-start;
+  }
+  .ulp-table-wrap {
+    width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+  }
+  .ulp-table {
+    width: max-content;
+    min-width: 100%;
+    table-layout: auto;
+  }
+  .ulp-table--account {
+    min-width: 760px;
+  }
+  .ulp-table--bankflow {
+    min-width: 620px;
+  }
+  .ulp-table--trade {
+    min-width: 980px;
+  }
+  .ulp-table th,
+  .ulp-table td {
+    padding: 8px 10px;
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
 }

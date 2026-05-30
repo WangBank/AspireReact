@@ -199,6 +199,8 @@
 /* Table */
 .tlp-table-wrap {
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   background: #fff;
@@ -404,6 +406,8 @@
   }
 
   .tlp-table {
+    width: max-content;
+    min-width: 100%;
     min-width: 1320px;
     table-layout: auto;
   }

@@ -354,6 +354,8 @@
 /* Table */
 .sp-table-wrap {
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sp-table {
@@ -471,6 +473,8 @@
   }
 
   .sp-table {
+    width: max-content;
+    min-width: 100%;
     min-width: 720px;
     table-layout: auto;
   }

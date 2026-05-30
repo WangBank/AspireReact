@@ -26,6 +26,7 @@
 }
 
 .spl-panel {
+  min-width: 0;
   background: #fff;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
@@ -69,7 +70,11 @@
 }
 
 .spl-table-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .spl-table {
@@ -162,5 +167,17 @@
 @media (max-width: 768px) {
   .spl-grid {
     grid-template-columns: 1fr;
+  }
+
+  .spl-table {
+    width: max-content;
+    min-width: 100%;
+    min-width: 560px;
+    table-layout: auto;
+  }
+
+  .spl-table th,
+  .spl-table td {
+    white-space: nowrap;
   }
 }

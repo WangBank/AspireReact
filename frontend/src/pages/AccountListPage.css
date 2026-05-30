@@ -188,6 +188,8 @@
 /* Table */
 .alp-table-wrap {
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   background: #fff;
@@ -361,6 +363,8 @@
   }
 
   .alp-table {
+    width: max-content;
+    min-width: 100%;
     min-width: 760px;
     table-layout: auto;
   }

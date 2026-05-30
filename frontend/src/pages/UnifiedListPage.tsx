@@ -136,6 +136,24 @@ const UnifiedListPage = observer(() => {
     }, [])
     : [];
 
+  const renderTradeGroupSummary = (date: string) => {
+    const summary = store.tradeDaySummaries[date];
+    if (!summary) {
+      return null;
+    }
+
+    return (
+      <div className="ulp-group-summary">
+        <span className="ulp-group-summary-item">
+          总资产 {formatMoney(summary.totalAssets)}
+        </span>
+        <span className={`ulp-group-summary-item ${summary.dailyPnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>
+          当日盈亏 {formatMoney(summary.dailyPnL)}
+        </span>
+      </div>
+    );
+  };
+
   const renderStandardTableHeader = () => (
     <tr>
       <th className="ulp-select-cell">
@@ -540,7 +558,7 @@ const UnifiedListPage = observer(() => {
         {store.data.length > 0 && !isTrade && (
           <>
             <div className="ulp-table-wrap">
-              <table className="ulp-table">
+              <table className={`ulp-table ${isAccount ? 'ulp-table--account' : 'ulp-table--bankflow'}`}>
                 <thead>
                   {renderStandardTableHeader()}
                 </thead>
@@ -564,11 +582,14 @@ const UnifiedListPage = observer(() => {
               {tradeGroups.map(group => (
                 <section key={group.date} className="ulp-trade-group">
                   <div className="ulp-group-header">
-                    <div className="ulp-group-date">{group.date}</div>
+                    <div className="ulp-group-header-main">
+                      <div className="ulp-group-date">{group.date}</div>
+                      {renderTradeGroupSummary(group.date)}
+                    </div>
                     <div className="ulp-group-meta">{group.items.length} 条记录</div>
                   </div>
                   <div className="ulp-table-wrap">
-                    <table className="ulp-table">
+                    <table className="ulp-table ulp-table--trade">
                       <thead>
                         {renderTradeTableHeader()}
                       </thead>

@@ -201,6 +201,36 @@
   border: 1px solid #fed7aa;
 }
 
+.image-import-panel__blocking {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.image-import-panel__blocking-title {
+  margin: 0 0 8px;
+  color: #b91c1c;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.image-import-panel__blocking-desc {
+  margin: 0 0 8px;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.image-import-panel__blocking-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .image-import-panel__warnings-title {
   margin: 0 0 8px;
   color: #9a3412;

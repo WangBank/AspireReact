@@ -69,8 +69,8 @@ const StockPnLLeaderboard = observer(({ title = '全部盈亏榜' }: StockPnLLea
         )}
       </div>
       <div className="spl-grid">
-        {renderTable('盈利最多的股票', stockLeaderboardStore.topGainers, 'gain')}
-        {renderTable('亏损最多的股票', stockLeaderboardStore.topLosers, 'loss')}
+        {renderTable('盈利最多的心魔', stockLeaderboardStore.topGainers, 'gain')}
+        {renderTable('亏损最多的心魔', stockLeaderboardStore.topLosers, 'loss')}
       </div>
     </section>
   );

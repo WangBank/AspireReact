@@ -60,7 +60,7 @@ public class StockTradeService : IStockTradeService
         {
             Success = true,
             Message = "交易记录添加成功",
-            Data = ToResponse(entity)
+            Data = await BuildCorrectedResponseAsync(entity.Id) ?? ToResponse(entity)
         };
     }
 
@@ -186,7 +186,7 @@ public class StockTradeService : IStockTradeService
         {
             Success = true,
             Message = "交易记录修改成功",
-            Data = ToResponse(entity)
+            Data = await BuildCorrectedResponseAsync(entity.Id) ?? ToResponse(entity)
         };
     }
 
@@ -294,11 +294,8 @@ public class StockTradeService : IStockTradeService
     /// </summary>
     public async Task<StockTradeResult> GetByIdAsync(int id)
     {
-        var entity = await _db.StockTrades
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Id == id);
-
-        if (entity == null)
+        var response = await BuildCorrectedResponseAsync(id);
+        if (response == null)
         {
             return new StockTradeResult
             {
@@ -311,7 +308,7 @@ public class StockTradeService : IStockTradeService
         {
             Success = true,
             Message = "查询成功",
-            Data = ToResponse(entity)
+            Data = response
         };
     }
 
@@ -320,48 +317,53 @@ public class StockTradeService : IStockTradeService
     /// </summary>
     public async Task<PagedResult<StockTradeResponse>> QueryAsync(TradeQueryRequest request)
     {
-        var query = _db.StockTrades.AsNoTracking();
+        var historyQuery = _db.StockTrades.AsNoTracking();
+        DateTime? start = null;
+        DateTime? end = null;
 
         // 按心魔代码筛选
         if (!string.IsNullOrWhiteSpace(request.StockCode))
         {
             var code = request.StockCode.Trim();
-            query = query.Where(t => t.StockCode.Contains(code));
+            historyQuery = historyQuery.Where(t => t.StockCode.Contains(code));
         }
 
         // 按交易日期范围筛选
         if (request.TradeDateStart.HasValue)
         {
-            var start = request.TradeDateStart.Value.Date;
-            query = query.Where(t => t.TradeDate >= start);
+            start = request.TradeDateStart.Value.Date;
         }
 
         if (request.TradeDateEnd.HasValue)
         {
-            var end = request.TradeDateEnd.Value.Date;
-            query = query.Where(t => t.TradeDate <= end);
+            end = request.TradeDateEnd.Value.Date;
+            historyQuery = historyQuery.Where(t => t.TradeDate <= end);
         }
 
         // 按板块筛选
         if (!string.IsNullOrWhiteSpace(request.Board))
         {
             var board = ParseBoard(request.Board);
-            query = query.Where(t => t.Board == board);
+            historyQuery = historyQuery.Where(t => t.Board == board);
         }
 
-        // 总数
-        var total = await query.CountAsync();
+        var correctedRecords = await BuildCorrectedSnapshotsAsync(historyQuery);
+        var filteredRecords = correctedRecords
+            .Where(snapshot => IsWithinRange(snapshot.Trade.TradeDate, start, end))
+            .OrderByDescending(snapshot => snapshot.Trade.TradeDate)
+            .ThenBy(snapshot => snapshot.Trade.StockCode)
+            .ThenByDescending(snapshot => snapshot.Trade.Id)
+            .ToList();
 
-        // 分页
+        var total = filteredRecords.Count;
+
         var page = Math.Max(1, request.Page);
         var pageSize = Math.Clamp(request.PageSize, 1, 5000);
-        var items = await query
-            .OrderByDescending(t => t.TradeDate)
-            .ThenBy(t => t.StockCode)
+        var items = filteredRecords
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(t => ToResponse(t))
-            .ToListAsync();
+            .Select(ToResponse)
+            .ToList();
 
         return new PagedResult<StockTradeResponse>
         {
@@ -377,21 +379,22 @@ public class StockTradeService : IStockTradeService
     /// </summary>
     public async Task<TradeSummaryResponse> GetSummaryAsync(TradeSummaryRequest request)
     {
-        var query = _db.StockTrades.AsNoTracking();
+        var historyQuery = _db.StockTrades.AsNoTracking();
         var bankFlowQuery = _db.BankFlows.AsNoTracking();
+        DateTime? start = null;
+        DateTime? end = null;
 
         // 按日期范围过滤
         if (request.StartDate.HasValue)
         {
-            var start = request.StartDate.Value.Date;
-            query = query.Where(t => t.TradeDate >= start);
+            start = request.StartDate.Value.Date;
             bankFlowQuery = bankFlowQuery.Where(flow => flow.Date >= start);
         }
 
         if (request.EndDate.HasValue)
         {
-            var end = request.EndDate.Value.Date;
-            query = query.Where(t => t.TradeDate <= end);
+            end = request.EndDate.Value.Date;
+            historyQuery = historyQuery.Where(t => t.TradeDate <= end);
             bankFlowQuery = bankFlowQuery.Where(flow => flow.Date <= end);
         }
 
@@ -399,32 +402,44 @@ public class StockTradeService : IStockTradeService
         if (!string.IsNullOrWhiteSpace(request.StockCode))
         {
             var code = request.StockCode.Trim();
-            query = query.Where(t => t.StockCode == code);
+            historyQuery = historyQuery.Where(t => t.StockCode == code);
         }
 
         // 按板块过滤
         if (!string.IsNullOrWhiteSpace(request.Board))
         {
             var board = ParseBoard(request.Board);
-            query = query.Where(t => t.Board == board);
+            historyQuery = historyQuery.Where(t => t.Board == board);
         }
 
-        var allRecords = await query.ToListAsync();
+        var correctedRecords = await BuildCorrectedSnapshotsAsync(historyQuery);
+        var rangeRecords = correctedRecords
+            .Where(snapshot => IsWithinRange(snapshot.Trade.TradeDate, start, end))
+            .ToList();
         var bankFlowRecords = await bankFlowQuery.ToListAsync();
 
-        // 同一只股票的多日记录本质上都是“日终状态快照”，无论当天有没有买卖，
-        // 连续持有期间都只应按该持仓周期最后一条累计盈亏计入统计，
-        // 否则加仓/减仓/连续持有时会把历史快照重复累加。
-        var stockAggregates = allRecords
-            .GroupBy(t => new { t.StockCode, t.StockName, t.Board })
+        var stockAggregates = correctedRecords
+            .GroupBy(snapshot => new { snapshot.Trade.StockCode, snapshot.Trade.StockName, snapshot.Trade.Board })
             .Select(g =>
             {
                 var ordered = g
-                    .OrderBy(t => t.TradeDate)
-                    .ThenBy(t => t.Id)
+                    .OrderBy(snapshot => snapshot.Trade.TradeDate)
+                    .ThenBy(snapshot => snapshot.Trade.Id)
                     .ToList();
-                var pnlContributions = BuildPnLContributions(ordered);
-                var latestOpenPosition = GetLatestOpenPositionSnapshot(ordered);
+                var inRange = ordered
+                    .Where(snapshot => IsWithinRange(snapshot.Trade.TradeDate, start, end))
+                    .ToList();
+
+                if (inRange.Count == 0)
+                {
+                    return null;
+                }
+
+                var pnlContributions = BuildPnLContributions(ordered, start, end);
+                var latestRecord = inRange[^1];
+                var latestOpenPosition = TradeMetricsCalculator.IsHoldingClosed(latestRecord.Trade)
+                    ? null
+                    : latestRecord;
                 var winCount = pnlContributions.Count(value => value > 0);
                 var loseCount = pnlContributions.Count(value => value < 0);
 
@@ -435,14 +450,15 @@ public class StockTradeService : IStockTradeService
                     Board = g.Key.Board,
                     TradeCount = pnlContributions.Count,
                     TotalPositionPnL = latestOpenPosition?.PositionPnL ?? 0,
-                    TotalCumulativePnL = pnlContributions.Sum(),
+                    TotalCumulativePnL = inRange.Sum(snapshot => snapshot.Trade.DailyPnL),
                     WinCount = winCount,
                     LoseCount = loseCount
                 };
             })
+            .Where(item => item != null)
+            .Select(item => item!)
             .ToList();
 
-        // ── 按心魔汇总（交易周期 + 当前持仓） ──
         var byStock = stockAggregates
             .Select(item => new TradeSummaryItem
             {
@@ -456,10 +472,9 @@ public class StockTradeService : IStockTradeService
                     ? (decimal)item.WinCount / (item.WinCount + item.LoseCount)
                     : 0
             })
-            .OrderByDescending(x => x.TotalPositionPnL)
+            .OrderByDescending(x => x.TotalCumulativePnL)
             .ToList();
 
-        // ── 按板块汇总（交易周期 + 当前持仓） ──
         var byBoard = stockAggregates
             .GroupBy(t => t.Board)
             .Select(g =>
@@ -478,13 +493,11 @@ public class StockTradeService : IStockTradeService
                         : 0
                 };
             })
-            .OrderByDescending(x => x.TotalPositionPnL)
+            .OrderByDescending(x => x.TotalCumulativePnL)
             .ToList();
 
-        // ── 总盈亏：按交易周期/持仓周期汇总，避免把同一持仓的历史快照重复累计 ──
         var totalPnL = stockAggregates.Sum(item => item.TotalCumulativePnL);
 
-        // ── 盈亏笔数与胜率：按有效交易周期统计，而不是按每日快照统计 ──
         var totalTrades = stockAggregates.Sum(item => item.TradeCount);
         var winRecords = stockAggregates.Sum(item => item.WinCount);
         var loseRecords = stockAggregates.Sum(item => item.LoseCount);
@@ -492,37 +505,35 @@ public class StockTradeService : IStockTradeService
             ? (decimal)winRecords / (winRecords + loseRecords)
             : 0;
 
-        // ── 每只股票在当前区间内的最新日终记录（含清仓） ──
-        var latestRecordsByStock = allRecords
-            .GroupBy(t => new { t.StockCode, t.StockName, t.Board })
+        var latestRecordsByStock = rangeRecords
+            .GroupBy(snapshot => new { snapshot.Trade.StockCode, snapshot.Trade.StockName, snapshot.Trade.Board })
             .Select(g => g
-                .OrderBy(t => t.TradeDate)
-                .ThenBy(t => t.Id)
+                .OrderBy(snapshot => snapshot.Trade.TradeDate)
+                .ThenBy(snapshot => snapshot.Trade.Id)
                 .Last())
             .ToList();
 
-        // ── 持仓汇总（每只心魔只取最新一条未清仓日终记录） ──
         var positionOnlyRecords = latestRecordsByStock
             .Where(p => p != null)
-            .Where(p => !p.IsLiquidated && p.PositionQuantity > 0)
+            .Where(p => !TradeMetricsCalculator.IsHoldingClosed(p.Trade))
             .Select(p => new PositionSummaryItem
             {
-                StockCode = p.StockCode,
-                StockName = p.StockName,
-                Board = p.Board.ToString(),
-                PositionQuantity = p.PositionQuantity,
-                CostPrice = p.CostPrice,
-                CurrentPrice = p.CurrentPrice,
-                PositionPnL = (p.CurrentPrice - p.CostPrice) * p.PositionQuantity,
-                DailyPnL = p.DailyPnL,
-                LastUpdateDate = p.TradeDate
+                StockCode = p.Trade.StockCode,
+                StockName = p.Trade.StockName,
+                Board = p.Trade.Board.ToString(),
+                PositionQuantity = p.Trade.PositionQuantity,
+                CostPrice = TradeMetricsCalculator.CalculateCostPrice(p),
+                CurrentPrice = p.Trade.CurrentPrice,
+                PositionPnL = p.PositionPnL,
+                DailyPnL = p.Trade.DailyPnL,
+                LastUpdateDate = p.Trade.TradeDate
             })
             .OrderByDescending(p => p.PositionPnL)
             .ToList();
 
         var totalPositionValue = positionOnlyRecords.Sum(p => p.CurrentPrice * p.PositionQuantity);
         var totalPositionPnL = positionOnlyRecords.Sum(p => p.PositionPnL);
-        var totalDailyPnL = latestRecordsByStock.Sum(p => p.DailyPnL);
+        var totalDailyPnL = latestRecordsByStock.Sum(p => p.Trade.DailyPnL);
         var totalBankInflow = bankFlowRecords
             .Where(flow => string.Equals(flow.FlowType, "转入", StringComparison.Ordinal))
             .Sum(flow => flow.Amount);
@@ -572,51 +583,90 @@ public class StockTradeService : IStockTradeService
         };
     }
 
-    private static List<decimal> BuildPnLContributions(IReadOnlyList<StockTrade> orderedRecords)
+    private static List<decimal> BuildPnLContributions(
+        IReadOnlyList<TradeMetricSnapshot> orderedRecords,
+        DateTime? startDate,
+        DateTime? endDate)
     {
         var contributions = new List<decimal>();
-        var holdingSegment = new List<StockTrade>();
+        var segmentPnL = 0m;
+        var hasRangeRecord = false;
 
         foreach (var record in orderedRecords)
         {
-            holdingSegment.Add(record);
-
-            if (ClosesHoldingCycle(record))
+            if (IsWithinRange(record.Trade.TradeDate, startDate, endDate))
             {
-                FlushPositionSegment(holdingSegment, contributions);
-                holdingSegment.Clear();
+                segmentPnL += record.Trade.DailyPnL;
+                hasRangeRecord = true;
+            }
+
+            if (ClosesHoldingCycle(record.Trade) && hasRangeRecord)
+            {
+                contributions.Add(segmentPnL);
+                segmentPnL = 0;
+                hasRangeRecord = false;
             }
         }
 
-        FlushPositionSegment(holdingSegment, contributions);
+        if (hasRangeRecord)
+        {
+            contributions.Add(segmentPnL);
+        }
+
         return contributions;
     }
 
-    private static void FlushPositionSegment(List<StockTrade> positionSegment, List<decimal> contributions)
+    private async Task<List<TradeMetricSnapshot>> BuildCorrectedSnapshotsAsync(IQueryable<StockTrade> query)
     {
-        if (positionSegment.Count == 0)
-        {
-            return;
-        }
+        var historyRecords = await query
+            .OrderBy(trade => trade.TradeDate)
+            .ThenBy(trade => trade.Id)
+            .ToListAsync();
 
-        contributions.Add(positionSegment[^1].CumulativePnL);
+        return TradeMetricsCalculator.Recalculate(historyRecords).ToList();
     }
 
     private static bool ClosesHoldingCycle(StockTrade trade)
     {
-        return trade.IsLiquidated || trade.PositionQuantity <= 0;
+        return TradeMetricsCalculator.IsHoldingClosed(trade);
     }
 
-    private static StockTrade? GetLatestOpenPositionSnapshot(IReadOnlyList<StockTrade> orderedRecords)
+    private async Task<StockTradeResponse?> BuildCorrectedResponseAsync(int id)
     {
-        var latestRecord = orderedRecords
-            .OrderByDescending(record => record.TradeDate)
-            .ThenByDescending(record => record.Id)
-            .FirstOrDefault();
+        var entity = await _db.StockTrades
+            .AsNoTracking()
+            .FirstOrDefaultAsync(trade => trade.Id == id);
 
-        return latestRecord is { IsLiquidated: false, PositionQuantity: > 0 }
-            ? latestRecord
-            : null;
+        if (entity == null)
+        {
+            return null;
+        }
+
+        var correctedSnapshots = await BuildCorrectedSnapshotsAsync(
+            _db.StockTrades
+                .AsNoTracking()
+                .Where(trade => trade.StockCode == entity.StockCode)
+                .Where(trade => trade.TradeDate < entity.TradeDate
+                    || (trade.TradeDate == entity.TradeDate && trade.Id <= entity.Id)));
+
+        var snapshot = correctedSnapshots.LastOrDefault(item => item.Trade.Id == id);
+        return snapshot == null ? ToResponse(entity) : ToResponse(snapshot);
+    }
+
+    private static bool IsWithinRange(DateTime date, DateTime? startDate, DateTime? endDate)
+    {
+        var target = date.Date;
+        if (startDate.HasValue && target < startDate.Value.Date)
+        {
+            return false;
+        }
+
+        if (endDate.HasValue && target > endDate.Value.Date)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private sealed class StockAggregate
@@ -647,6 +697,32 @@ public class StockTradeService : IStockTradeService
             PositionPnL = entity.PositionPnL,
             CumulativePnL = entity.CumulativePnL,
             CostPrice = entity.CostPrice,
+            CurrentPrice = entity.CurrentPrice,
+            PositionQuantity = entity.PositionQuantity,
+            DailyPnL = entity.DailyPnL,
+            IsLiquidated = entity.IsLiquidated,
+            TradeNote = entity.TradeNote,
+            TonghuashunLink = entity.TonghuashunLink
+        };
+    }
+
+    private static StockTradeResponse ToResponse(TradeMetricSnapshot snapshot)
+    {
+        var entity = snapshot.Trade;
+        return new StockTradeResponse
+        {
+            Id = entity.Id,
+            TradeDate = entity.TradeDate,
+            StockCode = entity.StockCode,
+            StockName = entity.StockName,
+            Board = entity.Board.ToString(),
+            BuyPrice = entity.BuyPrice,
+            BuyQuantity = entity.BuyQuantity,
+            SellPrice = entity.SellPrice,
+            SellQuantity = entity.SellQuantity,
+            PositionPnL = snapshot.PositionPnL,
+            CumulativePnL = snapshot.CumulativePnL,
+            CostPrice = TradeMetricsCalculator.CalculateCostPrice(snapshot),
             CurrentPrice = entity.CurrentPrice,
             PositionQuantity = entity.PositionQuantity,
             DailyPnL = entity.DailyPnL,

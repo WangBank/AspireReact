@@ -70,6 +70,36 @@ const parseOptionalNumber = (value: string): number | null => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+const buildImportCriticalTradeIssues = (rows: TradeRow[]): string[] => {
+  const issues: string[] = [];
+
+  rows
+    .filter(row => row.stockCode.trim() !== '')
+    .forEach(row => {
+      const stockLabel = row.stockName.trim() || row.stockCode.trim();
+      const buyQuantity = Number(row.buyQuantity) || 0;
+      const sellQuantity = Number(row.sellQuantity) || 0;
+      const positionQuantity = Number(row.positionQuantity) || 0;
+      const buyPrice = Number(row.buyPrice) || 0;
+      const sellPrice = Number(row.sellPrice) || 0;
+      const currentPrice = parseOptionalNumber(row.currentPrice) ?? 0;
+
+      if (buyQuantity > 0 && buyPrice <= 0) {
+        issues.push(`${stockLabel} 缺少买入均价`);
+      }
+
+      if (sellQuantity > 0 && sellPrice <= 0) {
+        issues.push(`${stockLabel} 缺少卖出均价`);
+      }
+
+      if (!row.isLiquidated && positionQuantity > 0 && currentPrice <= 0) {
+        issues.push(`${stockLabel} 缺少收盘价`);
+      }
+    });
+
+  return issues;
+};
+
 const UnifiedEntryPage = observer(() => {
   const { unifiedEntryStore: store, dashboardStore } = useStore();
   const navigate = useNavigate();
@@ -246,6 +276,9 @@ const UnifiedEntryPage = observer(() => {
 
   const updateTradeRow = <K extends keyof Omit<TradeRow, 'id'>>(id: number, field: K, value: TradeRow[K]) => {
     setTradeRows(prev => prev.map(r => (r.id === id ? { ...r, [field]: value } : r)));
+    if (importError) {
+      setImportError('');
+    }
   };
 
   const updateImportFile = (nextFile: File | null) => {
@@ -433,8 +466,8 @@ const UnifiedEntryPage = observer(() => {
     setImportWarnings(data.warnings || []);
     setImportNotice(
       data.account
-        ? `识别完成，已回填表单。${data.bankFlow ? '银证流水已同步识别，' : ''}当前识别到 ${data.positions.length} 条股票记录。`
-        : `识别完成，已回填 ${data.positions.length} 条股票记录，并按流水合计回填账户当日盈亏。`
+        ? `识别完成，已回填表单。${data.bankFlow ? '银证流水已同步识别，' : ''}当前识别到 ${data.positions.length} 条心魔记录。`
+        : `识别完成，已回填 ${data.positions.length} 条心魔记录，并按流水合计回填账户当日盈亏。`
     );
     setLastImportResult(data);
   };
@@ -466,9 +499,15 @@ const UnifiedEntryPage = observer(() => {
     const accountRequest = buildAccountRequest();
     const bankFlowRequest = buildBankFlowRequest();
     const tradeRequests = buildTradeRequests();
+    const criticalIssues = buildImportCriticalTradeIssues(tradeRows);
 
     if (!accountRequest && !bankFlowRequest && tradeRequests.length === 0) {
       setImportError('当前没有可保存的识别结果');
+      return;
+    }
+
+    if (criticalIssues.length > 0) {
+      setImportError('当前截图缺少关键字段，暂不能保存。请重新上传包含完整参数的截图，或先补全可编辑字段后再试。');
       return;
     }
 
@@ -652,6 +691,8 @@ const UnifiedEntryPage = observer(() => {
   const displayedDailyPnLText = displayedDailyPnL == null
     ? '--'
     : dashboardStore.formatPnL(displayedDailyPnL);
+  const importCriticalIssues = lastImportResult ? buildImportCriticalTradeIssues(tradeRows) : [];
+  const hasImportCriticalIssues = importCriticalIssues.length > 0;
 
   return (
     <div className="unified-entry-container">
@@ -683,7 +724,7 @@ const UnifiedEntryPage = observer(() => {
           <div className="image-import-panel__header">
             <div>
               <h2 className="image-import-panel__title">图片识别导入</h2>
-              <p className="image-import-panel__subtitle">上传券商持仓页、当日流水表，或包含左侧账户日汇总与右侧流水的组合截图，自动回填账户、银证转账和股票明细</p>
+              <p className="image-import-panel__subtitle">上传券商持仓页、当日流水表，或包含左侧账户日汇总与右侧流水的组合截图，自动回填账户、银证转账和心魔明细</p>
             </div>
             {(lastImportResult || importFile || importWarnings.length > 0) && (
               <div className="image-import-panel__header-actions">
@@ -704,7 +745,8 @@ const UnifiedEntryPage = observer(() => {
                     type="button"
                     className="image-import-panel__save"
                     onClick={handleSaveImportedData}
-                    disabled={store.loading || isImportingImage}
+                    disabled={store.loading || isImportingImage || hasImportCriticalIssues}
+                    title={hasImportCriticalIssues ? '当前截图缺少关键字段，暂不能保存' : undefined}
                   >
                     {store.loading ? '保存中...' : '一键保存识别结果'}
                   </button>
@@ -771,7 +813,7 @@ const UnifiedEntryPage = observer(() => {
               <div className="image-import-panel__summary">
                 <span>账户汇总：{lastImportResult.account ? '已识别' : '未识别完整'}</span>
                 <span>银证流水：{lastImportResult.bankFlow ? `${lastImportResult.bankFlow.flowType} ${lastImportResult.bankFlow.amount}` : '未识别/无净流入'}</span>
-                <span>股票条数：{lastImportResult.positions.length}</span>
+                <span>心魔条数：{lastImportResult.positions.length}</span>
                 <span>回填日期：{lastImportResult.recognizedDate?.split('T')[0] || importDate}</span>
               </div>
 
@@ -789,6 +831,20 @@ const UnifiedEntryPage = observer(() => {
                 </div>
               )}
             </>
+          )}
+
+          {hasImportCriticalIssues && (
+            <div className="image-import-panel__blocking">
+              <p className="image-import-panel__blocking-title">当前截图缺少关键字段，暂不能保存</p>
+              <p className="image-import-panel__blocking-desc">
+                以下字段没有稳定识别出来，继续保存很容易把错误数据写进库里。请重新上传包含完整参数的截图。
+              </p>
+              <ul className="image-import-panel__blocking-list">
+                {importCriticalIssues.map((issue, index) => (
+                  <li key={`${issue}-${index}`}>{issue}</li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {importWarnings.length > 0 && (

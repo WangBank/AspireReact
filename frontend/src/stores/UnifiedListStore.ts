@@ -55,8 +55,15 @@ export type UnifiedSortField =
   | 'tradePositionValue'
   | 'positionQuantity';
 
+export interface UnifiedTradeDaySummary {
+  date: string;
+  totalAssets: number;
+  dailyPnL: number;
+}
+
 export class UnifiedListStore {
   data: UnifiedListItem[] = [];
+  tradeDaySummaries: Record<string, UnifiedTradeDaySummary> = {};
   loading = false;
   error: string | null = null;
   startDate = '';
@@ -77,6 +84,7 @@ export class UnifiedListStore {
     this.error = null;
     try {
       let items: UnifiedListItem[] = [];
+      let tradeDaySummaries: Record<string, UnifiedTradeDaySummary> = {};
 
       if (this.activeType === 'all') {
         // 全部：并行加载三种数据
@@ -90,7 +98,6 @@ export class UnifiedListStore {
             this.endDate || undefined
           ),
           tradeService.query({
-            stockCode: this.keyword || undefined,
             tradeDate: this.startDate || undefined,
             board: '',
             page: 1,
@@ -153,6 +160,7 @@ export class UnifiedListStore {
             }
           }
           this.data = items;
+          this.tradeDaySummaries = this.buildTradeDaySummaries(accountRes.data);
           this.page = clampPage(this.page, this.totalPages);
           this.loading = false;
         });
@@ -195,15 +203,21 @@ export class UnifiedListStore {
             }));
           }
         } else if (this.activeType === 'trade') {
-          const res = await tradeService.query({
-            stockCode: this.keyword || undefined,
-            tradeDate: this.startDate || undefined,
-            board: '',
-            page: 1,
-            pageSize: 5000,
-          });
-          if (res.success && res.data) {
-            items = res.data
+          const [accountRes, tradeRes] = await Promise.all([
+            accountService.getByDateRange(
+              this.startDate || undefined,
+              this.endDate || undefined
+            ),
+            tradeService.query({
+              tradeDate: this.startDate || undefined,
+              board: '',
+              page: 1,
+              pageSize: 5000,
+            }),
+          ]);
+
+          if (tradeRes.success && tradeRes.data) {
+            items = tradeRes.data
               .filter(d => !(this.endDate && d.tradeDate > this.endDate))
               .map(d => ({
                 id: d.id,
@@ -223,10 +237,13 @@ export class UnifiedListStore {
                 raw: d,
               }));
           }
+
+          tradeDaySummaries = this.buildTradeDaySummaries(accountRes.success ? accountRes.data : undefined);
         }
 
         runInAction(() => {
           this.data = items;
+          this.tradeDaySummaries = this.activeType === 'trade' ? tradeDaySummaries : {};
           this.page = clampPage(this.page, this.totalPages);
           this.loading = false;
         });
@@ -236,6 +253,7 @@ export class UnifiedListStore {
         this.error = err instanceof Error ? err.message : '网络错误';
         this.loading = false;
         this.data = [];
+        this.tradeDaySummaries = {};
       });
     }
   };
@@ -391,6 +409,26 @@ export class UnifiedListStore {
   clearError = () => {
     this.error = null;
   };
+
+  private buildTradeDaySummaries(accounts?: AccountDailyResponse[]): Record<string, UnifiedTradeDaySummary> {
+    if (!accounts?.length) {
+      return {};
+    }
+
+    return accounts.reduce<Record<string, UnifiedTradeDaySummary>>((summaries, account) => {
+      const date = account.date?.split('T')[0] ?? '';
+      if (!date) {
+        return summaries;
+      }
+
+      summaries[date] = {
+        date,
+        totalAssets: account.totalAssets,
+        dailyPnL: account.dailyPnL,
+      };
+      return summaries;
+    }, {});
+  }
 }
 
 export const unifiedListStore = new UnifiedListStore();
