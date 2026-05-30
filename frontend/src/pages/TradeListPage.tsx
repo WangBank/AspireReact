@@ -46,6 +46,12 @@ const TradeListPage = observer(() => {
   const formatMoney = (val: number) =>
     new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(val);
 
+  const getTradeStatus = (row: (typeof store.data)[number]) =>
+    row.isLiquidated || row.positionQuantity <= 0 ? '清仓' : '持仓';
+
+  const getTradeStatusClassName = (row: (typeof store.data)[number]) =>
+    getTradeStatus(row) === '清仓' ? 'tlp-status-tag--liquidated' : 'tlp-status-tag--holding';
+
   const renderPagination = () => {
     if (store.totalPages <= 1) return null;
     const tp = store.totalPages;
@@ -163,6 +169,7 @@ const TradeListPage = observer(() => {
                     </th>
                     <th>名称</th>
                     <th>板块</th>
+                    <th>状态</th>
                     <th className="tlp-sortable" onClick={() => handleSort('buyPrice')}>
                       买入价{sortIndicator('buyPrice')}
                     </th>
@@ -188,6 +195,11 @@ const TradeListPage = observer(() => {
                       </td>
                       <td data-label="名称">{row.stockName}</td>
                       <td data-label="板块">{row.board}</td>
+                      <td data-label="状态">
+                        <span className={`tlp-status-tag ${getTradeStatusClassName(row)}`}>
+                          {getTradeStatus(row)}
+                        </span>
+                      </td>
                       <td data-label="买入价" className="tlp-num">{row.buyPrice.toFixed(2)}</td>
                       <td data-label="买入量" className="tlp-num">{row.buyQuantity}</td>
                       <td data-label="卖出价" className="tlp-num">{row.sellPrice.toFixed(2)}</td>

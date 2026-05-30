@@ -31,6 +31,7 @@ export interface UnifiedListItem {
   costPrice?: number;            // 成本价
   currentPrice?: number;         // 现价
   cumulativePnL?: number;       // 累计盈亏
+  isLiquidated?: boolean;
   // 通用
   remark?: string;
   raw: AccountDailyResponse | BankFlowResponse | StockTradeResponse;
@@ -130,6 +131,7 @@ export class UnifiedListStore {
                 currentPrice: d.currentPrice,
                 cumulativePnL: d.cumulativePnL,
                 dailyPnL: d.dailyPnL,
+                isLiquidated: d.isLiquidated,
                 remark: d.tradeNote,
                 raw: d,
               });
@@ -200,6 +202,7 @@ export class UnifiedListStore {
                 currentPrice: d.currentPrice,
                 cumulativePnL: d.cumulativePnL,
                 dailyPnL: d.dailyPnL,
+                isLiquidated: d.isLiquidated,
                 tradeNote: d.tradeNote,
                 remark: d.tradeNote,
                 raw: d,
@@ -245,6 +248,32 @@ export class UnifiedListStore {
       });
       return false;
     }
+  };
+
+  deleteMany = async (items: Array<{ type: UnifiedItemType; id: number }>): Promise<{
+    successCount: number;
+    failCount: number;
+  }> => {
+    this.loading = true;
+    this.error = null;
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const item of items) {
+      const success = await this.delete(item.type, item.id);
+      if (success) {
+        successCount += 1;
+      } else {
+        failCount += 1;
+      }
+    }
+
+    runInAction(() => {
+      this.loading = false;
+    });
+
+    return { successCount, failCount };
   };
 
   get sortedData(): UnifiedListItem[] {

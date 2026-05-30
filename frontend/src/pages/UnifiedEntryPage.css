@@ -211,6 +211,21 @@
   background: #fef2f2;
 }
 
+.trade-row-flow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0 14px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.trade-row-flow span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
 /* ── 添加行按钮 ── */
 .entry-add-row-btn {
   display: block;

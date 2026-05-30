@@ -2,7 +2,7 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../stores/StoreProvider';
-import type { UnifiedItemType } from '../stores/UnifiedListStore';
+import type { UnifiedItemType, UnifiedListItem } from '../stores/UnifiedListStore';
 import StockLink from '../components/StockLink';
 import './UnifiedListPage.css';
 
@@ -12,6 +12,8 @@ const TYPE_OPTIONS: { value: 'account' | 'bankflow' | 'trade'; label: string }[]
   { value: 'trade', label: '交易列表' },
 ];
 
+const getItemKey = (item: Pick<UnifiedListItem, 'type' | 'id'>) => `${item.type}-${item.id}`;
+
 const UnifiedListPage = observer(() => {
   const { unifiedListStore: store } = useStore();
   const navigate = useNavigate();
@@ -19,6 +21,8 @@ const UnifiedListPage = observer(() => {
   const [endDate, setEndDate] = useState('');
   const [keyword, setKeyword] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: number } | null>(null);
+  const [batchDeleteConfirm, setBatchDeleteConfirm] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
 
   // 初始加载：默认加载账户列表
   useEffect(() => {
@@ -26,12 +30,29 @@ const UnifiedListPage = observer(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const validKeys = new Set(store.data.map(getItemKey));
+    setSelectedKeys(prev => prev.filter(key => validKeys.has(key)));
+  }, [store.data]);
+
+  const displayedKeys = store.displayedData.map(getItemKey);
+  const selectedItems = store.data.filter(item => selectedKeys.includes(getItemKey(item)));
+
+  const allDisplayedSelected = displayedKeys.length > 0
+    && displayedKeys.every(key => selectedKeys.includes(key));
+
   const handleTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value as 'account' | 'bankflow' | 'trade';
+    setSelectedKeys([]);
+    setBatchDeleteConfirm(false);
+    setDeleteConfirm(null);
     store.setActiveType(val);
   };
 
   const handleSearch = () => {
+    setSelectedKeys([]);
+    setBatchDeleteConfirm(false);
+    setDeleteConfirm(null);
     store.setDateRange(startDate, endDate);
     store.setKeyword(keyword);
     store.fetch();
@@ -41,6 +62,9 @@ const UnifiedListPage = observer(() => {
     setStartDate('');
     setEndDate('');
     setKeyword('');
+    setSelectedKeys([]);
+    setBatchDeleteConfirm(false);
+    setDeleteConfirm(null);
     store.setDateRange('', '');
     store.setKeyword('');
     store.fetch();
@@ -49,11 +73,48 @@ const UnifiedListPage = observer(() => {
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     await store.delete(deleteConfirm.type as UnifiedItemType, deleteConfirm.id);
+    setSelectedKeys(prev => prev.filter(key => key !== `${deleteConfirm.type}-${deleteConfirm.id}`));
+    setDeleteConfirm(null);
+  };
+
+  const handleToggleItem = (item: UnifiedListItem) => {
+    const key = getItemKey(item);
+    setSelectedKeys(prev =>
+      prev.includes(key) ? prev.filter(existing => existing !== key) : [...prev, key]
+    );
+  };
+
+  const handleToggleAllDisplayed = () => {
+    if (allDisplayedSelected) {
+      setSelectedKeys(prev => prev.filter(key => !displayedKeys.includes(key)));
+      return;
+    }
+
+    setSelectedKeys(prev => Array.from(new Set([...prev, ...displayedKeys])));
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedItems.length === 0) {
+      setBatchDeleteConfirm(false);
+      return;
+    }
+
+    await store.deleteMany(selectedItems.map(item => ({ type: item.type, id: item.id })));
+    setSelectedKeys([]);
+    setBatchDeleteConfirm(false);
     setDeleteConfirm(null);
   };
 
   const formatMoney = (val: number) =>
     new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(val);
+
+  const getTradeStatus = (item: UnifiedListItem) => {
+    if (item.isLiquidated || (item.positionQuantity ?? 0) <= 0) return '清仓';
+    return '持仓';
+  };
+
+  const getTradeStatusClassName = (item: UnifiedListItem) =>
+    getTradeStatus(item) === '清仓' ? 'ulp-status-tag--liquidated' : 'ulp-status-tag--holding';
 
   const isTrade = store.activeType === 'trade';
   const isAccount = store.activeType === 'account';
@@ -61,13 +122,21 @@ const UnifiedListPage = observer(() => {
 
   const renderTableHeader = () => (
     <tr>
+      <th className="ulp-select-cell">
+        <input
+          type="checkbox"
+          checked={allDisplayedSelected}
+          onChange={handleToggleAllDisplayed}
+          aria-label="全选当前页"
+        />
+      </th>
       <th
         className="ulp-sortable"
         onClick={() => store.toggleSort('date')}
       >
         日期{store.sortField === 'date' ? (store.sortOrder === 'asc' ? ' ↑' : ' ↓') : ' ↕'}
       </th>
-      <th>备注</th>
+      {!isTrade && <th>备注</th>}
       {isAccount && (
         <>
           <th className="ulp-num">总资产</th>
@@ -87,10 +156,10 @@ const UnifiedListPage = observer(() => {
           <th>代码</th>
           <th>名称</th>
           <th>板块</th>
+          <th>状态</th>
           <th className="ulp-num">持仓盈亏</th>
           <th className="ulp-num">持仓数量</th>
           <th className="ulp-num">当日盈亏</th>
-          <th className="ulp-num">累计盈亏</th>
         </>
       )}
       <th>操作</th>
@@ -104,8 +173,18 @@ const UnifiedListPage = observer(() => {
 
     return (
       <tr key={`${item.type}-${item.id}`}>
+        <td className="ulp-select-cell" data-label="选择">
+          <input
+            type="checkbox"
+            checked={selectedKeys.includes(getItemKey(item))}
+            onChange={() => handleToggleItem(item)}
+            aria-label={`选择 ${item.type}-${item.id}`}
+          />
+        </td>
         <td data-label="日期">{item.date}</td>
-        <td data-label="备注" className="ulp-remark">{item.remark || '-'}</td>
+        {!isTradeItem && (
+          <td data-label="备注" className="ulp-remark">{item.remark || '-'}</td>
+        )}
 
         {isAccountItem && (
           <>
@@ -134,10 +213,14 @@ const UnifiedListPage = observer(() => {
             </td>
             <td data-label="名称">{item.stockName}</td>
             <td data-label="板块">{item.board}</td>
+            <td data-label="状态">
+              <span className={`ulp-status-tag ${getTradeStatusClassName(item)}`}>
+                {getTradeStatus(item)}
+              </span>
+            </td>
             <td data-label="持仓盈亏" className={`ulp-num ${item.tradePositionValue >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{item.tradePositionValue != null ? formatMoney(item.tradePositionValue) : '-'}</td>
             <td data-label="持仓数量" className="ulp-num">{item.positionQuantity ?? '-'}</td>
             <td data-label="当日盈亏" className={`ulp-num ${item.dailyPnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{item.dailyPnL != null ? formatMoney(item.dailyPnL) : '-'}</td>
-            <td data-label="累计盈亏" className={`ulp-num ${item.cumulativePnL >= 0 ? 'ulp-positive' : 'ulp-negative'}`}>{item.cumulativePnL != null ? formatMoney(item.cumulativePnL) : '-'}</td>
           </>
         )}
 
@@ -281,6 +364,31 @@ const UnifiedListPage = observer(() => {
       </div>
 
       <main className="ulp-main">
+        {selectedKeys.length > 0 && (
+          <div className="ulp-batch-bar">
+            <span>已选择 {selectedKeys.length} 条</span>
+            {batchDeleteConfirm ? (
+              <div className="ulp-batch-actions">
+                <button className="ulp-btn-danger-sm" onClick={handleBatchDelete} disabled={store.loading}>
+                  确认删除
+                </button>
+                <button className="ulp-btn-secondary-sm" onClick={() => setBatchDeleteConfirm(false)} disabled={store.loading}>
+                  取消
+                </button>
+              </div>
+            ) : (
+              <div className="ulp-batch-actions">
+                <button className="ulp-btn-danger-sm" onClick={() => setBatchDeleteConfirm(true)}>
+                  批量删除
+                </button>
+                <button className="ulp-btn-secondary-sm" onClick={() => setSelectedKeys([])}>
+                  清空选择
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {store.loading && (
           <div className="ulp-status">
             <div className="ulp-spinner" />

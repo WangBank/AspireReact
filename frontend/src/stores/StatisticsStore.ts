@@ -101,7 +101,7 @@ export class StatisticsStore {
     const list = this.data.byStock;
     if (this.pnlFilter === 'all') return list;
     return list.filter((item) => {
-      const pnl = item.totalPositionPnL;
+      const pnl = item.totalCumulativePnL;
       if (this.pnlFilter === 'profit') return pnl >= 0;
       return pnl < 0;
     });
@@ -113,7 +113,7 @@ export class StatisticsStore {
     const list = this.data.byBoard;
     if (this.pnlFilter === 'all') return list;
     return list.filter((item) => {
-      const pnl = item.totalPositionPnL;
+      const pnl = item.totalCumulativePnL;
       if (this.pnlFilter === 'profit') return pnl >= 0;
       return pnl < 0;
     });

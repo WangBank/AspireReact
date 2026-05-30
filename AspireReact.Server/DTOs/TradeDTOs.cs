@@ -60,7 +60,7 @@ public class StockTradeRequest : IValidatableObject
 
     /// <summary>
     /// 自定义验证
-    /// 支持四种模式：纯买入、纯卖出、纯持仓（买入卖出均为0但PositionPnL不为0）、清仓模式
+    /// 支持五种模式：纯买入、纯卖出、同日有买有卖、纯持仓快照、清仓模式
     /// </summary>
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
@@ -72,7 +72,13 @@ public class StockTradeRequest : IValidatableObject
 
         var hasBuy = BuyPrice > 0 && BuyQuantity > 0;
         var hasSell = SellPrice > 0 && SellQuantity > 0;
-        var isPositionOnly = !hasBuy && !hasSell && PositionPnL != 0;
+        var isPositionOnly = !hasBuy && !hasSell
+            && (PositionQuantity > 0
+                || CostPrice > 0
+                || CurrentPrice > 0
+                || PositionPnL != 0
+                || CumulativePnL != 0
+                || DailyPnL != 0);
 
         // 纯持仓模式：买入卖出均为0，仅记录持仓市值，跳过交易验证
         if (isPositionOnly)
@@ -103,13 +109,6 @@ public class StockTradeRequest : IValidatableObject
                 new[] { nameof(SellPrice), nameof(SellQuantity) });
         }
 
-        // 买入卖出同时存在时，数量应该一致（等量对敲）
-        if (hasBuy && hasSell && BuyQuantity != SellQuantity)
-        {
-            yield return new ValidationResult(
-                "同时存在买入和卖出时，数量应保持一致（等量对敲），请分别录入",
-                new[] { nameof(BuyQuantity), nameof(SellQuantity) });
-        }
     }
 }
 

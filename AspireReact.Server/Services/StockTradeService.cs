@@ -408,85 +408,99 @@ public class StockTradeService : IStockTradeService
 
         var allRecords = await query.ToListAsync();
 
-        // ── 按心魔汇总（含所有记录：交易 + 持仓） ──
-        var byStock = allRecords
+        // 同一只股票的多日记录本质上都是“日终状态快照”，无论当天有没有买卖，
+        // 连续持有期间都只应按该持仓周期最后一条累计盈亏计入统计，
+        // 否则加仓/减仓/连续持有时会把历史快照重复累加。
+        var stockAggregates = allRecords
             .GroupBy(t => new { t.StockCode, t.StockName, t.Board })
             .Select(g =>
             {
-                var latest = g.OrderByDescending(t => t.TradeDate).ThenByDescending(t => t.Id).FirstOrDefault();
-                return new TradeSummaryItem
+                var ordered = g
+                    .OrderBy(t => t.TradeDate)
+                    .ThenBy(t => t.Id)
+                    .ToList();
+                var pnlContributions = BuildPnLContributions(ordered);
+                var latestOpenPosition = GetLatestOpenPositionSnapshot(ordered);
+                var winCount = pnlContributions.Count(value => value > 0);
+                var loseCount = pnlContributions.Count(value => value < 0);
+
+                return new StockAggregate
                 {
                     StockCode = g.Key.StockCode,
                     StockName = g.Key.StockName,
-                    Board = g.Key.Board.ToString(),
-                    TradeCount = g.Count(),
-                    // 持仓盈亏：按公式 (现价 - 成本价) × 持仓数量 计算
-                    TotalPositionPnL = latest != null
-                        ? (latest.CurrentPrice - latest.CostPrice) * latest.PositionQuantity
-                        : 0,
-                    // 累计盈亏：求和（累计值是累加的）
-                    TotalCumulativePnL = g.Sum(t => t.CumulativePnL),
-                    // 胜率：基于该心魔全部记录中 CumulativePnL 正负判断
-                    WinRate = g.Count(t => t.CumulativePnL > 0 || t.CumulativePnL < 0) > 0
-                        ? (decimal)g.Count(t => t.CumulativePnL > 0) /
-                          g.Count(t => t.CumulativePnL > 0 || t.CumulativePnL < 0)
-                        : 0
+                    Board = g.Key.Board,
+                    TradeCount = pnlContributions.Count,
+                    TotalPositionPnL = latestOpenPosition?.PositionPnL ?? 0,
+                    TotalCumulativePnL = pnlContributions.Sum(),
+                    WinCount = winCount,
+                    LoseCount = loseCount
                 };
+            })
+            .ToList();
+
+        // ── 按心魔汇总（交易周期 + 当前持仓） ──
+        var byStock = stockAggregates
+            .Select(item => new TradeSummaryItem
+            {
+                StockCode = item.StockCode,
+                StockName = item.StockName,
+                Board = item.Board.ToString(),
+                TradeCount = item.TradeCount,
+                TotalPositionPnL = item.TotalPositionPnL,
+                TotalCumulativePnL = item.TotalCumulativePnL,
+                WinRate = (item.WinCount + item.LoseCount) > 0
+                    ? (decimal)item.WinCount / (item.WinCount + item.LoseCount)
+                    : 0
             })
             .OrderByDescending(x => x.TotalPositionPnL)
             .ToList();
 
-        // ── 按板块汇总（含所有记录：交易 + 持仓） ──
-        var byBoard = allRecords
+        // ── 按板块汇总（交易周期 + 当前持仓） ──
+        var byBoard = stockAggregates
             .GroupBy(t => t.Board)
             .Select(g =>
             {
-                // 板块持仓盈亏：各心魔最新 (现价-成本价)×数量 之和
-                var boardPositionPnL = g
-                    .GroupBy(t => new { t.StockCode, t.StockName })
-                    .Sum(sg =>
-                    {
-                        var latest = sg.OrderByDescending(t => t.TradeDate).ThenByDescending(t => t.Id).FirstOrDefault();
-                        return latest != null
-                            ? (latest.CurrentPrice - latest.CostPrice) * latest.PositionQuantity
-                            : 0;
-                    });
-                // 板块累计盈亏：所有记录累计盈亏之和
-                var boardCumulativePnL = g.Sum(t => t.CumulativePnL);
-                // 板块胜率：基于该板块全部记录 CumulativePnL 正负判断
-                var boardWinCount = g.Count(t => t.CumulativePnL > 0);
-                var boardLoseCount = g.Count(t => t.CumulativePnL < 0);
                 return new TradeSummaryItem
                 {
                     StockCode = "—",
                     StockName = g.Key.ToString(),
                     Board = g.Key.ToString(),
-                    TradeCount = g.Count(),
-                    TotalPositionPnL = boardPositionPnL,
-                    TotalCumulativePnL = boardCumulativePnL,
-                    WinRate = (boardWinCount + boardLoseCount) > 0
-                        ? (decimal)boardWinCount / (boardWinCount + boardLoseCount)
+                    TradeCount = g.Sum(item => item.TradeCount),
+                    TotalPositionPnL = g.Sum(item => item.TotalPositionPnL),
+                    TotalCumulativePnL = g.Sum(item => item.TotalCumulativePnL),
+                    WinRate = (g.Sum(item => item.WinCount) + g.Sum(item => item.LoseCount)) > 0
+                        ? (decimal)g.Sum(item => item.WinCount) /
+                          (g.Sum(item => item.WinCount) + g.Sum(item => item.LoseCount))
                         : 0
                 };
             })
             .OrderByDescending(x => x.TotalPositionPnL)
             .ToList();
 
-        // ── 总盈亏：所有记录累计盈亏之和（累计盈亏才是真实盈亏） ──
-        var totalPnL = allRecords.Sum(t => t.CumulativePnL);
+        // ── 总盈亏：按交易周期/持仓周期汇总，避免把同一持仓的历史快照重复累计 ──
+        var totalPnL = stockAggregates.Sum(item => item.TotalCumulativePnL);
 
-        // ── 盈亏笔数与胜率：基于全部记录的 CumulativePnL 正负判断 ──
-        var winRecords = allRecords.Count(t => t.CumulativePnL > 0);
-        var loseRecords = allRecords.Count(t => t.CumulativePnL < 0);
+        // ── 盈亏笔数与胜率：按有效交易周期统计，而不是按每日快照统计 ──
+        var totalTrades = stockAggregates.Sum(item => item.TradeCount);
+        var winRecords = stockAggregates.Sum(item => item.WinCount);
+        var loseRecords = stockAggregates.Sum(item => item.LoseCount);
         var overallWinRate = (winRecords + loseRecords) > 0
             ? (decimal)winRecords / (winRecords + loseRecords)
             : 0;
 
-        // ── 持仓汇总（纯持仓记录：无买卖操作、未清仓、有持仓盈亏） ──
-        var positionOnlyRecords = allRecords
-            .Where(t => t.BuyQuantity == 0 && t.SellQuantity == 0 && !t.IsLiquidated && t.PositionPnL != 0)
+        // ── 每只股票在当前区间内的最新日终记录（含清仓） ──
+        var latestRecordsByStock = allRecords
             .GroupBy(t => new { t.StockCode, t.StockName, t.Board })
-            .Select(g => g.OrderByDescending(t => t.TradeDate).ThenByDescending(t => t.Id).First())
+            .Select(g => g
+                .OrderBy(t => t.TradeDate)
+                .ThenBy(t => t.Id)
+                .Last())
+            .ToList();
+
+        // ── 持仓汇总（每只心魔只取最新一条未清仓日终记录） ──
+        var positionOnlyRecords = latestRecordsByStock
+            .Where(p => p != null)
+            .Where(p => !p.IsLiquidated && p.PositionQuantity > 0)
             .Select(p => new PositionSummaryItem
             {
                 StockCode = p.StockCode,
@@ -504,11 +518,11 @@ public class StockTradeService : IStockTradeService
 
         var totalPositionValue = positionOnlyRecords.Sum(p => p.CurrentPrice * p.PositionQuantity);
         var totalPositionPnL = positionOnlyRecords.Sum(p => p.PositionPnL);
-        var totalDailyPnL = positionOnlyRecords.Sum(p => p.DailyPnL);
+        var totalDailyPnL = latestRecordsByStock.Sum(p => p.DailyPnL);
 
         return new TradeSummaryResponse
         {
-            TotalTrades = allRecords.Count,
+            TotalTrades = totalTrades,
             TotalPnL = totalPnL,
             WinTrades = winRecords,
             LoseTrades = loseRecords,
@@ -537,6 +551,65 @@ public class StockTradeService : IStockTradeService
             "北交所" => TradeBoard.北交所,
             _ => Enum.TryParse<TradeBoard>(board, out var result) ? result : TradeBoard.主板
         };
+    }
+
+    private static List<decimal> BuildPnLContributions(IReadOnlyList<StockTrade> orderedRecords)
+    {
+        var contributions = new List<decimal>();
+        var holdingSegment = new List<StockTrade>();
+
+        foreach (var record in orderedRecords)
+        {
+            holdingSegment.Add(record);
+
+            if (ClosesHoldingCycle(record))
+            {
+                FlushPositionSegment(holdingSegment, contributions);
+                holdingSegment.Clear();
+            }
+        }
+
+        FlushPositionSegment(holdingSegment, contributions);
+        return contributions;
+    }
+
+    private static void FlushPositionSegment(List<StockTrade> positionSegment, List<decimal> contributions)
+    {
+        if (positionSegment.Count == 0)
+        {
+            return;
+        }
+
+        contributions.Add(positionSegment[^1].CumulativePnL);
+    }
+
+    private static bool ClosesHoldingCycle(StockTrade trade)
+    {
+        return trade.IsLiquidated || trade.PositionQuantity <= 0;
+    }
+
+    private static StockTrade? GetLatestOpenPositionSnapshot(IReadOnlyList<StockTrade> orderedRecords)
+    {
+        var latestRecord = orderedRecords
+            .OrderByDescending(record => record.TradeDate)
+            .ThenByDescending(record => record.Id)
+            .FirstOrDefault();
+
+        return latestRecord is { IsLiquidated: false, PositionQuantity: > 0 }
+            ? latestRecord
+            : null;
+    }
+
+    private sealed class StockAggregate
+    {
+        public string StockCode { get; init; } = string.Empty;
+        public string StockName { get; init; } = string.Empty;
+        public TradeBoard Board { get; init; }
+        public int TradeCount { get; init; }
+        public decimal TotalPositionPnL { get; init; }
+        public decimal TotalCumulativePnL { get; init; }
+        public int WinCount { get; init; }
+        public int LoseCount { get; init; }
     }
 
     private static StockTradeResponse ToResponse(StockTrade entity)

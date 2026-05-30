@@ -28,21 +28,21 @@ public class DashboardController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Get()
     {
-        var today = DateTime.Today;
+        // 数据库存的是按 UTC 零点落库的日期，这里统一按 UTC 日期取范围，避免本地时区导致当天记录被漏掉。
+        var today = DateTime.UtcNow.Date;
+        var latestAccount = await _accountService.GetLatestAsync();
 
-        // 计算今日/本周/本月/累计盈亏
-        var todayPnL = await CalculatePnL(today, today);
+        // 今日/本周/本月优先使用账户日表中的当日盈亏，避免连续持仓快照重复影响区间统计。
+        var todayPnL = await CalculateAccountDailyPnL(today, today);
 
         var weekStart = today.AddDays(-(int)today.DayOfWeek + (today.DayOfWeek == DayOfWeek.Sunday ? -6 : 1));
-        var weekPnL = await CalculatePnL(weekStart, today);
+        var weekPnL = await CalculateAccountDailyPnL(weekStart, today);
 
         var monthStart = new DateTime(today.Year, today.Month, 1);
-        var monthPnL = await CalculatePnL(monthStart, today);
+        var monthPnL = await CalculateAccountDailyPnL(monthStart, today);
 
-        var cumulativePnL = await CalculatePnL(null, null);
+        var cumulativePnL = await CalculateCumulativePnL();
 
-        // 获取最近记录
-        var latestAccount = await _accountService.GetLatestAsync();
         var recentBankFlows = await _bankFlowService.GetRecentAsync();
 
         // 获取最近交易记录（最近5条，按交易日期倒序）
@@ -73,14 +73,21 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
-    /// 按日期范围计算持仓盈亏总和（基于 StockTrade.PositionPnL）
+    /// 按日期范围汇总账户当日盈亏
     /// </summary>
-    private async Task<decimal> CalculatePnL(DateTime? startDate, DateTime? endDate)
+    private async Task<decimal> CalculateAccountDailyPnL(DateTime? startDate, DateTime? endDate)
+    {
+        var accountRecords = await _accountService.GetByDateRangeAsync(startDate, endDate);
+        return accountRecords.Sum(record => record.DailyPnL);
+    }
+
+    /// <summary>
+    /// 计算累计盈亏：基于持仓/交易统计的有效周期口径
+    /// </summary>
+    private async Task<decimal> CalculateCumulativePnL()
     {
         var summary = await _tradeService.GetSummaryAsync(new TradeSummaryRequest
         {
-            StartDate = startDate,
-            EndDate = endDate
         });
         return summary.TotalPnL;
     }

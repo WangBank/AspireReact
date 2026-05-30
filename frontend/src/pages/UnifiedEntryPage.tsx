@@ -20,6 +20,10 @@ interface TradeRow {
   stockCode: string;
   stockName: string;
   board: string;
+  buyPrice: string;
+  buyQuantity: string;
+  sellPrice: string;
+  sellQuantity: string;
   positionValue: string;
   positionQuantity: string;
   costPrice: string;
@@ -36,6 +40,10 @@ const emptyTradeRow = (): TradeRow => ({
   stockCode: '',
   stockName: '',
   board: '',
+  buyPrice: '',
+  buyQuantity: '',
+  sellPrice: '',
+  sellQuantity: '',
   positionValue: '',
   positionQuantity: '',
   costPrice: '',
@@ -133,6 +141,10 @@ const UnifiedEntryPage = observer(() => {
             stockCode: d.stockCode || '',
             stockName: d.stockName || '',
             board: d.board || '',
+            buyPrice: d.buyPrice != null ? String(d.buyPrice) : '',
+            buyQuantity: d.buyQuantity != null ? String(d.buyQuantity) : '',
+            sellPrice: d.sellPrice != null ? String(d.sellPrice) : '',
+            sellQuantity: d.sellQuantity != null ? String(d.sellQuantity) : '',
             positionValue: d.positionPnL != null ? String(d.positionPnL) : '',
             positionQuantity: d.positionQuantity != null ? String(d.positionQuantity) : '',
             costPrice: d.costPrice != null ? String(d.costPrice) : '',
@@ -204,10 +216,12 @@ const UnifiedEntryPage = observer(() => {
   };
 
   const buildAccountRequest = (): AccountDailyRequest | null => {
-    const hasAccountData = [acTotalAssets, acPositionValue, acAvailable, acDailyPnL]
-      .some(value => value.trim() !== '');
+    const normalizedValues = [acTotalAssets, acPositionValue, acAvailable, acDailyPnL]
+      .map(value => value.trim());
+    const hasAnyAccountData = normalizedValues.some(value => value !== '');
+    const hasCompleteAccountData = normalizedValues.every(value => value !== '');
 
-    if (!hasAccountData) {
+    if (!hasAnyAccountData || !hasCompleteAccountData) {
       return null;
     }
 
@@ -229,10 +243,10 @@ const UnifiedEntryPage = observer(() => {
         stockCode: r.stockCode,
         stockName: r.stockName,
         board: r.board,
-        buyPrice: 0,
-        buyQuantity: 0,
-        sellPrice: 0,
-        sellQuantity: 0,
+        buyPrice: Number(r.buyPrice) || 0,
+        buyQuantity: Number(r.buyQuantity) || 0,
+        sellPrice: Number(r.sellPrice) || 0,
+        sellQuantity: Number(r.sellQuantity) || 0,
         positionPnL: Number(r.positionValue) || 0,
         cumulativePnL: Number(r.cumulativePnL) || 0,
         costPrice: Number(r.costPrice) || 0,
@@ -254,6 +268,12 @@ const UnifiedEntryPage = observer(() => {
       setAcPositionValue(String(data.account.positionValue));
       setAcAvailable(String(data.account.availableFunds));
       setAcDailyPnL(String(data.account.dailyPnL));
+    } else if (data.positions.length > 0) {
+      const derivedDailyPnL = data.positions.reduce((sum, position) => sum + (position.dailyPnL || 0), 0);
+      setAcTotalAssets('');
+      setAcPositionValue('');
+      setAcAvailable('');
+      setAcDailyPnL(String(derivedDailyPnL));
     }
 
     if (data.positions.length > 0) {
@@ -262,6 +282,10 @@ const UnifiedEntryPage = observer(() => {
         stockCode: position.stockCode,
         stockName: position.stockName,
         board: position.board,
+        buyPrice: String(position.buyPrice ?? 0),
+        buyQuantity: String(position.buyQuantity ?? 0),
+        sellPrice: String(position.sellPrice ?? 0),
+        sellQuantity: String(position.sellQuantity ?? 0),
         positionValue: String(position.positionPnL),
         positionQuantity: String(position.positionQuantity),
         costPrice: String(position.costPrice),
@@ -274,16 +298,20 @@ const UnifiedEntryPage = observer(() => {
       setTradeRows([emptyTradeRow()]);
     }
 
-    setEntryType('account');
+    setEntryType(data.account ? 'account' : 'trade');
     setErrors({});
     setImportWarnings(data.warnings || []);
-    setImportNotice(`识别完成，已回填到账户资金和交易持仓表单。当前识别到 ${data.positions.length} 条持仓。`);
+    setImportNotice(
+      data.account
+        ? `识别完成，已回填表单。当前识别到 ${data.positions.length} 条股票记录。`
+        : `识别完成，已回填 ${data.positions.length} 条股票记录，并按流水合计回填账户当日盈亏。`
+    );
     setLastImportResult(data);
   };
 
   const handleImportScreenshot = async () => {
     if (!importFile) {
-      setImportError('请先选择一张券商持仓截图');
+      setImportError('请先选择一张券商截图');
       return;
     }
 
@@ -294,7 +322,7 @@ const UnifiedEntryPage = observer(() => {
     store.clearMessages();
 
     try {
-      const data = await imageImportService.importScreenshot(importFile);
+      const data = await imageImportService.importScreenshot(importFile, importDate);
       applyImportedData(data);
     } catch (err) {
       setLastImportResult(null);
@@ -446,7 +474,7 @@ const UnifiedEntryPage = observer(() => {
           <div className="image-import-panel__header">
             <div>
               <h2 className="image-import-panel__title">图片识别导入</h2>
-              <p className="image-import-panel__subtitle">上传同花顺手机端持仓页截图，自动回填每日盈亏、总资产、可用资金和持仓明细</p>
+              <p className="image-import-panel__subtitle">上传同花顺手机端持仓页或当日流水表截图，自动回填每日盈亏、总资产、可用资金和股票明细</p>
             </div>
             {lastImportResult && (
               <button
@@ -504,7 +532,7 @@ const UnifiedEntryPage = observer(() => {
           </div>
 
           <p className="image-import-panel__hint">
-            当前版本针对同花顺手机端持仓页整屏截图优化。请尽量保留“总资产、总市值、可用、当日参考盈亏”和完整持仓列表，识别结果会先回填表单，确认后再保存入库。
+            当前版本支持同花顺手机端持仓页整屏截图，以及包含“当日买入、当日卖出、买入均价、卖出均价、收盘价”的当日流水表截图。识别结果会先回填表单，确认后再保存入库。
           </p>
 
           {importError && <div className="entry-error-banner">{importError}</div>}
@@ -513,7 +541,7 @@ const UnifiedEntryPage = observer(() => {
           {lastImportResult && (
             <div className="image-import-panel__summary">
               <span>账户汇总：{lastImportResult.account ? '已识别' : '未识别完整'}</span>
-              <span>持仓条数：{lastImportResult.positions.length}</span>
+              <span>股票条数：{lastImportResult.positions.length}</span>
               <span>回填日期：{importDate}</span>
             </div>
           )}
@@ -695,6 +723,13 @@ const UnifiedEntryPage = observer(() => {
                     <span className="selected-stock-code">{row.stockCode}</span>
                     <span className="selected-stock-name">{row.stockName}</span>
                     <span className="selected-stock-board">{row.board}</span>
+                  </div>
+                )}
+
+                {(Number(row.buyQuantity) > 0 || Number(row.sellQuantity) > 0) && (
+                  <div className="trade-row-flow">
+                    <span>当日买入 {Number(row.buyQuantity || 0).toLocaleString()} 股 @ {Number(row.buyPrice || 0).toFixed(3)}</span>
+                    <span>当日卖出 {Number(row.sellQuantity || 0).toLocaleString()} 股 @ {Number(row.sellPrice || 0).toFixed(3)}</span>
                   </div>
                 )}
 

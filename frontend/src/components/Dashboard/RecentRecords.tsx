@@ -38,8 +38,10 @@ const RecentRecords = observer(() => {
               {recentTrades.slice(0, 5).map((trade) => {
                 const isBuy = trade.buyPrice > 0 && trade.buyQuantity > 0;
                 const isSell = trade.sellPrice > 0 && trade.sellQuantity > 0;
-                const isHolding = !isBuy && !isSell && trade.positionQuantity > 0;
-                const type = isHolding ? '持仓'
+                const isLiquidated = trade.isLiquidated || trade.positionQuantity <= 0;
+                const isHolding = !isLiquidated && !isBuy && !isSell && trade.positionQuantity > 0;
+                const type = isLiquidated ? '清仓'
+                  : isHolding ? '持仓'
                   : isBuy && isSell ? '买卖'
                   : isBuy ? '买入'
                   : isSell ? '卖出'
@@ -51,7 +53,7 @@ const RecentRecords = observer(() => {
                         {trade.stockName}
                         <span className="recent-item__code">({trade.stockCode})</span>
                       </span>
-                      <span className={`recent-item__tag recent-item__tag--${type === '买入' ? 'buy' : type === '卖出' ? 'sell' : type === '持仓' ? 'hold' : 'both'}`}>
+                      <span className={`recent-item__tag recent-item__tag--${type === '买入' ? 'buy' : type === '卖出' ? 'sell' : type === '持仓' ? 'hold' : type === '清仓' ? 'liquidated' : 'both'}`}>
                         {type}
                       </span>
                     </div>

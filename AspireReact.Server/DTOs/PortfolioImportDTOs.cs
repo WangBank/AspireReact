@@ -10,6 +10,8 @@ public class PortfolioScreenshotImportRequest
 {
     [Required(ErrorMessage = "请上传截图文件")]
     public IFormFile? Image { get; set; }
+
+    public DateTime? ImportDate { get; set; }
 }
 
 /// <summary>
@@ -41,6 +43,10 @@ public class PortfolioPositionImportResponse
     public string StockCode { get; set; } = string.Empty;
     public string StockName { get; set; } = string.Empty;
     public string Board { get; set; } = string.Empty;
+    public decimal BuyPrice { get; set; }
+    public int BuyQuantity { get; set; }
+    public decimal SellPrice { get; set; }
+    public int SellQuantity { get; set; }
     public int PositionQuantity { get; set; }
     public decimal CostPrice { get; set; }
     public decimal CurrentPrice { get; set; }

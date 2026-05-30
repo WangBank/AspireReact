@@ -11,6 +11,10 @@ export interface PortfolioImportPosition {
   stockCode: string;
   stockName: string;
   board: string;
+  buyPrice: number;
+  buyQuantity: number;
+  sellPrice: number;
+  sellQuantity: number;
   positionQuantity: number;
   costPrice: number;
   currentPrice: number;
@@ -39,9 +43,12 @@ export class ImageImportService {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
-  async importScreenshot(file: File): Promise<PortfolioImportResponse> {
+  async importScreenshot(file: File, importDate?: string): Promise<PortfolioImportResponse> {
     const formData = new FormData();
     formData.append('image', file);
+    if (importDate) {
+      formData.append('importDate', importDate);
+    }
 
     const response = await fetch(`${API_BASE}/screenshot`, {
       method: 'POST',

@@ -4,7 +4,6 @@ import { useStore } from '../stores/StoreProvider';
 import StockLink from '../components/StockLink';
 import './StatisticsPage.css';
 
-const BOARDS = ['主板', '创业板', '科创板', '北交所'] as const;
 const DATE_FILTERS = [
   { key: 'today', label: '今日' },
   { key: 'week', label: '本周' },
@@ -47,37 +46,27 @@ const StatisticsPage = observer(() => {
     store.fetch();
   };
 
-  const formatPct = (val: number): string => {
-    return `${(val * 100).toFixed(1)}%`;
-  };
-
   const renderStatCards = () => {
     if (!store.data) return null;
     const d = store.data;
     const cards = [
       {
-        label: '总交易笔数',
-        value: String(d.totalTrades),
-        sub: `${d.winTrades} 胜 / ${d.loseTrades} 负`,
-        positive: false,
-      },
-      {
         label: '总盈亏',
         value: store.formatMoney(d.totalPnL),
-        sub: `胜率 ${formatPct(d.overallWinRate)}`,
+        sub: '当前统计区间累计结果',
         positive: d.totalPnL >= 0,
       },
       {
-        label: '盈利笔数',
-        value: String(d.winTrades),
-        sub: `占比 ${d.totalTrades > 0 ? formatPct(d.winTrades / d.totalTrades) : '0%'}`,
-        positive: true,
+        label: '持仓盈亏',
+        value: store.formatMoney(d.totalPositionPnL),
+        sub: `持仓市值 ${store.formatMoney(d.totalPositionValue)}`,
+        positive: d.totalPositionPnL >= 0,
       },
       {
-        label: '亏损笔数',
-        value: String(d.loseTrades),
-        sub: `占比 ${d.totalTrades > 0 ? formatPct(d.loseTrades / d.totalTrades) : '0%'}`,
-        positive: false,
+        label: '当日盈亏',
+        value: store.formatMoney(d.totalDailyPnL),
+        sub: '按各股票最新记录汇总',
+        positive: d.totalDailyPnL >= 0,
       },
     ];
 
@@ -121,10 +110,7 @@ const StatisticsPage = observer(() => {
                 <th>心魔代码</th>
                 <th>心魔名称</th>
                 <th>板块</th>
-                <th className="sp-num">交易笔数</th>
-                <th className="sp-num">持仓盈亏</th>
                 <th className="sp-num">累计盈亏</th>
-                <th className="sp-num">胜率</th>
               </tr>
             </thead>
             <tbody>
@@ -137,134 +123,11 @@ const StatisticsPage = observer(() => {
                   <td data-label="板块">
                     <span className={`sp-board-tag sp-board-tag--${item.board}`}>{item.board}</span>
                   </td>
-                  <td className="sp-num" data-label="交易笔数">{item.tradeCount}</td>
-                  <td
-                    className={`sp-num ${store.isPnLPositive(item.totalPositionPnL) ? 'sp-positive' : 'sp-negative'}`}
-                    data-label="持仓盈亏"
-                  >
-                    {store.formatMoney(item.totalPositionPnL)}
-                  </td>
                   <td
                     className={`sp-num ${store.isPnLPositive(item.totalCumulativePnL) ? 'sp-positive' : 'sp-negative'}`}
                     data-label="累计盈亏"
                   >
                     {store.formatMoney(item.totalCumulativePnL)}
-                  </td>
-                  <td className="sp-num" data-label="胜率">{formatPct(item.winRate)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
-  const renderByBoardTable = () => {
-    const list = store.filteredByBoard;
-    if (list.length === 0) {
-      return (
-        <div className="sp-section">
-          <p className="sp-section-title">按板块汇总</p>
-          <p className="sp-empty">暂无数据</p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="sp-section">
-        <p className="sp-section-title">按板块汇总</p>
-        <div className="sp-table-wrap">
-          <table className="sp-table">
-            <thead>
-              <tr>
-                <th>板块</th>
-                <th className="sp-num">交易笔数</th>
-                <th className="sp-num">持仓盈亏</th>
-                <th className="sp-num">累计盈亏</th>
-                <th className="sp-num">胜率</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((item) => (
-                <tr key={item.board}>
-                  <td data-label="板块">
-                    <span className={`sp-board-tag sp-board-tag--${item.board}`}>{item.board}</span>
-                  </td>
-                  <td className="sp-num" data-label="交易笔数">{item.tradeCount}</td>
-                  <td
-                    className={`sp-num ${store.isPnLPositive(item.totalPositionPnL) ? 'sp-positive' : 'sp-negative'}`}
-                    data-label="持仓盈亏"
-                  >
-                    {store.formatMoney(item.totalPositionPnL)}
-                  </td>
-                  <td
-                    className={`sp-num ${store.isPnLPositive(item.totalCumulativePnL) ? 'sp-positive' : 'sp-negative'}`}
-                    data-label="累计盈亏"
-                  >
-                    {store.formatMoney(item.totalCumulativePnL)}
-                  </td>
-                  <td className="sp-num" data-label="胜率">{formatPct(item.winRate)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  };
-
-  const renderPositionTable = () => {
-    if (!store.data || store.data.positionCount === 0) {
-      return (
-        <div className="sp-section">
-          <p className="sp-section-title">持仓汇总</p>
-          <p className="sp-empty">暂无持仓数据</p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="sp-section">
-        <p className="sp-section-title">持仓汇总</p>
-        <div className="sp-table-wrap">
-          <table className="sp-table">
-            <thead>
-              <tr>
-                <th>心魔代码</th>
-                <th>心魔名称</th>
-                <th>板块</th>
-                <th className="sp-num">持仓数量</th>
-                <th className="sp-num">持仓盈亏</th>
-                <th className="sp-num">当日盈亏</th>
-                <th className="sp-num">最后更新</th>
-              </tr>
-            </thead>
-            <tbody>
-              {store.data.positions.map((item) => (
-                <tr key={item.stockCode}>
-                  <td data-label="心魔代码">
-                    <StockLink stockCode={item.stockCode} stockName={item.stockName} />
-                  </td>
-                  <td data-label="心魔名称">{item.stockName}</td>
-                  <td data-label="板块">
-                    <span className={`sp-board-tag sp-board-tag--${item.board}`}>{item.board}</span>
-                  </td>
-                  <td className="sp-num" data-label="持仓数量">{item.positionQuantity.toLocaleString()}</td>
-                  <td
-                    className={`sp-num ${store.isPnLPositive(item.positionPnL) ? 'sp-positive' : 'sp-negative'}`}
-                    data-label="持仓盈亏"
-                  >
-                    {store.formatMoney(item.positionPnL)}
-                  </td>
-                  <td
-                    className={`sp-num ${store.isPnLPositive(item.dailyPnL) ? 'sp-positive' : 'sp-negative'}`}
-                    data-label="当日盈亏"
-                  >
-                    {store.formatMoney(item.dailyPnL)}
-                  </td>
-                  <td className="sp-num" data-label="最后更新">
-                    {new Date(item.lastUpdateDate).toISOString().split('T')[0]}
                   </td>
                 </tr>
               ))}
@@ -333,21 +196,6 @@ const StatisticsPage = observer(() => {
           </>
         )}
 
-        <label style={{ marginLeft: '12px' }}>板块：</label>
-        <select
-          className="sp-select"
-          value={store.board}
-          onChange={(e) => {
-            store.setBoard(e.target.value);
-            store.fetch();
-          }}
-        >
-          <option value="">全部板块</option>
-          {BOARDS.map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
-
         <label style={{ marginLeft: '12px' }}>盈亏：</label>
         <div className="sp-pnl-tabs">
           {PNL_FILTERS.map((f) => (
@@ -383,12 +231,6 @@ const StatisticsPage = observer(() => {
 
         {/* 按心魔汇总表格 */}
         {!store.loading && !store.error && store.data && renderByStockTable()}
-
-        {/* 按板块汇总表格 */}
-        {!store.loading && !store.error && store.data && renderByBoardTable()}
-
-        {/* 持仓汇总表格 */}
-        {!store.loading && !store.error && store.data && renderPositionTable()}
 
         {/* 空状态 */}
         {!store.loading && !store.error && !store.data && (
