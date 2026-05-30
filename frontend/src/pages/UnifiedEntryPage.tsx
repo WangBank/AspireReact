@@ -8,6 +8,7 @@ import { tradeService } from '../services/TradeService';
 import type { AccountDailyRequest } from '../services/AccountService';
 import { imageImportService } from '../services/ImageImportService';
 import type { PortfolioImportResponse } from '../services/ImageImportService';
+import type { BankFlowRequest } from '../services/BankFlowService';
 import type { StockTradeRequest } from '../services/TradeService';
 import StockSearchInput from '../components/StockSearchInput';
 import './AccountEntryPage.css';
@@ -103,9 +104,17 @@ const UnifiedEntryPage = observer(() => {
   const [importWarnings, setImportWarnings] = useState<string[]>([]);
   const [importNotice, setImportNotice] = useState('');
   const [lastImportResult, setLastImportResult] = useState<PortfolioImportResponse | null>(null);
+  const [importPreviewUrl, setImportPreviewUrl] = useState('');
   const importFileInputRef = useRef<HTMLInputElement>(null);
+  const importPreviewUrlRef = useRef<string | null>(null);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => () => {
+    if (importPreviewUrlRef.current) {
+      URL.revokeObjectURL(importPreviewUrlRef.current);
+    }
+  }, []);
 
   // ── 编辑模式：加载已有数据 ──
   useEffect(() => {
@@ -160,7 +169,7 @@ const UnifiedEntryPage = observer(() => {
   }, [isEditMode, editingId, entryType]);
 
   // ── 验证 ──
-  const validateAccount = (): boolean => {
+  const buildAccountErrors = (): Record<string, string> => {
     const e: Record<string, string> = {};
     if (!acDate) e.acDate = '请选择日期';
     if (acTotalAssets === '' || isNaN(Number(acTotalAssets)) || Number(acTotalAssets) < 0)
@@ -171,15 +180,25 @@ const UnifiedEntryPage = observer(() => {
       e.acAvailable = '请输入非负数';
     if (acDailyPnL === '' || isNaN(Number(acDailyPnL)))
       e.acDailyPnL = '请输入数字';
+    return e;
+  };
+
+  const validateAccount = (): boolean => {
+    const e = buildAccountErrors();
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const validateBankFlow = (): boolean => {
+  const buildBankFlowErrors = (): Record<string, string> => {
     const e: Record<string, string> = {};
     if (!bfDate) e.bfDate = '请选择日期';
     if (bfAmount === '' || isNaN(Number(bfAmount)) || Number(bfAmount) <= 0)
       e.bfAmount = '请输入大于0的金额';
+    return e;
+  };
+
+  const validateBankFlow = (): boolean => {
+    const e = buildBankFlowErrors();
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -215,6 +234,71 @@ const UnifiedEntryPage = observer(() => {
     setTradeRows(prev => prev.map(r => (r.id === id ? { ...r, [field]: value } : r)));
   };
 
+  const updateImportFile = (nextFile: File | null) => {
+    if (importPreviewUrlRef.current) {
+      URL.revokeObjectURL(importPreviewUrlRef.current);
+      importPreviewUrlRef.current = null;
+    }
+
+    setImportFile(nextFile);
+
+    if (!nextFile) {
+      setImportPreviewUrl('');
+      if (importFileInputRef.current) {
+        importFileInputRef.current.value = '';
+      }
+      return;
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(nextFile);
+    importPreviewUrlRef.current = nextPreviewUrl;
+    setImportPreviewUrl(nextPreviewUrl);
+  };
+
+  const clearEntryForms = (baseDate: string) => {
+    setAcDate(baseDate);
+    setAcTotalAssets('');
+    setAcPositionValue('');
+    setAcAvailable('');
+    setAcDailyPnL('');
+    setAcRemark('');
+    setBfDate(baseDate);
+    setBfFlowType('转入');
+    setBfAmount('');
+    setBfRemark('');
+    setTradeDate(baseDate);
+    setTradeRows([emptyTradeRow()]);
+  };
+
+  const clearImportedBackfill = ({
+    preserveImportDate = true,
+    clearStoreMessages = false,
+    notice = '',
+  }: {
+    preserveImportDate?: boolean;
+    clearStoreMessages?: boolean;
+    notice?: string;
+  } = {}) => {
+    const nextBaseDate = preserveImportDate ? importDate : today;
+    clearEntryForms(nextBaseDate);
+
+    if (!preserveImportDate) {
+      setImportDate(today);
+    }
+
+    setIsImportingImage(false);
+    setImportError('');
+    setImportWarnings([]);
+    setImportNotice(notice);
+    setLastImportResult(null);
+    setErrors({});
+    updateImportFile(null);
+
+    if (clearStoreMessages) {
+      store.clearMessages();
+    }
+  };
+
   const buildAccountRequest = (): AccountDailyRequest | null => {
     const normalizedValues = [acTotalAssets, acPositionValue, acAvailable, acDailyPnL]
       .map(value => value.trim());
@@ -232,6 +316,24 @@ const UnifiedEntryPage = observer(() => {
       availableFunds: Number(acAvailable),
       dailyPnL: Number(acDailyPnL),
       remark: acRemark.trim() || undefined,
+    };
+  };
+
+  const buildBankFlowRequest = (): BankFlowRequest | null => {
+    if (!bfDate || bfAmount.trim() === '') {
+      return null;
+    }
+
+    const amount = Number(bfAmount);
+    if (Number.isNaN(amount) || amount <= 0) {
+      return null;
+    }
+
+    return {
+      date: bfDate,
+      flowType: bfFlowType,
+      amount,
+      remark: bfRemark.trim() || undefined,
     };
   };
 
@@ -260,8 +362,13 @@ const UnifiedEntryPage = observer(() => {
   );
 
   const applyImportedData = (data: PortfolioImportResponse) => {
-    setAcDate(importDate);
-    setTradeDate(importDate);
+    const effectiveDate = data.recognizedDate?.split('T')[0]
+      || data.bankFlow?.date?.split('T')[0]
+      || importDate;
+
+    setAcDate(effectiveDate);
+    setBfDate(effectiveDate);
+    setTradeDate(effectiveDate);
 
     if (data.account) {
       setAcTotalAssets(String(data.account.totalAssets));
@@ -274,6 +381,16 @@ const UnifiedEntryPage = observer(() => {
       setAcPositionValue('');
       setAcAvailable('');
       setAcDailyPnL(String(derivedDailyPnL));
+    }
+
+    if (data.bankFlow) {
+      setBfFlowType(data.bankFlow.flowType);
+      setBfAmount(String(data.bankFlow.amount));
+      setBfRemark(data.bankFlow.remark || '');
+    } else {
+      setBfFlowType('转入');
+      setBfAmount('');
+      setBfRemark('');
     }
 
     if (data.positions.length > 0) {
@@ -298,12 +415,11 @@ const UnifiedEntryPage = observer(() => {
       setTradeRows([emptyTradeRow()]);
     }
 
-    setEntryType(data.account ? 'account' : 'trade');
     setErrors({});
     setImportWarnings(data.warnings || []);
     setImportNotice(
       data.account
-        ? `识别完成，已回填表单。当前识别到 ${data.positions.length} 条股票记录。`
+        ? `识别完成，已回填表单。${data.bankFlow ? '银证流水已同步识别，' : ''}当前识别到 ${data.positions.length} 条股票记录。`
         : `识别完成，已回填 ${data.positions.length} 条股票记录，并按流水合计回填账户当日盈亏。`
     );
     setLastImportResult(data);
@@ -334,23 +450,29 @@ const UnifiedEntryPage = observer(() => {
 
   const handleSaveImportedData = async () => {
     const accountRequest = buildAccountRequest();
+    const bankFlowRequest = buildBankFlowRequest();
     const tradeRequests = buildTradeRequests();
 
-    if (!accountRequest && tradeRequests.length === 0) {
+    if (!accountRequest && !bankFlowRequest && tradeRequests.length === 0) {
       setImportError('当前没有可保存的识别结果');
       return;
     }
 
-    const accountValid = accountRequest ? validateAccount() : true;
+    const mergedErrors: Record<string, string> = {
+      ...(accountRequest ? buildAccountErrors() : {}),
+      ...(bankFlowRequest ? buildBankFlowErrors() : {}),
+    };
+    const accountValid = accountRequest ? Object.keys(buildAccountErrors()).length === 0 : true;
+    const bankFlowValid = bankFlowRequest ? Object.keys(buildBankFlowErrors()).length === 0 : true;
     const tradeError = tradeRequests.length > 0 ? validateTrades() : null;
 
     if (tradeError) {
-      setErrors(prev => ({ ...prev, trade: tradeError }));
+      mergedErrors.trade = tradeError;
     }
 
-    if (!accountValid || tradeError) {
+    if (!accountValid || !bankFlowValid || tradeError) {
+      setErrors(mergedErrors);
       setImportError('识别结果里还有待确认字段，请检查表单后再保存');
-      setEntryType(!accountValid ? 'account' : 'trade');
       return;
     }
 
@@ -358,9 +480,26 @@ const UnifiedEntryPage = observer(() => {
     setImportError('');
     store.clearMessages();
 
-    const result = await store.submitAll(accountRequest, null, tradeRequests);
-    if (result.account || result.trades) {
-      setImportNotice(`识别结果已写入：${result.account ? '账户资金已保存' : ''}${result.account && result.trades ? '，' : ''}${result.trades ? `持仓成功 ${store.batchResult?.successCount || 0} 条` : ''}`);
+    const result = await store.submitAll(accountRequest, bankFlowRequest, tradeRequests);
+    if (result.account || result.bankFlow || result.trades) {
+      const parts = [
+        result.account ? '账户资金已保存' : '',
+        result.bankFlow ? '银证流水已保存' : '',
+        result.trades ? `持仓成功 ${store.batchResult?.successCount || 0} 条` : '',
+      ].filter(Boolean);
+      const allRequestedSucceeded = (!accountRequest || result.account)
+        && (!bankFlowRequest || result.bankFlow)
+        && (tradeRequests.length === 0 || result.trades);
+
+      if (allRequestedSucceeded) {
+        clearImportedBackfill({
+          preserveImportDate: true,
+          clearStoreMessages: false,
+          notice: `识别结果已写入：${parts.join('，')}，已清空识别回填数据`,
+        });
+      } else {
+        setImportNotice(`识别结果已写入：${parts.join('，')}`);
+      }
     }
   };
 
@@ -432,59 +571,60 @@ const UnifiedEntryPage = observer(() => {
   };
 
   const resetAll = () => {
-    setAcDate(today);
-    setAcTotalAssets('');
-    setAcPositionValue('');
-    setAcAvailable('');
-    setAcDailyPnL('');
-    setAcRemark('');
-    setBfDate(today);
-    setBfFlowType('转入');
-    setBfAmount('');
-    setBfRemark('');
-    setTradeDate(today);
-    setTradeRows([emptyTradeRow()]);
-    setImportDate(today);
-    setImportFile(null);
-    setIsImportingImage(false);
-    setImportError('');
-    setImportWarnings([]);
-    setImportNotice('');
-    setLastImportResult(null);
-    if (importFileInputRef.current) {
-      importFileInputRef.current.value = '';
-    }
-    setErrors({});
-    store.clearMessages();
+    clearImportedBackfill({
+      preserveImportDate: false,
+      clearStoreMessages: true,
+      notice: '',
+    });
   };
 
   const pageTitle = isEditMode
     ? PAGE_TITLES[entryType]?.edit || '编辑'
-    : PAGE_TITLES[entryType]?.create || '录入';
+    : '统一录入';
+  const pageSubtitle = isEditMode
+    ? '修改已有记录'
+    : '在同一个页面录入账户资金、银证转账和交易持仓数据';
+  const showAccountSection = !isEditMode || entryType === 'account';
+  const showBankFlowSection = !isEditMode || entryType === 'bankflow';
+  const showTradeSection = !isEditMode || entryType === 'trade';
 
   return (
     <div className="unified-entry-container">
       <h1 className="entry-page-title">{pageTitle}</h1>
-      <p className="entry-page-subtitle">
-        {isEditMode ? '修改已有记录' : `录入${PAGE_TITLES[entryType]?.create?.replace('录入', '') || ''}数据`}
-      </p>
+      <p className="entry-page-subtitle">{pageSubtitle}</p>
 
       {!isEditMode && (
         <section className="image-import-panel">
           <div className="image-import-panel__header">
             <div>
               <h2 className="image-import-panel__title">图片识别导入</h2>
-              <p className="image-import-panel__subtitle">上传同花顺手机端持仓页或当日流水表截图，自动回填每日盈亏、总资产、可用资金和股票明细</p>
+              <p className="image-import-panel__subtitle">上传券商持仓页、当日流水表，或包含左侧账户日汇总与右侧流水的组合截图，自动回填账户、银证转账和股票明细</p>
             </div>
-            {lastImportResult && (
-              <button
-                type="button"
-                className="image-import-panel__save"
-                onClick={handleSaveImportedData}
-                disabled={store.loading || isImportingImage}
-              >
-                {store.loading ? '保存中...' : '一键保存识别结果'}
-              </button>
+            {(lastImportResult || importFile || importWarnings.length > 0) && (
+              <div className="image-import-panel__header-actions">
+                <button
+                  type="button"
+                  className="image-import-panel__clear"
+                  onClick={() => clearImportedBackfill({
+                    preserveImportDate: true,
+                    clearStoreMessages: false,
+                    notice: '已清空识别回填数据',
+                  })}
+                  disabled={store.loading || isImportingImage}
+                >
+                  清空识别回填
+                </button>
+                {lastImportResult && (
+                  <button
+                    type="button"
+                    className="image-import-panel__save"
+                    onClick={handleSaveImportedData}
+                    disabled={store.loading || isImportingImage}
+                  >
+                    {store.loading ? '保存中...' : '一键保存识别结果'}
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
@@ -510,8 +650,11 @@ const UnifiedEntryPage = observer(() => {
                 className="form-input image-import-panel__file"
                 onChange={e => {
                   const nextFile = e.target.files?.[0] || null;
-                  setImportFile(nextFile);
+                  updateImportFile(nextFile);
                   setImportError('');
+                  setImportWarnings([]);
+                  setImportNotice('');
+                  setLastImportResult(null);
                 }}
               />
             </div>
@@ -532,18 +675,35 @@ const UnifiedEntryPage = observer(() => {
           </div>
 
           <p className="image-import-panel__hint">
-            当前版本支持同花顺手机端持仓页整屏截图，以及包含“当日买入、当日卖出、买入均价、卖出均价、收盘价”的当日流水表截图。识别结果会先回填表单，确认后再保存入库。
+            当前版本支持同花顺手机端持仓页整屏截图、包含“当日买入/当日卖出/买入均价/卖出均价/收盘价”的当日流水表截图，以及左侧包含日期/总资产/净流入、右侧显示当日明细的组合截图。识别结果会先回填到统一录入表单，确认后再保存入库。
           </p>
 
           {importError && <div className="entry-error-banner">{importError}</div>}
           {importNotice && <div className="entry-success-banner">{importNotice}</div>}
 
           {lastImportResult && (
-            <div className="image-import-panel__summary">
-              <span>账户汇总：{lastImportResult.account ? '已识别' : '未识别完整'}</span>
-              <span>股票条数：{lastImportResult.positions.length}</span>
-              <span>回填日期：{importDate}</span>
-            </div>
+            <>
+              <div className="image-import-panel__summary">
+                <span>账户汇总：{lastImportResult.account ? '已识别' : '未识别完整'}</span>
+                <span>银证流水：{lastImportResult.bankFlow ? `${lastImportResult.bankFlow.flowType} ${lastImportResult.bankFlow.amount}` : '未识别/无净流入'}</span>
+                <span>股票条数：{lastImportResult.positions.length}</span>
+                <span>回填日期：{lastImportResult.recognizedDate?.split('T')[0] || importDate}</span>
+              </div>
+
+              {importPreviewUrl && (
+                <div className="image-import-panel__preview">
+                  <div className="image-import-panel__preview-header">
+                    <p className="image-import-panel__preview-title">识别原图</p>
+                    <span className="image-import-panel__preview-tip">识别完成后保留图片，方便你对照检查回填结果</span>
+                  </div>
+                  <img
+                    src={importPreviewUrl}
+                    alt="识别截图预览"
+                    className="image-import-panel__preview-image"
+                  />
+                </div>
+              )}
+            </>
           )}
 
           {importWarnings.length > 0 && (
@@ -559,21 +719,6 @@ const UnifiedEntryPage = observer(() => {
         </section>
       )}
 
-      {/* ── 类型切换标签 ── */}
-      {!isEditMode && (
-        <div className="unified-tab-bar">
-          {(['account', 'bankflow', 'trade'] as EntryType[]).map(t => (
-            <button
-              key={t}
-              className={`unified-tab ${entryType === t ? 'unified-tab-active' : ''}`}
-              onClick={() => setEntryType(t)}
-            >
-              {t === 'account' ? '账户资金' : t === 'bankflow' ? '银证转账' : '交易持仓'}
-            </button>
-          ))}
-        </div>
-      )}
-
       {store.error && (
         <div className="entry-error-banner" role="alert">{store.error}</div>
       )}
@@ -585,7 +730,7 @@ const UnifiedEntryPage = observer(() => {
       )}
 
       {/* ── 账户资金 ── */}
-      {(entryType === 'account') && (
+      {showAccountSection && (
         <section className="unified-section">
           <h2 className="unified-section-title">账户资金</h2>
           <form className="entry-form" onSubmit={handleSubmitAccount} noValidate>
@@ -640,7 +785,7 @@ const UnifiedEntryPage = observer(() => {
       )}
 
       {/* ── 银证流水 ── */}
-      {(entryType === 'bankflow') && (
+      {showBankFlowSection && (
         <section className="unified-section">
           <h2 className="unified-section-title">银证流水</h2>
           <form className="entry-form" onSubmit={handleSubmitBankFlow} noValidate>
@@ -682,7 +827,7 @@ const UnifiedEntryPage = observer(() => {
       )}
 
       {/* ── 交易持仓 ── */}
-      {(entryType === 'trade') && (
+      {showTradeSection && (
         <section className="unified-section">
           <h2 className="unified-section-title">交易持仓录入</h2>
           <form className="entry-form" onSubmit={handleSubmitTrades} noValidate>

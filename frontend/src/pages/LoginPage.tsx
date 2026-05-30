@@ -92,7 +92,7 @@ const LoginPage = observer(() => {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1 className="login-title">碎银录</h1>
+        <h1 className="login-title">心魔录</h1>
         <p className="login-subtitle">{isRegister ? '创建新账户' : '请登录您的账户'}</p>
 
         <form className="login-form" onSubmit={handleSubmit} noValidate>

@@ -28,19 +28,6 @@
   margin: 0;
 }
 
-.ulp-refresh-btn {
-  padding: 8px 20px;
-  border: none;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #1677ff, #4096ff);
-  color: #fff;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-.ulp-refresh-btn:hover:not(:disabled) { opacity: 0.85; }
-.ulp-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
 /* ======================== 筛选栏 ======================== */
 .ulp-filter-bar {
   display: flex;
@@ -79,19 +66,43 @@
   width: 160px;
 }
 
-.ulp-select {
-  padding: 7px 12px;
-  border: 1px solid #d9d9d9;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  background: #fff;
-  cursor: pointer;
-  transition: border-color 0.2s;
-  min-width: 120px;
+.ulp-type-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
-.ulp-select:focus {
-  outline: none;
+
+.ulp-type-option {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 14px;
+  border: 1px solid #d9d9d9;
+  border-radius: 999px;
+  background: #fff;
+  color: #4b5563;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.ulp-type-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ulp-type-option:hover {
   border-color: #1677ff;
+  color: #1677ff;
+}
+
+.ulp-type-option--active {
+  border-color: #1677ff;
+  background: #eaf3ff;
+  color: #1677ff;
+  box-shadow: inset 0 0 0 1px rgba(22, 119, 255, 0.08);
 }
 
 .ulp-btn-primary {
@@ -212,6 +223,36 @@
 
 .ulp-table tbody tr:hover {
   background: #f5f9ff;
+}
+
+.ulp-trade-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ulp-trade-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ulp-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.ulp-group-date {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.ulp-group-meta {
+  font-size: 0.8125rem;
+  color: #6b7280;
 }
 
 .ulp-batch-bar {
@@ -389,6 +430,7 @@
 @media (max-width: 768px) {
   .ulp-container { padding: 16px; }
   .ulp-filter-bar { flex-direction: column; align-items: stretch; }
+  .ulp-type-switch { width: 100%; }
   .ulp-batch-bar { flex-direction: column; align-items: stretch; }
   .ulp-table th, .ulp-table td { padding: 8px 10px; font-size: 0.8125rem; }
 }

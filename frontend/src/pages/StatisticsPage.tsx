@@ -8,6 +8,8 @@ const DATE_FILTERS = [
   { key: 'today', label: '今日' },
   { key: 'week', label: '本周' },
   { key: 'month', label: '本月' },
+  { key: 'year', label: '本年' },
+  { key: 'all', label: '全部' },
   { key: 'custom', label: '自定义' },
 ] as const;
 const PNL_FILTERS = [
@@ -25,12 +27,8 @@ const StatisticsPage = observer(() => {
     store.setDateFilterType('month');
   }, [store]);
 
-  const handleDateFilterClick = (type: string) => {
-    if (type === 'custom') {
-      store.setDateFilterType('custom');
-    } else {
-      store.setDateFilterType(type as 'today' | 'week' | 'month');
-    }
+  const handleDateFilterClick = (type: (typeof DATE_FILTERS)[number]['key']) => {
+    store.setDateFilterType(type);
   };
 
   const handleCustomSearch = () => {
@@ -45,6 +43,12 @@ const StatisticsPage = observer(() => {
   const handleRefresh = () => {
     store.fetch();
   };
+
+  const dateRangeText = store.startDate && store.endDate
+    ? `${store.startDate} ~ ${store.endDate}`
+    : store.dateFilterType === 'all'
+      ? '全部时间'
+      : '请选择统计时间范围';
 
   const renderStatCards = () => {
     if (!store.data) return null;
@@ -143,11 +147,7 @@ const StatisticsPage = observer(() => {
       <div className="sp-header">
         <div>
           <p className="sp-title">统计汇总</p>
-          <p className="sp-subtitle">
-            {store.startDate && store.endDate
-              ? `${store.startDate} ~ ${store.endDate}`
-              : '请选择统计时间范围'}
-          </p>
+          <p className="sp-subtitle">{dateRangeText}</p>
         </div>
         <button
           className="sp-refresh-btn"

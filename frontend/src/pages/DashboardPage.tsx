@@ -18,7 +18,7 @@ const DashboardPage = observer(() => {
       <header className="dashboard-header">
         <div>
           <h1 className="dashboard-title">首页概览</h1>
-          <p className="dashboard-subtitle">碎银录</p>
+          <p className="dashboard-subtitle">心魔录</p>
         </div>
         <button
           className="dashboard-refresh-btn"
@@ -61,7 +61,7 @@ const DashboardPage = observer(() => {
       </main>
 
       <footer className="dashboard-footer">
-        <span>碎银录 v1.0</span>
+        <span>心魔录 v1.0</span>
       </footer>
     </div>
   );

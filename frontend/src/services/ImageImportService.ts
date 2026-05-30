@@ -7,6 +7,13 @@ export interface PortfolioImportAccount {
   dailyPnL: number;
 }
 
+export interface PortfolioImportBankFlow {
+  date: string;
+  flowType: '转入' | '转出';
+  amount: number;
+  remark?: string;
+}
+
 export interface PortfolioImportPosition {
   stockCode: string;
   stockName: string;
@@ -26,7 +33,9 @@ export interface PortfolioImportPosition {
 }
 
 export interface PortfolioImportResponse {
+  recognizedDate?: string | null;
   account: PortfolioImportAccount | null;
+  bankFlow: PortfolioImportBankFlow | null;
   positions: PortfolioImportPosition[];
   warnings: string[];
 }

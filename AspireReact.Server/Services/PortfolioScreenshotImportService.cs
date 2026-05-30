@@ -60,6 +60,16 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         "收盘价"
     ];
 
+    private static readonly string[] AccountHistoryHeaderHints =
+    [
+        "日期",
+        "费用合计",
+        "市值",
+        "总资产",
+        "净流入",
+        "账户余额"
+    ];
+
     public PortfolioScreenshotImportService(
         AppDbContext db,
         IStockSearchService stockSearchService,
@@ -115,13 +125,31 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             }
 
             var warnings = new List<string>();
-            var isDailyFlowScreenshot = IsDailyFlowScreenshot(tokens);
-            var account = isDailyFlowScreenshot
-                ? null
-                : ParseAccount(tokens, warnings, warnIfMissing: true);
-            var positions = isDailyFlowScreenshot
-                ? await ParseDailyFlowPositionsAsync(tokens, importDate, warnings, cancellationToken)
-                : await ParsePositionsAsync(tokens, warnings, cancellationToken);
+            var compositeImport = await TryParseCompositeScreenshotAsync(tokens, importDate, warnings, cancellationToken);
+            PortfolioAccountImportResponse? account;
+            PortfolioBankFlowImportResponse? bankFlow;
+            List<PortfolioPositionImportResponse> positions;
+            DateTime? recognizedDate;
+
+            if (compositeImport != null)
+            {
+                account = compositeImport.Account;
+                bankFlow = compositeImport.BankFlow;
+                positions = compositeImport.Positions;
+                recognizedDate = compositeImport.RecognizedDate;
+            }
+            else
+            {
+                var isDailyFlowScreenshot = IsDailyFlowScreenshot(tokens);
+                account = isDailyFlowScreenshot
+                    ? null
+                    : ParseAccount(tokens, warnings, warnIfMissing: true);
+                bankFlow = null;
+                positions = isDailyFlowScreenshot
+                    ? await ParseDailyFlowPositionsAsync(tokens, importDate, warnings, cancellationToken)
+                    : await ParsePositionsAsync(tokens, warnings, cancellationToken);
+                recognizedDate = null;
+            }
 
             return new PortfolioScreenshotImportResult
             {
@@ -129,7 +157,9 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
                 Message = $"识别完成：账户字段 {(account == null ? 0 : 4)} 项，股票记录 {positions.Count} 条",
                 Data = new PortfolioScreenshotImportResponse
                 {
+                    RecognizedDate = recognizedDate,
                     Account = account,
+                    BankFlow = bankFlow,
                     Positions = positions,
                     Warnings = warnings.Distinct().ToList()
                 }
@@ -399,6 +429,171 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         return null;
     }
 
+    private async Task<CompositeImportParseResult?> TryParseCompositeScreenshotAsync(
+        List<OcrToken> tokens,
+        DateTime importDate,
+        List<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        if (!TrySplitCompositeScreenshot(tokens, out var leftTokens, out var rightTokens))
+        {
+            return null;
+        }
+
+        var detailDate = ParseSelectedDetailDate(rightTokens) ?? importDate.Date;
+        warnings.Add(detailDate != importDate.Date
+            ? $"已按右侧明细日期 {detailDate:yyyy-MM-dd} 匹配左侧账户行并回填当日数据。"
+            : $"已识别右侧明细日期 {detailDate:yyyy-MM-dd}，并按该日期回填左侧账户与右侧流水。");
+
+        var accountRow = ParseSelectedAccountHistoryRow(leftTokens, detailDate, warnings);
+        var positions = await ParseDailyFlowPositionsAsync(rightTokens, detailDate, warnings, cancellationToken);
+        var dailyPnL = positions.Count > 0
+            ? positions.Sum(position => position.DailyPnL)
+            : ParseFlowSummaryDailyPnL(rightTokens) ?? 0;
+
+        if (accountRow == null && positions.Count == 0)
+        {
+            return null;
+        }
+
+        return new CompositeImportParseResult
+        {
+            Account = accountRow == null
+                ? null
+                : new PortfolioAccountImportResponse
+                {
+                    TotalAssets = accountRow.TotalAssets,
+                    PositionValue = accountRow.PositionValue,
+                    AvailableFunds = accountRow.AvailableFunds,
+                    DailyPnL = dailyPnL
+                },
+            BankFlow = accountRow != null && Math.Abs(accountRow.NetInflow) > 0.009m
+                ? new PortfolioBankFlowImportResponse
+                {
+                    Date = detailDate,
+                    FlowType = accountRow.NetInflow >= 0 ? "转入" : "转出",
+                    Amount = Math.Abs(accountRow.NetInflow),
+                    Remark = "图片识别导入"
+                }
+                : null,
+            RecognizedDate = detailDate,
+            Positions = positions
+        };
+    }
+
+    private static bool TrySplitCompositeScreenshot(
+        List<OcrToken> tokens,
+        out List<OcrToken> leftTokens,
+        out List<OcrToken> rightTokens)
+    {
+        leftTokens = [];
+        rightTokens = [];
+
+        var lines = GroupLines(tokens, 26f);
+        var flowHeaderLine = lines.FirstOrDefault(IsDailyFlowHeaderLine);
+        if (flowHeaderLine == null)
+        {
+            return false;
+        }
+
+        var stockHeaderCenter = FindHeaderCenter(flowHeaderLine, "证券名称");
+        if (stockHeaderCenter == null)
+        {
+            return false;
+        }
+
+        var splitX = stockHeaderCenter.Value - 120f;
+        if (splitX <= 0)
+        {
+            return false;
+        }
+
+        leftTokens = tokens.Where(token => token.CenterX < splitX).ToList();
+        rightTokens = tokens.Where(token => token.CenterX >= splitX).ToList();
+
+        if (leftTokens.Count == 0 || rightTokens.Count == 0)
+        {
+            return false;
+        }
+
+        return GroupLines(rightTokens, 26f).Any(IsDailyFlowHeaderLine);
+    }
+
+    private static AccountHistoryRow? ParseSelectedAccountHistoryRow(
+        List<OcrToken> tokens,
+        DateTime importDate,
+        List<string> warnings)
+    {
+        var lines = GroupLines(tokens, 26f);
+        var headerIndex = lines.FindIndex(IsAccountHistoryHeaderLine);
+        if (headerIndex < 0)
+        {
+            return null;
+        }
+
+        if (!TryBuildAccountHistoryLayout(lines[headerIndex], out var layout))
+        {
+            warnings.Add("账户汇总列表列位置识别失败，请确认截图左侧包含日期、总资产和账户余额列。");
+            return null;
+        }
+
+        var rows = new List<AccountHistoryRow>();
+        for (var i = headerIndex + 1; i < lines.Count; i++)
+        {
+            var line = lines[i];
+            if (line.Count == 0 || IsAccountHistoryHeaderLine(line))
+            {
+                continue;
+            }
+
+            if (!TryParseDateText(JoinTokensInRange(line, null, layout.DateRightBoundary), out var rowDate))
+            {
+                continue;
+            }
+
+            var numericValues = line
+                .Where(token => token.CenterX >= layout.DateRightBoundary && TryParseNumber(token.Text, out _))
+                .OrderBy(token => token.XMin)
+                .Select(token => ParseNumberOrZero(token.Text))
+                .ToList();
+
+            if (numericValues.Count < 4)
+            {
+                continue;
+            }
+
+            var row = new AccountHistoryRow
+            {
+                Date = rowDate.Date,
+                PositionValue = numericValues[^4],
+                TotalAssets = numericValues[^3],
+                NetInflow = numericValues[^2],
+                AvailableFunds = numericValues[^1]
+            };
+
+            if (row.PositionValue == 0 && row.TotalAssets == 0 && row.NetInflow == 0 && row.AvailableFunds == 0)
+            {
+                continue;
+            }
+
+            rows.Add(row);
+        }
+
+        if (rows.Count == 0)
+        {
+            warnings.Add("未识别到账户汇总列表中的有效日期行。");
+            return null;
+        }
+
+        var selectedRow = rows.FirstOrDefault(row => row.Date == importDate.Date) ?? rows[0];
+        if (selectedRow.Date != importDate.Date)
+        {
+            warnings.Add($"左侧账户汇总列表中未找到 {importDate:yyyy-MM-dd}，已改用 {selectedRow.Date:yyyy-MM-dd} 的数据。");
+        }
+
+        return selectedRow;
+    }
+
     private async Task<List<PortfolioPositionImportResponse>> ParseDailyFlowPositionsAsync(
         List<OcrToken> tokens,
         DateTime importDate,
@@ -437,18 +632,21 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
                 continue;
             }
 
+            var flowTexts = BuildFlowRowTexts(line, layout);
             var candidate = new FlowPositionCandidate
             {
                 StockCode = stockCode,
                 StockName = stockName,
-                DailyPnL = ExtractFirstNonPercentNumber(JoinTokensInRange(line, layout.NameRightBoundary, layout.DailyPnLRightBoundary)),
-                PositionQuantity = ParseIntOrZero(JoinTokensInRange(line, layout.DailyPnLRatioRightBoundary, layout.PositionQuantityRightBoundary)),
-                BuyQuantity = ParseIntOrZero(JoinTokensInRange(line, layout.PositionQuantityRightBoundary, layout.BuyQuantityRightBoundary)),
-                SellQuantity = ParseIntOrZero(JoinTokensInRange(line, layout.BuyQuantityRightBoundary, layout.SellQuantityRightBoundary)),
-                BuyPrice = ParseNumberOrZero(JoinTokensInRange(line, layout.SellQuantityRightBoundary, layout.BuyPriceRightBoundary)),
-                SellPrice = ParseNumberOrZero(JoinTokensInRange(line, layout.BuyPriceRightBoundary, layout.SellPriceRightBoundary)),
-                ClosePrice = ParseNumberOrZero(JoinTokensInRange(line, layout.SellPriceRightBoundary, null))
+                DailyPnL = ExtractFirstNonPercentNumber(flowTexts.DailyPnLText),
+                PositionQuantity = ParseIntOrZero(flowTexts.PositionQuantityText),
+                BuyQuantity = ParseIntOrZero(flowTexts.BuyQuantityText),
+                SellQuantity = ParseIntOrZero(flowTexts.SellQuantityText),
+                BuyPrice = ParseNumberOrZero(flowTexts.BuyPriceText),
+                SellPrice = ParseNumberOrZero(flowTexts.SellPriceText),
+                ClosePrice = ParseNumberOrZero(flowTexts.ClosePriceText)
             };
+
+            RepairMergedZeroFlowColumns(candidate, flowTexts);
 
             if (candidate.PositionQuantity == 0
                 && candidate.BuyQuantity == 0
@@ -773,6 +971,16 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             {
                 keywords.Add(name[..2]);
             }
+
+            if (name.Length >= 3)
+            {
+                keywords.Add(name[1..]);
+            }
+
+            if (name.Length >= 4)
+            {
+                keywords.Add(name[1..^1]);
+            }
         }
 
         return keywords
@@ -868,10 +1076,48 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         return text.Any(ch => char.IsLetterOrDigit(ch) || ch == '*' || IsChinese(ch));
     }
 
+    private static bool TryParseDateText(string text, out DateTime date)
+    {
+        date = default;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var match = Regex.Match(text, @"(?<year>\d{4})\D?(?<month>\d{1,2})\D?(?<day>\d{1,2})");
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        if (!int.TryParse(match.Groups["year"].Value, out var year)
+            || !int.TryParse(match.Groups["month"].Value, out var month)
+            || !int.TryParse(match.Groups["day"].Value, out var day))
+        {
+            return false;
+        }
+
+        try
+        {
+            date = new DateTime(year, month, day);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool IsDailyFlowHeaderLine(List<OcrToken> line)
     {
         var joined = NormalizeFlowHeaderText(string.Concat(line.Select(token => token.Text)));
         return DailyFlowHeaderHints.Count(header => joined.Contains(NormalizeFlowHeaderText(header), StringComparison.OrdinalIgnoreCase)) >= 4;
+    }
+
+    private static bool IsAccountHistoryHeaderLine(List<OcrToken> line)
+    {
+        var joined = NormalizeFlowHeaderText(string.Concat(line.Select(token => token.Text)));
+        return AccountHistoryHeaderHints.Count(header => joined.Contains(NormalizeFlowHeaderText(header), StringComparison.OrdinalIgnoreCase)) >= 3;
     }
 
     private static bool TryBuildFlowColumnLayout(List<OcrToken> headerLine, out FlowColumnLayout layout)
@@ -901,6 +1147,14 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         }
 
         layout.NameRightBoundary = GetMidPoint(stockNameCenter.Value, dailyPnLCenter.Value);
+        layout.DailyPnLCenter = dailyPnLCenter.Value;
+        layout.DailyPnLRatioCenter = dailyPnLRatioCenter ?? GetMidPoint(dailyPnLCenter.Value, positionQuantityCenter.Value);
+        layout.PositionQuantityCenter = positionQuantityCenter.Value;
+        layout.BuyQuantityCenter = buyQuantityCenter.Value;
+        layout.SellQuantityCenter = sellQuantityCenter.Value;
+        layout.BuyPriceCenter = buyPriceCenter.Value;
+        layout.SellPriceCenter = sellPriceCenter.Value;
+        layout.ClosePriceCenter = closePriceCenter.Value;
         layout.DailyPnLRightBoundary = dailyPnLRatioCenter != null
             ? GetMidPoint(dailyPnLCenter.Value, dailyPnLRatioCenter.Value)
             : GetMidPoint(dailyPnLCenter.Value, positionQuantityCenter.Value);
@@ -912,6 +1166,29 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         layout.SellQuantityRightBoundary = GetMidPoint(sellQuantityCenter.Value, buyPriceCenter.Value);
         layout.BuyPriceRightBoundary = GetMidPoint(buyPriceCenter.Value, sellPriceCenter.Value);
         layout.SellPriceRightBoundary = GetMidPoint(sellPriceCenter.Value, closePriceCenter.Value);
+
+        return true;
+    }
+
+    private static bool TryBuildAccountHistoryLayout(List<OcrToken> headerLine, out AccountHistoryColumnLayout layout)
+    {
+        layout = new AccountHistoryColumnLayout();
+
+        var dateCenter = FindHeaderCenter(headerLine, "日期");
+        var feeCenter = FindHeaderCenter(headerLine, "费用合计");
+        var positionValueCenter = FindHeaderCenter(headerLine, "市值");
+        var totalAssetsCenter = FindHeaderCenter(headerLine, "总资产");
+
+        if (dateCenter == null
+            || positionValueCenter == null
+            || totalAssetsCenter == null)
+        {
+            return false;
+        }
+
+        layout.DateRightBoundary = feeCenter != null
+            ? GetMidPoint(dateCenter.Value, feeCenter.Value)
+            : GetMidPoint(dateCenter.Value, positionValueCenter.Value);
 
         return true;
     }
@@ -965,6 +1242,146 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         return Regex.Replace(text, @"[\s:：·\.\-_/]+", string.Empty);
     }
 
+    private static decimal? ParseFlowSummaryDailyPnL(List<OcrToken> tokens)
+    {
+        var summaryLine = GroupLines(tokens, 26f)
+            .FirstOrDefault(line =>
+                line.Any(token => token.Text.Contains("当日盈亏", StringComparison.OrdinalIgnoreCase))
+                && line.Any(token => TryParseNumber(token.Text, out _)));
+
+        if (summaryLine == null)
+        {
+            return null;
+        }
+
+        var labelIndex = summaryLine.FindIndex(token => token.Text.Contains("当日盈亏", StringComparison.OrdinalIgnoreCase));
+        var text = labelIndex >= 0
+            ? string.Concat(summaryLine.Skip(labelIndex).Select(token => token.Text))
+            : string.Concat(summaryLine.Select(token => token.Text));
+
+        return ExtractFirstNonPercentNumber(text);
+    }
+
+    private static FlowRowText BuildFlowRowTexts(List<OcrToken> line, FlowColumnLayout layout)
+    {
+        var texts = new FlowRowText();
+        var flowTokens = line
+            .Where(token => token.CenterX >= layout.NameRightBoundary)
+            .OrderBy(token => token.XMin)
+            .ToList();
+
+        var buckets = new Dictionary<string, List<OcrToken>>
+        {
+            ["dailyPnL"] = [],
+            ["dailyPnLRatio"] = [],
+            ["positionQuantity"] = [],
+            ["buyQuantity"] = [],
+            ["sellQuantity"] = [],
+            ["buyPrice"] = [],
+            ["sellPrice"] = [],
+            ["closePrice"] = []
+        };
+
+        foreach (var token in flowTokens)
+        {
+            var key = GetNearestFlowColumnKey(token.CenterX, layout);
+            buckets[key].Add(token);
+        }
+
+        texts.DailyPnLText = string.Concat(buckets["dailyPnL"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.DailyPnLRatioText = string.Concat(buckets["dailyPnLRatio"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.PositionQuantityText = string.Concat(buckets["positionQuantity"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.BuyQuantityText = string.Concat(buckets["buyQuantity"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.SellQuantityText = string.Concat(buckets["sellQuantity"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.BuyPriceText = string.Concat(buckets["buyPrice"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.SellPriceText = string.Concat(buckets["sellPrice"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.ClosePriceText = string.Concat(buckets["closePrice"].OrderBy(token => token.XMin).Select(token => token.Text));
+
+        return texts;
+    }
+
+    private static string GetNearestFlowColumnKey(float centerX, FlowColumnLayout layout)
+    {
+        var centers = new Dictionary<string, float>
+        {
+            ["dailyPnL"] = layout.DailyPnLCenter,
+            ["dailyPnLRatio"] = layout.DailyPnLRatioCenter,
+            ["positionQuantity"] = layout.PositionQuantityCenter,
+            ["buyQuantity"] = layout.BuyQuantityCenter,
+            ["sellQuantity"] = layout.SellQuantityCenter,
+            ["buyPrice"] = layout.BuyPriceCenter,
+            ["sellPrice"] = layout.SellPriceCenter,
+            ["closePrice"] = layout.ClosePriceCenter
+        };
+
+        return centers
+            .OrderBy(pair => Math.Abs(pair.Value - centerX))
+            .First()
+            .Key;
+    }
+
+    private static void RepairMergedZeroFlowColumns(FlowPositionCandidate candidate, FlowRowText texts)
+    {
+        if (candidate.PositionQuantity == 0
+            && candidate.BuyPrice == 0
+            && candidate.SellQuantity == 0
+            && TrySplitMergedZeroQuantity(texts.BuyQuantityText, out var positionQuantity, out var buyQuantity))
+        {
+            candidate.PositionQuantity = positionQuantity;
+            candidate.BuyQuantity = buyQuantity;
+        }
+
+        if (candidate.PositionQuantity == 0
+            && candidate.SellPrice == 0
+            && candidate.BuyQuantity == 0
+            && TrySplitMergedZeroQuantity(texts.SellQuantityText, out var recoveredPositionQuantity, out var sellQuantity))
+        {
+            candidate.PositionQuantity = recoveredPositionQuantity;
+            candidate.SellQuantity = sellQuantity;
+        }
+    }
+
+    private static bool TrySplitMergedZeroQuantity(string text, out int leftValue, out int rightValue)
+    {
+        leftValue = 0;
+        rightValue = 0;
+
+        var digits = Regex.Replace(text ?? string.Empty, "[^0-9]", string.Empty);
+        if (digits.Length < 2 || digits[^1] != '0')
+        {
+            return false;
+        }
+
+        if (!int.TryParse(digits[..^1], out leftValue)
+            || !int.TryParse(digits[^1..], out rightValue))
+        {
+            leftValue = 0;
+            rightValue = 0;
+            return false;
+        }
+
+        return leftValue > 0;
+    }
+
+    private static DateTime? ParseSelectedDetailDate(List<OcrToken> tokens)
+    {
+        var line = GroupLines(tokens, 26f)
+            .FirstOrDefault(candidate => candidate.Any(token => TryParseDateText(token.Text, out _))
+                || TryParseDateText(string.Concat(candidate.Select(token => token.Text)), out _));
+
+        if (line == null)
+        {
+            return null;
+        }
+
+        if (TryParseDateText(string.Concat(line.Select(token => token.Text)), out var date))
+        {
+            return date.Date;
+        }
+
+        return null;
+    }
+
     private static bool TryGetFlowIdentity(
         List<OcrToken> leftTokens,
         out string stockCode,
@@ -984,6 +1401,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             stockCode = NormalizeStockCode(codeToken.Text);
         }
 
+        var hasLongNameToken = leftTokens.Any(token => NormalizeStockName(token.Text).Length >= 2);
         var stockNameParts = new List<string>();
         foreach (var token in leftTokens)
         {
@@ -995,6 +1413,11 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
                     stockNameParts.Add(strippedName);
                 }
 
+                continue;
+            }
+
+            if (hasLongNameToken && NormalizeStockName(token.Text).Length == 1)
+            {
                 continue;
             }
 
@@ -1179,9 +1602,43 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         public decimal ClosePrice { get; set; }
     }
 
+    private sealed class AccountHistoryRow
+    {
+        public DateTime Date { get; set; }
+        public decimal PositionValue { get; set; }
+        public decimal TotalAssets { get; set; }
+        public decimal NetInflow { get; set; }
+        public decimal AvailableFunds { get; set; }
+    }
+
+    private sealed class AccountHistoryColumnLayout
+    {
+        public float DateRightBoundary { get; set; }
+        public float FeeRightBoundary { get; set; }
+        public float PositionValueRightBoundary { get; set; }
+        public float TotalAssetsRightBoundary { get; set; }
+        public float NetInflowRightBoundary { get; set; }
+    }
+
+    private sealed class CompositeImportParseResult
+    {
+        public DateTime? RecognizedDate { get; set; }
+        public PortfolioAccountImportResponse? Account { get; set; }
+        public PortfolioBankFlowImportResponse? BankFlow { get; set; }
+        public List<PortfolioPositionImportResponse> Positions { get; set; } = [];
+    }
+
     private sealed class FlowColumnLayout
     {
         public float NameRightBoundary { get; set; }
+        public float DailyPnLCenter { get; set; }
+        public float DailyPnLRatioCenter { get; set; }
+        public float PositionQuantityCenter { get; set; }
+        public float BuyQuantityCenter { get; set; }
+        public float SellQuantityCenter { get; set; }
+        public float BuyPriceCenter { get; set; }
+        public float SellPriceCenter { get; set; }
+        public float ClosePriceCenter { get; set; }
         public float DailyPnLRightBoundary { get; set; }
         public float DailyPnLRatioRightBoundary { get; set; }
         public float PositionQuantityRightBoundary { get; set; }
@@ -1189,5 +1646,17 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         public float SellQuantityRightBoundary { get; set; }
         public float BuyPriceRightBoundary { get; set; }
         public float SellPriceRightBoundary { get; set; }
+    }
+
+    private sealed class FlowRowText
+    {
+        public string DailyPnLText { get; set; } = string.Empty;
+        public string DailyPnLRatioText { get; set; } = string.Empty;
+        public string PositionQuantityText { get; set; } = string.Empty;
+        public string BuyQuantityText { get; set; } = string.Empty;
+        public string SellQuantityText { get; set; } = string.Empty;
+        public string BuyPriceText { get; set; } = string.Empty;
+        public string SellPriceText { get; set; } = string.Empty;
+        public string ClosePriceText { get; set; } = string.Empty;
     }
 }

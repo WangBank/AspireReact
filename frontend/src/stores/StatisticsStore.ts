@@ -42,6 +42,14 @@ export class StatisticsStore {
         this.startDate = this.formatDate(new Date(today.getFullYear(), today.getMonth(), 1));
         this.endDate = this.formatDate(today);
         break;
+      case 'year':
+        this.startDate = this.formatDate(new Date(today.getFullYear(), 0, 1));
+        this.endDate = this.formatDate(today);
+        break;
+      case 'all':
+        this.startDate = '';
+        this.endDate = '';
+        break;
       case 'custom':
         // 不自动设置，保留用户选择
         break;

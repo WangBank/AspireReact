@@ -44,7 +44,7 @@ export interface StatisticsApiResponse {
 }
 
 export type PnLFilter = 'all' | 'profit' | 'loss';
-export type DateFilterType = 'today' | 'week' | 'month' | 'custom';
+export type DateFilterType = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
 
 export class StatisticsService {
   private getAuthHeaders(): HeadersInit {

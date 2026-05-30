@@ -23,6 +23,13 @@
   margin-bottom: 16px;
 }
 
+.image-import-panel__header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .image-import-panel__title {
   margin: 0;
   font-size: 18px;
@@ -46,6 +53,18 @@
   font-weight: 600;
 }
 
+.image-import-panel__clear {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  border: 1px solid #d6c39b;
+  border-radius: 10px;
+  background: #fff7e6;
+  color: #8a5b12;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.image-import-panel__clear:disabled,
 .image-import-panel__save:disabled {
   opacity: 0.65;
   cursor: not-allowed;
@@ -93,6 +112,46 @@
   border-radius: 10px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
+}
+
+.image-import-panel__preview {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.image-import-panel__preview-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.image-import-panel__preview-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.image-import-panel__preview-tip {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.image-import-panel__preview-image {
+  display: block;
+  width: 100%;
+  max-height: 520px;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
 }
 
 .image-import-panel__warnings {
@@ -318,7 +377,9 @@
     flex-direction: column;
   }
 
+  .image-import-panel__header-actions,
   .image-import-panel__save,
+  .image-import-panel__clear,
   .unified-submit-all > button {
     width: 100%;
   }

@@ -118,7 +118,7 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
         {/* Brand */}
         <NavLink to="/dashboard" className="navbar-brand">
           <div className="navbar-brand__icon">S</div>
-          <span className="navbar-brand__text">碎银录</span>
+          <span className="navbar-brand__text">心魔录</span>
         </NavLink>
 
         {/* Nav Links */}

@@ -19,7 +19,9 @@ public class PortfolioScreenshotImportRequest
 /// </summary>
 public class PortfolioScreenshotImportResponse
 {
+    public DateTime? RecognizedDate { get; set; }
     public PortfolioAccountImportResponse? Account { get; set; }
+    public PortfolioBankFlowImportResponse? BankFlow { get; set; }
     public List<PortfolioPositionImportResponse> Positions { get; set; } = new();
     public List<string> Warnings { get; set; } = new();
 }
@@ -33,6 +35,17 @@ public class PortfolioAccountImportResponse
     public decimal PositionValue { get; set; }
     public decimal AvailableFunds { get; set; }
     public decimal DailyPnL { get; set; }
+}
+
+/// <summary>
+/// 识别出的银证流水数据
+/// </summary>
+public class PortfolioBankFlowImportResponse
+{
+    public DateTime Date { get; set; }
+    public string FlowType { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public string? Remark { get; set; }
 }
 
 /// <summary>
