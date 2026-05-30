@@ -1,6 +1,10 @@
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
+import type { StatisticsSortField } from '../stores/StatisticsStore';
+import SortableHeader from '../components/Table/SortableHeader';
+import TablePagination from '../components/Table/TablePagination';
+import StockPnLLeaderboard from '../components/StockPnLLeaderboard';
 import StockLink from '../components/StockLink';
 import './StatisticsPage.css';
 
@@ -19,7 +23,7 @@ const PNL_FILTERS = [
 ] as const;
 
 const StatisticsPage = observer(() => {
-  const { statisticsStore: store } = useStore();
+  const { statisticsStore: store, stockLeaderboardStore } = useStore();
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
 
@@ -41,7 +45,8 @@ const StatisticsPage = observer(() => {
   };
 
   const handleRefresh = () => {
-    store.fetch();
+    void store.fetch();
+    void stockLeaderboardStore.fetch(true);
   };
 
   const dateRangeText = store.startDate && store.endDate
@@ -58,31 +63,31 @@ const StatisticsPage = observer(() => {
         label: '总盈亏',
         value: store.formatMoney(d.totalPnL),
         sub: '当前统计区间累计结果',
-        positive: d.totalPnL >= 0,
+        tone: d.totalPnL >= 0 ? 'positive' : 'negative',
       },
       {
         label: '银证转账汇总',
         value: store.formatMoney(d.netBankFlow),
         sub: '转入减转出',
-        positive: d.netBankFlow >= 0,
+        tone: d.netBankFlow >= 0 ? 'positive' : 'negative',
       },
       {
         label: '银证转入汇总',
         value: store.formatMoney(d.totalBankInflow),
         sub: '当前统计区间转入金额',
-        positive: d.totalBankInflow >= 0,
+        tone: 'positive',
       },
       {
         label: '银证转出汇总',
         value: store.formatMoney(d.totalBankOutflow),
         sub: '当前统计区间转出金额',
-        positive: d.totalBankOutflow >= 0,
+        tone: 'negative',
       },
       {
         label: '当前总额',
         value: store.formatMoney(d.currentTotalAmount),
         sub: '最近账户资金记录总资产',
-        positive: d.currentTotalAmount >= 0,
+        tone: d.currentTotalAmount >= 0 ? 'positive' : 'negative',
       },
     ];
 
@@ -93,7 +98,7 @@ const StatisticsPage = observer(() => {
             <p className="sp-card-label">{c.label}</p>
             <p
               className={`sp-card-value ${
-                c.positive ? 'sp-card-value--positive' : 'sp-card-value--negative'
+                c.tone === 'positive' ? 'sp-card-value--positive' : 'sp-card-value--negative'
               }`}
             >
               {c.value}
@@ -106,7 +111,7 @@ const StatisticsPage = observer(() => {
   };
 
   const renderByStockTable = () => {
-    const list = store.filteredByStock;
+    const list = store.pagedByStock;
     if (list.length === 0) {
       return (
         <div className="sp-section">
@@ -123,10 +128,18 @@ const StatisticsPage = observer(() => {
           <table className="sp-table">
             <thead>
               <tr>
-                <th>心魔代码</th>
-                <th>心魔名称</th>
-                <th>板块</th>
-                <th className="sp-num">累计盈亏</th>
+                <SortableHeader field={'stockCode' as StatisticsSortField} currentField={store.stockSortField} currentOrder={store.stockSortOrder} onSort={store.toggleStockSort}>
+                  心魔代码
+                </SortableHeader>
+                <SortableHeader field={'stockName' as StatisticsSortField} currentField={store.stockSortField} currentOrder={store.stockSortOrder} onSort={store.toggleStockSort}>
+                  心魔名称
+                </SortableHeader>
+                <SortableHeader field={'board' as StatisticsSortField} currentField={store.stockSortField} currentOrder={store.stockSortOrder} onSort={store.toggleStockSort}>
+                  板块
+                </SortableHeader>
+                <SortableHeader field={'totalCumulativePnL' as StatisticsSortField} currentField={store.stockSortField} currentOrder={store.stockSortOrder} onSort={store.toggleStockSort} className="sp-num">
+                  累计盈亏
+                </SortableHeader>
               </tr>
             </thead>
             <tbody>
@@ -150,6 +163,12 @@ const StatisticsPage = observer(() => {
             </tbody>
           </table>
         </div>
+        <TablePagination
+          page={store.stockPage}
+          totalPages={store.byStockTotalPages}
+          totalItems={store.filteredByStock.length}
+          onPageChange={store.setStockPage}
+        />
       </div>
     );
   };
@@ -243,6 +262,8 @@ const StatisticsPage = observer(() => {
 
         {/* 按心魔汇总表格 */}
         {!store.loading && !store.error && store.data && renderByStockTable()}
+
+        {!store.loading && !store.error && <StockPnLLeaderboard />}
 
         {/* 空状态 */}
         {!store.loading && !store.error && !store.data && (

@@ -23,11 +23,11 @@
 }
 
 .stats-card--gain {
-  border-left: 4px solid #22c55e;
+  border-left: 4px solid #ef4444;
 }
 
 .stats-card--loss {
-  border-left: 4px solid #ef4444;
+  border-left: 4px solid #22c55e;
 }
 
 .stats-card__label {
@@ -45,9 +45,9 @@
 }
 
 .stats-card--gain .stats-card__value {
-  color: #22c55e;
+  color: #ef4444;
 }
 
 .stats-card--loss .stats-card__value {
-  color: #ef4444;
+  color: #22c55e;
 }

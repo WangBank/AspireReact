@@ -1,6 +1,9 @@
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
+import type { BankFlowSortField } from '../stores/BankFlowListStore';
+import SortableHeader from '../components/Table/SortableHeader';
+import TablePagination from '../components/Table/TablePagination';
 import { extractDatePart } from '../utils/date';
 import './BankFlowListPage.css';
 
@@ -34,46 +37,8 @@ const BankFlowListPage = observer(() => {
   const formatMoney = (val: number) =>
     new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(val);
 
-  const renderPagination = () => {
-    const tp = store.totalPages;
-    const pages: (number | string)[] = [];
-    if (tp <= 7) {
-      for (let i = 1; i <= tp; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (store.page > 3) pages.push('...');
-      const s = Math.max(2, store.page - 1);
-      const e = Math.min(tp - 1, store.page + 1);
-      for (let i = s; i <= e; i++) pages.push(i);
-      if (store.page < tp - 2) pages.push('...');
-      pages.push(tp);
-    }
-    return (
-      <div className="bflp-pagination">
-        <button disabled={store.page <= 1} onClick={() => store.setPage(store.page - 1)}>
-          ‹ 上一页
-        </button>
-        {pages.map((p, i) =>
-          p === '...' ? (
-            <span key={`e-${i}`} className="bflp-pagination__ellipsis">…</span>
-          ) : (
-            <button
-              key={p}
-              className={p === store.page ? 'bflp-pagination__active' : ''}
-              onClick={() => store.setPage(p as number)}
-            >
-              {p}
-            </button>
-          )
-        )}
-        <button disabled={store.page >= store.totalPages} onClick={() => store.setPage(store.page + 1)}>
-          下一页 ›
-        </button>
-        <span className="bflp-pagination__info">
-          共 {store.data.length} 条，第 {store.page}/{store.totalPages} 页
-        </span>
-      </div>
-    );
+  const handleSort = (field: BankFlowSortField) => {
+    store.toggleSort(field);
   };
 
   return (
@@ -128,10 +93,18 @@ const BankFlowListPage = observer(() => {
               <table className="bflp-table">
                 <thead>
                   <tr>
-                    <th>日期</th>
-                    <th>类型</th>
-                    <th className="bflp-num">金额</th>
-                    <th>备注</th>
+                    <SortableHeader field={'date' as BankFlowSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      日期
+                    </SortableHeader>
+                    <SortableHeader field={'flowType' as BankFlowSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      类型
+                    </SortableHeader>
+                    <SortableHeader field={'amount' as BankFlowSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="bflp-num">
+                      金额
+                    </SortableHeader>
+                    <SortableHeader field={'remark' as BankFlowSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      备注
+                    </SortableHeader>
                     <th>操作</th>
                   </tr>
                 </thead>
@@ -144,7 +117,12 @@ const BankFlowListPage = observer(() => {
                           {row.flowType}
                         </span>
                       </td>
-                      <td data-label="金额" className="bflp-num">{formatMoney(row.amount)}</td>
+                      <td
+                        data-label="金额"
+                        className={`bflp-num ${row.flowType === '转入' ? 'bflp-in' : 'bflp-out'}`}
+                      >
+                        {formatMoney(row.amount)}
+                      </td>
                       <td data-label="备注">{row.remark || '-'}</td>
                       <td data-label="操作">
                         {deleteConfirmId === row.id ? (
@@ -176,7 +154,12 @@ const BankFlowListPage = observer(() => {
                 </tbody>
               </table>
             </div>
-            {renderPagination()}
+            <TablePagination
+              page={store.page}
+              totalPages={store.totalPages}
+              totalItems={store.data.length}
+              onPageChange={store.setPage}
+            />
           </>
         )}
       </main>

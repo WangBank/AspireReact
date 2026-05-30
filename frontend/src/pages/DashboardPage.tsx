@@ -1,18 +1,24 @@
 import { observer } from 'mobx-react-lite';
 import { useEffect } from 'react';
 import { useStore } from '../stores/StoreProvider';
+import StockPnLLeaderboard from '../components/StockPnLLeaderboard';
 import StatsCards from '../components/Dashboard/StatsCards';
 import QuickEntry from '../components/Dashboard/QuickEntry';
 import RecentRecords from '../components/Dashboard/RecentRecords';
 import './DashboardPage.css';
 
 const DashboardPage = observer(() => {
-  const { dashboardStore } = useStore();
+  const { dashboardStore, stockLeaderboardStore } = useStore();
 
   const latestRecordDateText = dashboardStore.formatRecordDate(dashboardStore.latestRecordDate);
   const latestRecordDailyPnLText = dashboardStore.data
     ? dashboardStore.formatPnL(dashboardStore.latestRecordDailyPnL)
     : '--';
+
+  const handleRefresh = () => {
+    void dashboardStore.fetchDashboard();
+    void stockLeaderboardStore.fetch(true);
+  };
 
   useEffect(() => {
     dashboardStore.fetchDashboard();
@@ -47,7 +53,7 @@ const DashboardPage = observer(() => {
         </div>
         <button
           className="dashboard-refresh-btn"
-          onClick={() => dashboardStore.fetchDashboard()}
+          onClick={handleRefresh}
           disabled={dashboardStore.loading}
           type="button"
         >
@@ -68,7 +74,7 @@ const DashboardPage = observer(() => {
             <span>{dashboardStore.error}</span>
             <button
               className="dashboard-error__retry"
-              onClick={() => dashboardStore.fetchDashboard()}
+              onClick={handleRefresh}
               type="button"
             >
               重试
@@ -81,6 +87,7 @@ const DashboardPage = observer(() => {
             <StatsCards />
             <QuickEntry />
             <RecentRecords />
+            <StockPnLLeaderboard />
           </>
         )}
       </main>

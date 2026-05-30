@@ -2,8 +2,10 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../stores/StoreProvider';
-import type { UnifiedItemType, UnifiedListItem } from '../stores/UnifiedListStore';
+import type { UnifiedItemType, UnifiedListItem, UnifiedSortField } from '../stores/UnifiedListStore';
 import StockLink from '../components/StockLink';
+import SortableHeader from '../components/Table/SortableHeader';
+import TablePagination from '../components/Table/TablePagination';
 import './UnifiedListPage.css';
 
 const TYPE_OPTIONS: { value: 'account' | 'bankflow' | 'trade'; label: string }[] = [
@@ -50,6 +52,10 @@ const UnifiedListPage = observer(() => {
   const handleTypeChange = (val: 'account' | 'bankflow' | 'trade') => {
     resetSelectionState();
     store.setActiveType(val);
+  };
+
+  const handleSort = (field: UnifiedSortField) => {
+    store.toggleSort(field);
   };
 
   const handleSearch = () => {
@@ -140,26 +146,89 @@ const UnifiedListPage = observer(() => {
           aria-label="全选当前页"
         />
       </th>
-      <th
-        className="ulp-sortable"
-        onClick={() => store.toggleSort('date')}
+      <SortableHeader
+        field={'date' as UnifiedSortField}
+        currentField={store.sortField}
+        currentOrder={store.sortOrder}
+        onSort={handleSort}
       >
-        日期{store.sortField === 'date' ? (store.sortOrder === 'asc' ? ' ↑' : ' ↓') : ' ↕'}
-      </th>
+        日期
+      </SortableHeader>
       {isAccount && (
         <>
-          <th>备注</th>
-          <th className="ulp-num">总资产</th>
-          <th className="ulp-num">持仓市值</th>
-          <th className="ulp-num">可用资金</th>
-          <th className="ulp-num">当日盈亏</th>
+          <SortableHeader
+            field={'remark' as UnifiedSortField}
+            currentField={store.sortField}
+            currentOrder={store.sortOrder}
+            onSort={handleSort}
+          >
+            备注
+          </SortableHeader>
+          <SortableHeader
+            field={'totalAssets' as UnifiedSortField}
+            currentField={store.sortField}
+            currentOrder={store.sortOrder}
+            onSort={handleSort}
+            className="ulp-num"
+          >
+            总资产
+          </SortableHeader>
+          <SortableHeader
+            field={'positionValue' as UnifiedSortField}
+            currentField={store.sortField}
+            currentOrder={store.sortOrder}
+            onSort={handleSort}
+            className="ulp-num"
+          >
+            持仓市值
+          </SortableHeader>
+          <SortableHeader
+            field={'availableFunds' as UnifiedSortField}
+            currentField={store.sortField}
+            currentOrder={store.sortOrder}
+            onSort={handleSort}
+            className="ulp-num"
+          >
+            可用资金
+          </SortableHeader>
+          <SortableHeader
+            field={'dailyPnL' as UnifiedSortField}
+            currentField={store.sortField}
+            currentOrder={store.sortOrder}
+            onSort={handleSort}
+            className="ulp-num"
+          >
+            当日盈亏
+          </SortableHeader>
         </>
       )}
       {isBankFlow && (
         <>
-          <th>备注</th>
-          <th>流水类型</th>
-          <th className="ulp-num">金额</th>
+          <SortableHeader
+            field={'remark' as UnifiedSortField}
+            currentField={store.sortField}
+            currentOrder={store.sortOrder}
+            onSort={handleSort}
+          >
+            备注
+          </SortableHeader>
+          <SortableHeader
+            field={'flowType' as UnifiedSortField}
+            currentField={store.sortField}
+            currentOrder={store.sortOrder}
+            onSort={handleSort}
+          >
+            流水类型
+          </SortableHeader>
+          <SortableHeader
+            field={'amount' as UnifiedSortField}
+            currentField={store.sortField}
+            currentOrder={store.sortOrder}
+            onSort={handleSort}
+            className="ulp-num"
+          >
+            金额
+          </SortableHeader>
         </>
       )}
       <th>操作</th>
@@ -176,13 +245,65 @@ const UnifiedListPage = observer(() => {
           aria-label="全选当前页"
         />
       </th>
-      <th>代码</th>
-      <th>名称</th>
-      <th>板块</th>
-      <th>状态</th>
-      <th className="ulp-num">持仓盈亏</th>
-      <th className="ulp-num">持仓数量</th>
-      <th className="ulp-num">当日盈亏</th>
+      <SortableHeader
+        field={'stockCode' as UnifiedSortField}
+        currentField={store.sortField}
+        currentOrder={store.sortOrder}
+        onSort={handleSort}
+      >
+        代码
+      </SortableHeader>
+      <SortableHeader
+        field={'stockName' as UnifiedSortField}
+        currentField={store.sortField}
+        currentOrder={store.sortOrder}
+        onSort={handleSort}
+      >
+        名称
+      </SortableHeader>
+      <SortableHeader
+        field={'board' as UnifiedSortField}
+        currentField={store.sortField}
+        currentOrder={store.sortOrder}
+        onSort={handleSort}
+      >
+        板块
+      </SortableHeader>
+      <SortableHeader
+        field={'status' as UnifiedSortField}
+        currentField={store.sortField}
+        currentOrder={store.sortOrder}
+        onSort={handleSort}
+      >
+        状态
+      </SortableHeader>
+      <SortableHeader
+        field={'tradePositionValue' as UnifiedSortField}
+        currentField={store.sortField}
+        currentOrder={store.sortOrder}
+        onSort={handleSort}
+        className="ulp-num"
+      >
+        持仓盈亏
+      </SortableHeader>
+      <SortableHeader
+        field={'positionQuantity' as UnifiedSortField}
+        currentField={store.sortField}
+        currentOrder={store.sortOrder}
+        onSort={handleSort}
+        className="ulp-num"
+      >
+        持仓数量
+      </SortableHeader>
+      <SortableHeader
+        field={'dailyPnL' as UnifiedSortField}
+        currentField={store.sortField}
+        currentOrder={store.sortOrder}
+        onSort={handleSort}
+        className="ulp-num"
+      >
+        当日盈亏
+      </SortableHeader>
       <th>操作</th>
     </tr>
   );
@@ -249,7 +370,12 @@ const UnifiedListPage = observer(() => {
                 {item.flowType}
               </span>
             </td>
-            <td data-label="金额" className="ulp-num">{formatMoney(item.amount ?? 0)}</td>
+            <td
+              data-label="金额"
+              className={`ulp-num ${item.flowType === '转入' ? 'ulp-in' : 'ulp-out'}`}
+            >
+              {formatMoney(item.amount ?? 0)}
+            </td>
           </>
         )}
 
@@ -292,49 +418,6 @@ const UnifiedListPage = observer(() => {
       </td>
     </tr>
   );
-
-  const renderPagination = () => {
-    const tp = store.totalPages;
-    if (tp <= 1) return null;
-    const pages: (number | string)[] = [];
-    if (tp <= 7) {
-      for (let i = 1; i <= tp; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (store.page > 3) pages.push('...');
-      const s = Math.max(2, store.page - 1);
-      const e = Math.min(tp - 1, store.page + 1);
-      for (let i = s; i <= e; i++) pages.push(i);
-      if (store.page < tp - 2) pages.push('...');
-      pages.push(tp);
-    }
-    return (
-      <div className="ulp-pagination">
-        <button disabled={store.page <= 1} onClick={() => store.setPage(store.page - 1)}>
-          ‹ 上一页
-        </button>
-        {pages.map((p, i) =>
-          p === '...' ? (
-            <span key={`e-${i}`} className="ulp-pagination__ellipsis">…</span>
-          ) : (
-            <button
-              key={p}
-              className={p === store.page ? 'ulp-pagination__active' : ''}
-              onClick={() => store.setPage(p as number)}
-            >
-              {p}
-            </button>
-          )
-        )}
-        <button disabled={store.page >= store.totalPages} onClick={() => store.setPage(store.page + 1)}>
-          下一页 ›
-        </button>
-        <span className="ulp-pagination__info">
-          共 {store.totalCount} 条，第 {store.page}/{store.totalPages} 页
-        </span>
-      </div>
-    );
-  };
 
   return (
     <div className="ulp-container">
@@ -466,7 +549,12 @@ const UnifiedListPage = observer(() => {
                 </tbody>
               </table>
             </div>
-            {renderPagination()}
+            <TablePagination
+              page={store.page}
+              totalPages={store.totalPages}
+              totalItems={store.totalCount}
+              onPageChange={store.setPage}
+            />
           </>
         )}
 
@@ -492,7 +580,12 @@ const UnifiedListPage = observer(() => {
                 </section>
               ))}
             </div>
-            {renderPagination()}
+            <TablePagination
+              page={store.page}
+              totalPages={store.totalPages}
+              totalItems={store.totalCount}
+              onPageChange={store.setPage}
+            />
           </>
         )}
       </main>

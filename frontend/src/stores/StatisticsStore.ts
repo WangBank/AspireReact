@@ -1,6 +1,9 @@
 import { makeAutoObservable, runInAction } from 'mobx';
 import { statisticsService } from '../services/StatisticsService';
 import type { TradeSummaryResponse, PnLFilter, DateFilterType } from '../services/StatisticsService';
+import { clampPage, getTotalPages, nextSortState, paginateItems, sortItemsBy, type SortOrder } from '../utils/table';
+
+export type StatisticsSortField = 'stockCode' | 'stockName' | 'board' | 'totalCumulativePnL';
 
 export class StatisticsStore {
   // 筛选条件
@@ -10,6 +13,10 @@ export class StatisticsStore {
   stockCode = '';
   board = '';
   pnlFilter: PnLFilter = 'all';
+  stockSortField: StatisticsSortField = 'totalCumulativePnL';
+  stockSortOrder: SortOrder = 'desc';
+  stockPage = 1;
+  stockPageSize = 30;
 
   // 数据
   data: TradeSummaryResponse | null = null;
@@ -23,6 +30,7 @@ export class StatisticsStore {
   /** 设置日期筛选类型并自动计算日期范围 */
   setDateFilterType = (type: DateFilterType) => {
     this.dateFilterType = type;
+    this.stockPage = 1;
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
@@ -64,6 +72,7 @@ export class StatisticsStore {
     this.dateFilterType = 'custom';
     this.startDate = start;
     this.endDate = end;
+    this.stockPage = 1;
   };
 
   setStockCode = (code: string) => {
@@ -76,6 +85,7 @@ export class StatisticsStore {
 
   setPnlFilter = (filter: PnLFilter) => {
     this.pnlFilter = filter;
+    this.stockPage = 1;
   };
 
   /** 获取统计汇总数据 */
@@ -93,6 +103,7 @@ export class StatisticsStore {
 
       runInAction(() => {
         this.data = data;
+        this.stockPage = clampPage(this.stockPage, this.byStockTotalPages);
         this.loading = false;
       });
     } catch (err) {
@@ -107,12 +118,24 @@ export class StatisticsStore {
   get filteredByStock(): import('../services/StatisticsService').TradeSummaryItem[] {
     if (!this.data) return [];
     const list = this.data.byStock;
-    if (this.pnlFilter === 'all') return list;
-    return list.filter((item) => {
+    const filtered = this.pnlFilter === 'all' ? list : list.filter((item) => {
       const pnl = item.totalCumulativePnL;
       if (this.pnlFilter === 'profit') return pnl >= 0;
       return pnl < 0;
     });
+
+    const accessors: Record<StatisticsSortField, (item: import('../services/StatisticsService').TradeSummaryItem) => string | number> = {
+      stockCode: item => item.stockCode,
+      stockName: item => item.stockName,
+      board: item => item.board,
+      totalCumulativePnL: item => item.totalCumulativePnL,
+    };
+
+    return sortItemsBy(filtered, [
+      { getValue: accessors[this.stockSortField], order: this.stockSortOrder },
+      { getValue: item => item.totalCumulativePnL, order: 'desc' },
+      { getValue: item => item.stockCode, order: 'asc' },
+    ]);
   }
 
   /** 获取过滤后的按板块汇总列表 */
@@ -136,6 +159,25 @@ export class StatisticsStore {
   /** 判断盈亏正负 */
   isPnLPositive = (val: number): boolean => {
     return val >= 0;
+  };
+
+  get pagedByStock(): import('../services/StatisticsService').TradeSummaryItem[] {
+    return paginateItems(this.filteredByStock, this.stockPage, this.stockPageSize);
+  }
+
+  get byStockTotalPages(): number {
+    return getTotalPages(this.filteredByStock.length, this.stockPageSize);
+  }
+
+  toggleStockSort = (field: StatisticsSortField) => {
+    const nextState = nextSortState(this.stockSortField, this.stockSortOrder, field);
+    this.stockSortField = nextState.field;
+    this.stockSortOrder = nextState.order;
+    this.stockPage = 1;
+  };
+
+  setStockPage = (page: number) => {
+    this.stockPage = clampPage(page, this.byStockTotalPages);
   };
 
   private formatDate(date: Date): string {

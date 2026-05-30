@@ -1,9 +1,9 @@
 import { makeAutoObservable, runInAction } from 'mobx';
 import { accountService } from '../services/AccountService';
 import type { AccountDailyResponse } from '../services/AccountService';
+import { clampPage, getTotalPages, nextSortState, paginateItems, sortItemsBy, type SortOrder } from '../utils/table';
 
-export type SortField = 'date' | 'totalAssets' | 'dailyPnL';
-export type SortOrder = 'asc' | 'desc';
+export type SortField = 'date' | 'totalAssets' | 'positionValue' | 'availableFunds' | 'dailyPnL' | 'remark';
 
 export class AccountListStore {
   data: AccountDailyResponse[] = [];
@@ -31,6 +31,7 @@ export class AccountListStore {
       runInAction(() => {
         if (res.success) {
           this.data = res.data || [];
+          this.page = clampPage(this.page, this.totalPages);
         } else {
           this.error = res.message || '查询失败';
           this.data = [];
@@ -66,41 +67,38 @@ export class AccountListStore {
   };
 
   get sortedData(): AccountDailyResponse[] {
-    const { sortField, sortOrder } = this;
-    return [...this.data].sort((a, b) => {
-      let aVal: number | string = a[sortField];
-      let bVal: number | string = b[sortField];
-      if (sortField === 'date') {
-        aVal = new Date(a.date).getTime();
-        bVal = new Date(b.date).getTime();
-      }
-      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
+    const accessors: Record<SortField, (item: AccountDailyResponse) => string | number | Date | null | undefined> = {
+      date: item => new Date(item.date),
+      totalAssets: item => item.totalAssets,
+      positionValue: item => item.positionValue,
+      availableFunds: item => item.availableFunds,
+      dailyPnL: item => item.dailyPnL,
+      remark: item => item.remark,
+    };
+
+    return sortItemsBy(this.data, [
+      { getValue: accessors[this.sortField], order: this.sortOrder },
+      { getValue: item => new Date(item.date), order: 'desc' },
+      { getValue: item => item.id, order: 'desc' },
+    ]);
   }
 
   get pagedData(): AccountDailyResponse[] {
-    const sorted = this.sortedData;
-    const start = (this.page - 1) * this.pageSize;
-    return sorted.slice(start, start + this.pageSize);
+    return paginateItems(this.sortedData, this.page, this.pageSize);
   }
 
   get totalPages(): number {
-    return Math.max(1, Math.ceil(this.data.length / this.pageSize));
+    return getTotalPages(this.data.length, this.pageSize);
   }
 
   setPage = (p: number) => {
-    this.page = Math.max(1, Math.min(p, this.totalPages));
+    this.page = clampPage(p, this.totalPages);
   };
 
   toggleSort = (field: SortField) => {
-    if (this.sortField === field) {
-      this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
-    } else {
-      this.sortField = field;
-      this.sortOrder = 'desc';
-    }
+    const nextState = nextSortState(this.sortField, this.sortOrder, field);
+    this.sortField = nextState.field;
+    this.sortOrder = nextState.order;
     this.page = 1;
   };
 

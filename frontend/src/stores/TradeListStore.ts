@@ -1,9 +1,21 @@
 import { makeAutoObservable, runInAction } from 'mobx';
 import { tradeService } from '../services/TradeService';
-import type { StockTradeResponse, TradeListResponse } from '../services/TradeService';
+import type { StockTradeResponse } from '../services/TradeService';
+import { clampPage, getTotalPages, nextSortState, paginateItems, sortItemsBy, type SortOrder } from '../utils/table';
 
-export type TradeSortField = 'tradeDate' | 'stockCode' | 'buyPrice' | 'sellPrice' | 'positionPnL';
-export type TradeSortOrder = 'asc' | 'desc';
+export type TradeSortField =
+  | 'tradeDate'
+  | 'stockCode'
+  | 'stockName'
+  | 'board'
+  | 'status'
+  | 'buyPrice'
+  | 'buyQuantity'
+  | 'sellPrice'
+  | 'sellQuantity'
+  | 'positionPnL'
+  | 'cumulativePnL'
+  | 'tradeNote';
 
 export class TradeListStore {
   data: StockTradeResponse[] = [];
@@ -13,11 +25,10 @@ export class TradeListStore {
   tradeDate = '';
   board = '';
   sortField: TradeSortField = 'tradeDate';
-  sortOrder: TradeSortOrder = 'desc';
+  sortOrder: SortOrder = 'desc';
   page = 1;
   pageSize = 20;
   total = 0;
-  totalPages = 1;
 
   constructor() {
     makeAutoObservable(this);
@@ -27,21 +38,22 @@ export class TradeListStore {
     this.loading = true;
     this.error = null;
     try {
-      const res: TradeListResponse = await tradeService.query({
+      const res = await tradeService.query({
         stockCode: this.keyword || undefined,
         tradeDate: this.tradeDate || undefined,
         board: this.board || undefined,
-        page: this.page,
-        pageSize: this.pageSize,
+        page: 1,
+        pageSize: 5000,
       });
       runInAction(() => {
         if (res.success) {
           this.data = res.data || [];
-          this.total = res.total || 0;
-          this.totalPages = res.totalPages || 1;
+          this.total = res.data?.length || 0;
+          this.page = clampPage(this.page, this.totalPages);
         } else {
           this.error = res.message || '查询失败';
           this.data = [];
+          this.total = 0;
         }
         this.loading = false;
       });
@@ -50,6 +62,7 @@ export class TradeListStore {
         this.error = err instanceof Error ? err.message : '网络错误';
         this.loading = false;
         this.data = [];
+        this.total = 0;
       });
     }
   };
@@ -60,7 +73,8 @@ export class TradeListStore {
       return runInAction(() => {
         if (res.success) {
           this.data = this.data.filter((d) => d.id !== id);
-          this.total = Math.max(0, this.total - 1);
+          this.total = this.data.length;
+          this.page = clampPage(this.page, this.totalPages);
           return true;
         }
         this.error = res.message || '删除失败';
@@ -75,31 +89,41 @@ export class TradeListStore {
   };
 
   get sortedData(): StockTradeResponse[] {
-    const { sortField, sortOrder } = this;
-    return [...this.data].sort((a, b) => {
-      let aVal: number | string = a[sortField];
-      let bVal: number | string = b[sortField];
-      if (sortField === 'tradeDate') {
-        aVal = new Date(a.tradeDate).getTime();
-        bVal = new Date(b.tradeDate).getTime();
-      }
-      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
+    const accessors: Record<TradeSortField, (item: StockTradeResponse) => string | number | Date | null | undefined> = {
+      tradeDate: item => new Date(item.tradeDate),
+      stockCode: item => item.stockCode,
+      stockName: item => item.stockName,
+      board: item => item.board,
+      status: item => (item.isLiquidated || item.positionQuantity <= 0 ? 0 : 1),
+      buyPrice: item => item.buyPrice,
+      buyQuantity: item => item.buyQuantity,
+      sellPrice: item => item.sellPrice,
+      sellQuantity: item => item.sellQuantity,
+      positionPnL: item => item.positionPnL,
+      cumulativePnL: item => item.cumulativePnL,
+      tradeNote: item => item.tradeNote,
+    };
+
+    return sortItemsBy(this.data, [
+      { getValue: accessors[this.sortField], order: this.sortOrder },
+      { getValue: item => new Date(item.tradeDate), order: 'desc' },
+      { getValue: item => item.stockCode, order: 'asc' },
+      { getValue: item => item.id, order: 'desc' },
+    ]);
   }
 
   get displayedData(): StockTradeResponse[] {
-    return this.sortedData;
+    return paginateItems(this.sortedData, this.page, this.pageSize);
+  }
+
+  get totalPages(): number {
+    return getTotalPages(this.total, this.pageSize);
   }
 
   toggleSort = (field: TradeSortField) => {
-    if (this.sortField === field) {
-      this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
-    } else {
-      this.sortField = field;
-      this.sortOrder = 'desc';
-    }
+    const nextState = nextSortState(this.sortField, this.sortOrder, field);
+    this.sortField = nextState.field;
+    this.sortOrder = nextState.order;
     this.page = 1;
   };
 
@@ -111,7 +135,7 @@ export class TradeListStore {
   };
 
   setPage = (p: number) => {
-    this.page = Math.max(1, Math.min(p, this.totalPages));
+    this.page = clampPage(p, this.totalPages);
   };
 
   clearError = () => {

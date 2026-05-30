@@ -104,8 +104,8 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
 
     private static readonly Regex[] DatePatterns =
     [
-        new Regex(@"(?<year>(?:19|20)\d{2})\D+(?<month>0?[1-9]|1[0-2])\D+(?<day>0?[1-9]|[12]\d|3[01])", RegexOptions.Compiled),
-        new Regex(@"(?<year>(?:19|20)\d{2})(?<month>0[1-9]|1[0-2])(?<day>0[1-9]|[12]\d|3[01])", RegexOptions.Compiled)
+        new Regex(@"(?<!\d)(?<year>(?:19|20)\d{2})\D+(?<month>1[0-2]|0?[1-9])\D+(?<day>3[01]|[12]\d|0?[1-9])(?!\d)", RegexOptions.Compiled),
+        new Regex(@"(?<!\d)(?<year>(?:19|20)\d{2})(?<month>1[0-2]|0[1-9])(?<day>3[01]|[12]\d|0[1-9])(?!\d)", RegexOptions.Compiled)
     ];
     private static readonly Regex ThreeDecimalPriceRegex = new(@"\d+\.\d{2,3}", RegexOptions.Compiled);
 
@@ -654,7 +654,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             .ToList();
         var detailDateCandidate = FindSelectedDetailDateCandidate(rightTokens);
         if (detailDateCandidate != null
-            && TryMatchVisibleDateFromRawText(detailDateCandidate.RawText, visibleDates, out var correctedVisibleDate))
+            && TryMatchVisibleDateFromRawText(detailDateCandidate.RawText, visibleDates, importDate, out var correctedVisibleDate))
         {
             if (detailDateCandidate.Date.HasValue && detailDateCandidate.Date.Value.Date != correctedVisibleDate.Date)
             {
@@ -1862,6 +1862,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
     private static bool TryMatchVisibleDateFromRawText(
         string rawText,
         List<DateTime> visibleDates,
+        DateTime preferredDate,
         out DateTime matchedDate)
     {
         matchedDate = default;
@@ -1876,19 +1877,60 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             return false;
         }
 
+        var hasWeekdayHint = TryExtractWeekdayHint(rawText, out var weekdayHint);
+        var preferredDateValue = preferredDate.Date;
         var bestDate = default(DateTime);
         var bestDistance = int.MaxValue;
+        var bestWeekdayMatch = false;
+        var bestContainmentScore = -1;
+        var bestPreferredMatch = false;
         foreach (var visibleDate in visibleDates)
         {
             var candidateDigits = visibleDate.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
             var distance = ComputeBestDateTextDistance(normalized, candidateDigits);
-            if (distance >= bestDistance)
+            var weekdayMatch = hasWeekdayHint && visibleDate.DayOfWeek == weekdayHint;
+            var containmentScore = ComputeDateContainmentScore(normalized, candidateDigits);
+            var preferredMatch = visibleDate.Date == preferredDateValue;
+
+            if (distance > bestDistance)
             {
                 continue;
             }
 
+            if (distance == bestDistance)
+            {
+                if (weekdayMatch != bestWeekdayMatch)
+                {
+                    if (!weekdayMatch)
+                    {
+                        continue;
+                    }
+                }
+                else if (containmentScore != bestContainmentScore)
+                {
+                    if (containmentScore < bestContainmentScore)
+                    {
+                        continue;
+                    }
+                }
+                else if (preferredMatch != bestPreferredMatch)
+                {
+                    if (!preferredMatch)
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    continue;
+                }
+            }
+
             bestDistance = distance;
             bestDate = visibleDate.Date;
+            bestWeekdayMatch = weekdayMatch;
+            bestContainmentScore = containmentScore;
+            bestPreferredMatch = preferredMatch;
         }
 
         if (bestDistance > 2)
@@ -1898,6 +1940,55 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
 
         matchedDate = bestDate;
         return true;
+    }
+
+    private static bool TryExtractWeekdayHint(string rawText, out DayOfWeek weekday)
+    {
+        weekday = default;
+        if (string.IsNullOrWhiteSpace(rawText))
+        {
+            return false;
+        }
+
+        var match = Regex.Match(rawText, @"(?:星期|周)\s*(?<weekday>[一二三四五六日天])", RegexOptions.IgnoreCase);
+        if (!match.Success)
+        {
+            return false;
+        }
+
+        weekday = match.Groups["weekday"].Value switch
+        {
+            "一" => DayOfWeek.Monday,
+            "二" => DayOfWeek.Tuesday,
+            "三" => DayOfWeek.Wednesday,
+            "四" => DayOfWeek.Thursday,
+            "五" => DayOfWeek.Friday,
+            "六" => DayOfWeek.Saturday,
+            "日" or "天" => DayOfWeek.Sunday,
+            _ => default
+        };
+
+        return true;
+    }
+
+    private static int ComputeDateContainmentScore(string normalizedRawText, string candidateDigits)
+    {
+        if (string.IsNullOrEmpty(normalizedRawText) || string.IsNullOrEmpty(candidateDigits))
+        {
+            return 0;
+        }
+
+        if (candidateDigits.Contains(normalizedRawText, StringComparison.Ordinal))
+        {
+            return 2;
+        }
+
+        if (normalizedRawText.Contains(candidateDigits, StringComparison.Ordinal))
+        {
+            return 1;
+        }
+
+        return 0;
     }
 
     private static int ComputeBestDateTextDistance(string normalizedRawText, string candidateDigits)

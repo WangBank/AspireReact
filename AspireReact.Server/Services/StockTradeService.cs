@@ -354,7 +354,7 @@ public class StockTradeService : IStockTradeService
 
         // 分页
         var page = Math.Max(1, request.Page);
-        var pageSize = Math.Clamp(request.PageSize, 1, 100);
+        var pageSize = Math.Clamp(request.PageSize, 1, 5000);
         var items = await query
             .OrderByDescending(t => t.TradeDate)
             .ThenBy(t => t.StockCode)

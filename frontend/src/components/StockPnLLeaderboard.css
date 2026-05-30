@@ -1,0 +1,166 @@
+.spl-section {
+  width: 100%;
+}
+
+.spl-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.spl-state {
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.spl-state--error {
+  color: #b91c1c;
+}
+
+.spl-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.spl-panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.spl-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.spl-panel__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.spl-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.spl-panel__badge--gain {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+}
+
+.spl-panel__badge--loss {
+  background: rgba(22, 163, 74, 0.14);
+  color: #16a34a;
+}
+
+.spl-table-wrap {
+  overflow-x: auto;
+}
+
+.spl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  table-layout: fixed;
+}
+
+.spl-table th {
+  padding: 9px 10px;
+  text-align: left;
+  color: #6b7280;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.spl-table th.spl-num {
+  text-align: right;
+}
+
+.spl-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.spl-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.spl-table tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.spl-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+}
+
+.spl-positive {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.spl-negative {
+  color: #16a34a;
+  font-weight: 700;
+}
+
+.spl-empty {
+  padding: 24px 8px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.88rem;
+}
+
+.spl-board-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.spl-board-tag--主板 {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.spl-board-tag--创业板 {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.spl-board-tag--科创板 {
+  background: #fce7f3;
+  color: #be185d;
+}
+
+.spl-board-tag--北交所 {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+@media (max-width: 768px) {
+  .spl-grid {
+    grid-template-columns: 1fr;
+  }
+}

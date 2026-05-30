@@ -16,7 +16,7 @@
 
 .entry-page-subtitle {
   font-size: 0.875rem;
-  color: #94a3b8;
+  color: #64748b;
   margin: 0 0 2rem;
 }
 
@@ -45,7 +45,7 @@
 .form-label {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: #e2e8f0;
+  color: #334155;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -58,10 +58,10 @@
 .form-input {
   width: 100%;
   padding: 0.625rem 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid #cbd5e1;
   border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.06);
-  color: #ffffff;
+  background: #ffffff;
+  color: #0f172a;
   font-size: 0.9375rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   box-sizing: border-box;
@@ -69,7 +69,7 @@
 }
 
 .form-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
+  color: #94a3b8;
 }
 
 .form-input:focus {
@@ -83,17 +83,17 @@
 
 .form-error {
   font-size: 0.8125rem;
-  color: #fca5a5;
+  color: #b91c1c;
   margin-top: 0.125rem;
 }
 
 .form-textarea {
   width: 100%;
   padding: 0.625rem 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid #cbd5e1;
   border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.06);
-  color: #ffffff;
+  background: #ffffff;
+  color: #0f172a;
   font-size: 0.9375rem;
   font-family: inherit;
   resize: vertical;
@@ -103,7 +103,7 @@
 }
 
 .form-textarea::placeholder {
-  color: rgba(255, 255, 255, 0.3);
+  color: #94a3b8;
 }
 
 .form-textarea:focus {
@@ -112,18 +112,18 @@
 }
 
 .entry-error-banner {
-  background: rgba(220, 38, 38, 0.1);
+  background: #fef2f2;
   border-left: 4px solid #ef4444;
-  color: #fca5a5;
+  color: #991b1b;
   padding: 0.75rem 1rem;
   border-radius: 0.5rem;
   font-size: 0.875rem;
 }
 
 .entry-success-banner {
-  background: rgba(34, 197, 94, 0.1);
+  background: #f0fdf4;
   border-left: 4px solid #22c55e;
-  color: #86efac;
+  color: #166534;
   padding: 0.75rem 1rem;
   border-radius: 0.5rem;
   font-size: 0.875rem;
@@ -166,18 +166,18 @@
   gap: 0.5rem;
   cursor: pointer;
   padding: 0.5rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid #cbd5e1;
   border-radius: 0.5rem;
   transition: border-color 0.2s ease, background 0.2s ease;
 }
 
 .radio-label:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: #f8fafc;
 }
 
 .radio-label-active {
   border-color: #7c92f5;
-  background: rgba(124, 146, 245, 0.1);
+  background: #eef2ff;
 }
 
 .radio-input {
@@ -188,7 +188,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid #94a3b8;
   position: relative;
   flex-shrink: 0;
   transition: border-color 0.2s ease;
@@ -210,7 +210,7 @@
 }
 
 .radio-text {
-  color: #cbd5e0;
+  color: #475569;
   font-size: 0.875rem;
 }
 
@@ -220,7 +220,7 @@
 
 /* Fieldset */
 .form-fieldset {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid #dbe3ee;
   border-radius: 0.5rem;
   padding: 1rem;
   margin: 0;
@@ -229,7 +229,7 @@
 .fieldset-legend {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: #94a3b8;
+  color: #64748b;
   padding: 0 0.5rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -241,9 +241,9 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
-  background: rgba(124, 146, 245, 0.08);
+  background: #eef2ff;
   border-radius: 0.5rem;
-  border: 1px solid rgba(124, 146, 245, 0.2);
+  border: 1px solid #c7d2fe;
 }
 
 .selected-stock-code {
@@ -253,15 +253,15 @@
 }
 
 .selected-stock-name {
-  color: #e2e8f0;
+  color: #0f172a;
   font-size: 0.875rem;
 }
 
 .selected-stock-board {
   margin-left: auto;
   font-size: 0.75rem;
-  color: #94a3b8;
-  background: rgba(255, 255, 255, 0.06);
+  color: #64748b;
+  background: #f1f5f9;
   padding: 0.125rem 0.5rem;
   border-radius: 0.25rem;
 }
@@ -270,91 +270,5 @@
   .form-row {
     flex-direction: column;
     gap: 1.25rem;
-  }
-}
-
-@media (prefers-color-scheme: light) {
-  .entry-page-subtitle {
-    color: #4a5568;
-  }
-
-  .form-label {
-    color: #2d3748;
-  }
-
-  .form-input,
-  .form-textarea {
-    border-color: rgba(0, 0, 0, 0.15);
-    background: rgba(0, 0, 0, 0.02);
-    color: #1a202c;
-  }
-
-  .form-input::placeholder,
-  .form-textarea::placeholder {
-    color: rgba(0, 0, 0, 0.3);
-  }
-
-  .entry-error-banner {
-    background: #fee;
-    color: #991b1b;
-  }
-
-  .entry-success-banner {
-    background: #f0fdf4;
-    color: #166534;
-  }
-
-  .form-error {
-    color: #991b1b;
-  }
-
-  .radio-label {
-    border-color: rgba(0, 0, 0, 0.15);
-  }
-
-  .radio-label:hover {
-    background: rgba(102, 126, 234, 0.06);
-  }
-
-  .radio-label-active {
-    background: rgba(102, 126, 234, 0.08);
-  }
-
-  .radio-custom {
-    border-color: rgba(0, 0, 0, 0.25);
-  }
-
-  .radio-text {
-    color: #4a5568;
-  }
-
-  .radio-label-active .radio-text {
-    color: #667eea;
-  }
-
-  .form-fieldset {
-    border-color: rgba(0, 0, 0, 0.12);
-  }
-
-  .fieldset-legend {
-    color: #4a5568;
-  }
-
-  .selected-stock-info {
-    background: rgba(102, 126, 234, 0.06);
-    border-color: rgba(102, 126, 234, 0.2);
-  }
-
-  .selected-stock-code {
-    color: #667eea;
-  }
-
-  .selected-stock-name {
-    color: #1a202c;
-  }
-
-  .selected-stock-board {
-    color: #718096;
-    background: rgba(0, 0, 0, 0.04);
   }
 }

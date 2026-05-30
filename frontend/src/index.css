@@ -3,7 +3,7 @@
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
+  color-scheme: light;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -42,6 +42,12 @@ h1 {
 button {
   font-family: inherit;
   cursor: pointer;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: #3b82f6;
+  color-scheme: light;
 }
 
 @media (prefers-reduced-motion: reduce) {

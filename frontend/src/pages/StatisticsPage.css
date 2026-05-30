@@ -402,12 +402,14 @@
   font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
 }
 
-.sp-positive {
+.sp-positive,
+.sp-table td.sp-positive {
   color: #dc2626;
   font-weight: 600;
 }
 
-.sp-negative {
+.sp-negative,
+.sp-table td.sp-negative {
   color: #16a34a;
   font-weight: 600;
 }
@@ -465,38 +467,17 @@
   .sp-table-wrap {
     margin: 0 -16px;
     padding: 0 16px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sp-table {
+    min-width: 720px;
+    table-layout: auto;
   }
 
   .sp-table th,
   .sp-table td {
     padding: 8px 10px;
-  }
-
-  /* Card layout for mobile */
-  .sp-table tr {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    margin-bottom: 10px;
-    padding: 10px;
-  }
-
-  .sp-table thead {
-    display: none;
-  }
-
-  .sp-table td {
-    display: flex;
-    justify-content: space-between;
-    padding: 4px 0;
-    border: none;
-  }
-
-  .sp-table td::before {
-    content: attr(data-label);
-    font-weight: 600;
-    color: #9ca3af;
-    font-size: 0.78rem;
+    white-space: nowrap;
   }
 }

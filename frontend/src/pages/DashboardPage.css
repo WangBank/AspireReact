@@ -60,11 +60,11 @@
 }
 
 .dashboard-insight-value--positive {
-  color: #16a34a;
+  color: #dc2626;
 }
 
 .dashboard-insight-value--negative {
-  color: #dc2626;
+  color: #16a34a;
 }
 
 .dashboard-refresh-btn {

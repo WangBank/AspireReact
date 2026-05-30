@@ -12,6 +12,7 @@ import { statisticsStore } from './StatisticsStore';
 import { notesStore } from './NotesStore';
 import { unifiedListStore } from './UnifiedListStore';
 import { configStore } from './ConfigStore';
+import { stockLeaderboardStore } from './StockLeaderboardStore';
 
 export class RootStore {
   weatherStore = weatherStore;
@@ -28,6 +29,7 @@ export class RootStore {
   statisticsStore = statisticsStore;
   notesStore = notesStore;
   configStore = configStore;
+  stockLeaderboardStore = stockLeaderboardStore;
 }
 
 export const rootStore = new RootStore();

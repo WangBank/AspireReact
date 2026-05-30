@@ -80,7 +80,13 @@ const RecentRecords = observer(() => {
                     <span className={`recent-item__tag recent-item__tag--${flow.flowType === '转入' ? 'in' : 'out'}`}>
                       {flow.flowType}
                     </span>
-                    <span className="recent-item__amount">¥{flow.amount.toFixed(2)}</span>
+                    <span
+                      className={`recent-item__amount recent-item__amount--${
+                        flow.flowType === '转入' ? 'in' : 'out'
+                      }`}
+                    >
+                      ¥{flow.amount.toFixed(2)}
+                    </span>
                   </div>
                   <div className="recent-item__meta">
                     <span>{formatDate(flow.date)}</span>

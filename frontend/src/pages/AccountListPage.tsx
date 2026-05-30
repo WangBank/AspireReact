@@ -2,6 +2,8 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import type { SortField } from '../stores/AccountListStore';
+import SortableHeader from '../components/Table/SortableHeader';
+import TablePagination from '../components/Table/TablePagination';
 import { extractDatePart } from '../utils/date';
 import './AccountListPage.css';
 
@@ -36,55 +38,8 @@ const AccountListPage = observer(() => {
     store.toggleSort(field);
   };
 
-  const sortIndicator = (field: SortField) => {
-    if (store.sortField !== field) return ' ↕';
-    return store.sortOrder === 'asc' ? ' ↑' : ' ↓';
-  };
-
   const formatMoney = (val: number) =>
     new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(val);
-
-  const renderPagination = () => {
-    const pages: number[] = [];
-    const tp = store.totalPages;
-    if (tp <= 7) {
-      for (let i = 1; i <= tp; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (store.page > 3) pages.push(-1);
-      const start = Math.max(2, store.page - 1);
-      const end = Math.min(tp - 1, store.page + 1);
-      for (let i = start; i <= end; i++) pages.push(i);
-      if (store.page < tp - 2) pages.push(-2);
-      pages.push(tp);
-    }
-    return (
-      <div className="alp-pagination">
-        <button disabled={store.page <= 1} onClick={() => store.setPage(store.page - 1)}>
-          ‹ 上一页
-        </button>
-        {pages.map((p, i) =>
-          p < 0 ? (
-            <span key={`e-${i}`} className="alp-pagination__ellipsis">…</span>
-          ) : (
-            <button
-              key={p}
-              className={p === store.page ? 'alp-pagination__active' : ''}
-              onClick={() => store.setPage(p)}
-            >
-              {p}
-            </button>
-          )
-        )}
-        <button disabled={store.page >= store.totalPages} onClick={() => store.setPage(store.page + 1)}>
-          下一页 ›
-        </button>
-        <span className="alp-pagination__info">
-          共 {store.data.length} 条，第 {store.page}/{store.totalPages} 页
-        </span>
-      </div>
-    );
-  };
 
   return (
     <div className="alp-container">
@@ -138,18 +93,24 @@ const AccountListPage = observer(() => {
               <table className="alp-table">
                 <thead>
                   <tr>
-                    <th className="alp-sortable" onClick={() => handleSort('date')}>
-                      日期{sortIndicator('date')}
-                    </th>
-                    <th className="alp-sortable" onClick={() => handleSort('totalAssets')}>
-                      总资产{sortIndicator('totalAssets')}
-                    </th>
-                    <th className="alp-sortable" onClick={() => handleSort('dailyPnL')}>
-                      当日盈亏{sortIndicator('dailyPnL')}
-                    </th>
-                    <th className="alp-num">持仓市值</th>
-                    <th className="alp-num">可用资金</th>
-                    <th>备注</th>
+                    <SortableHeader field={'date' as SortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      日期
+                    </SortableHeader>
+                    <SortableHeader field={'totalAssets' as SortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="alp-num">
+                      总资产
+                    </SortableHeader>
+                    <SortableHeader field={'dailyPnL' as SortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="alp-num">
+                      当日盈亏
+                    </SortableHeader>
+                    <SortableHeader field={'positionValue' as SortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="alp-num">
+                      持仓市值
+                    </SortableHeader>
+                    <SortableHeader field={'availableFunds' as SortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="alp-num">
+                      可用资金
+                    </SortableHeader>
+                    <SortableHeader field={'remark' as SortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      备注
+                    </SortableHeader>
                     <th>操作</th>
                   </tr>
                 </thead>
@@ -197,7 +158,12 @@ const AccountListPage = observer(() => {
                 </tbody>
               </table>
             </div>
-            {renderPagination()}
+            <TablePagination
+              page={store.page}
+              totalPages={store.totalPages}
+              totalItems={store.data.length}
+              onPageChange={store.setPage}
+            />
           </>
         )}
       </main>

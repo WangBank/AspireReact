@@ -2,6 +2,8 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import type { TradeSortField } from '../stores/TradeListStore';
+import SortableHeader from '../components/Table/SortableHeader';
+import TablePagination from '../components/Table/TablePagination';
 import StockLink from '../components/StockLink';
 import { extractDatePart } from '../utils/date';
 import './TradeListPage.css';
@@ -39,11 +41,6 @@ const TradeListPage = observer(() => {
     store.toggleSort(field);
   };
 
-  const sortIndicator = (field: TradeSortField) => {
-    if (store.sortField !== field) return '';
-    return store.sortOrder === 'asc' ? ' ↑' : ' ↓';
-  };
-
   const formatMoney = (val: number) =>
     new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' }).format(val);
 
@@ -52,49 +49,6 @@ const TradeListPage = observer(() => {
 
   const getTradeStatusClassName = (row: (typeof store.data)[number]) =>
     getTradeStatus(row) === '清仓' ? 'tlp-status-tag--liquidated' : 'tlp-status-tag--holding';
-
-  const renderPagination = () => {
-    if (store.totalPages <= 1) return null;
-    const tp = store.totalPages;
-    const pages: (number | string)[] = [];
-    if (tp <= 7) {
-      for (let i = 1; i <= tp; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (store.page > 3) pages.push('...');
-      const s = Math.max(2, store.page - 1);
-      const e = Math.min(tp - 1, store.page + 1);
-      for (let i = s; i <= e; i++) pages.push(i);
-      if (store.page < tp - 2) pages.push('...');
-      pages.push(tp);
-    }
-    return (
-      <div className="tlp-pagination">
-        <button disabled={store.page <= 1} onClick={() => store.setPage(store.page - 1)}>
-          ‹ 上一页
-        </button>
-        {pages.map((p, i) =>
-          p === '...' ? (
-            <span key={`e-${i}`} className="tlp-pagination__ellipsis">…</span>
-          ) : (
-            <button
-              key={p}
-              className={p === store.page ? 'tlp-pagination__active' : ''}
-              onClick={() => store.setPage(p as number)}
-            >
-              {p}
-            </button>
-          )
-        )}
-        <button disabled={store.page >= store.totalPages} onClick={() => store.setPage(store.page + 1)}>
-          下一页 ›
-        </button>
-        <span className="tlp-pagination__info">
-          共 {store.total} 条，第 {store.page}/{store.totalPages} 页
-        </span>
-      </div>
-    );
-  };
 
   return (
     <div className="tlp-container">
@@ -162,28 +116,42 @@ const TradeListPage = observer(() => {
               <table className="tlp-table">
                 <thead>
                   <tr>
-                    <th className="tlp-sortable" onClick={() => handleSort('tradeDate')}>
-                      日期{sortIndicator('tradeDate')}
-                    </th>
-                    <th className="tlp-sortable" onClick={() => handleSort('stockCode')}>
-                      代码{sortIndicator('stockCode')}
-                    </th>
-                    <th>名称</th>
-                    <th>板块</th>
-                    <th>状态</th>
-                    <th className="tlp-sortable" onClick={() => handleSort('buyPrice')}>
-                      买入价{sortIndicator('buyPrice')}
-                    </th>
-                    <th className="tlp-num">买入量</th>
-                    <th className="tlp-sortable" onClick={() => handleSort('sellPrice')}>
-                      卖出价{sortIndicator('sellPrice')}
-                    </th>
-                    <th className="tlp-num">卖出量</th>
-                    <th className="tlp-sortable" onClick={() => handleSort('positionPnL')}>
-                      持仓盈亏{sortIndicator('positionPnL')}
-                    </th>
-                    <th>累计盈亏</th>
-                    <th>备注</th>
+                    <SortableHeader field={'tradeDate' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      日期
+                    </SortableHeader>
+                    <SortableHeader field={'stockCode' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      代码
+                    </SortableHeader>
+                    <SortableHeader field={'stockName' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      名称
+                    </SortableHeader>
+                    <SortableHeader field={'board' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      板块
+                    </SortableHeader>
+                    <SortableHeader field={'status' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      状态
+                    </SortableHeader>
+                    <SortableHeader field={'buyPrice' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="tlp-num">
+                      买入价
+                    </SortableHeader>
+                    <SortableHeader field={'buyQuantity' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="tlp-num">
+                      买入量
+                    </SortableHeader>
+                    <SortableHeader field={'sellPrice' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="tlp-num">
+                      卖出价
+                    </SortableHeader>
+                    <SortableHeader field={'sellQuantity' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="tlp-num">
+                      卖出量
+                    </SortableHeader>
+                    <SortableHeader field={'positionPnL' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="tlp-num">
+                      持仓盈亏
+                    </SortableHeader>
+                    <SortableHeader field={'cumulativePnL' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="tlp-num">
+                      累计盈亏
+                    </SortableHeader>
+                    <SortableHeader field={'tradeNote' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      备注
+                    </SortableHeader>
                     <th>操作</th>
                   </tr>
                 </thead>
@@ -248,7 +216,12 @@ const TradeListPage = observer(() => {
                 </tbody>
               </table>
             </div>
-            {renderPagination()}
+            <TablePagination
+              page={store.page}
+              totalPages={store.totalPages}
+              totalItems={store.total}
+              onPageChange={store.setPage}
+            />
           </>
         )}
       </main>
