@@ -1,6 +1,7 @@
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
+import { GLOBAL_NOTE_TEMPLATES, mergeTemplateContent } from '../constants/noteTemplates';
 import './GlobalNotesPage.css';
 
 const GlobalNotesPage = observer(() => {
@@ -182,6 +183,25 @@ const GlobalNotesPage = observer(() => {
                   value={store.editStockCode}
                   onChange={(e) => { store.editStockCode = e.target.value; }}
                 />
+              </div>
+              <div className="gnp-form-group">
+                <label>复盘模板</label>
+                <div className="gnp-template-list">
+                  {GLOBAL_NOTE_TEMPLATES.map((template) => (
+                    <button
+                      key={template.key}
+                      type="button"
+                      className="gnp-template-btn"
+                      onClick={() => {
+                        store.editContent = mergeTemplateContent(store.editContent, template.content);
+                      }}
+                    >
+                      <span className="gnp-template-label">{template.label}</span>
+                      <span className="gnp-template-desc">{template.description}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="gnp-template-hint">点击后会把模板插入到内容区，不会覆盖已经写好的内容。</p>
               </div>
               <div className="gnp-form-group">
                 <label>内容 <span className="gnp-required">*</span></label>

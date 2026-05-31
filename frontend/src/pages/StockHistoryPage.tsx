@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import StockLink from '../components/StockLink';
 import TablePagination from '../components/Table/TablePagination';
+import TradeTagList from '../components/TradeTagList';
+import { noteService, type NoteResponse } from '../services/NoteService';
 import { tradeService, type StockTradeResponse } from '../services/TradeService';
 import { extractDatePart } from '../utils/date';
 import { clampPage, getTotalPages, paginateItems } from '../utils/table';
@@ -184,6 +186,9 @@ const StockHistoryPage = () => {
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [reloadKey, setReloadKey] = useState(0);
+  const [notes, setNotes] = useState<NoteResponse[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesError, setNotesError] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -219,6 +224,40 @@ const StockHistoryPage = () => {
 
     void load();
   }, [initialName, reloadKey, stockCode]);
+
+  useEffect(() => {
+    const loadNotes = async () => {
+      if (!stockCode) {
+        setNotes([]);
+        setNotesError('');
+        setNotesLoading(false);
+        return;
+      }
+
+      setNotesLoading(true);
+      setNotesError('');
+
+      try {
+        const response = await noteService.getByStockCode(stockCode);
+        if (!response.success) {
+          setNotes([]);
+          setNotesError(response.message || '加载相关笔记失败');
+          return;
+        }
+
+        setNotes((response.data || []).sort(
+          (left, right) => new Date(right.date).getTime() - new Date(left.date).getTime()
+        ));
+      } catch (loadNotesError) {
+        setNotes([]);
+        setNotesError(loadNotesError instanceof Error ? loadNotesError.message : '加载相关笔记失败');
+      } finally {
+        setNotesLoading(false);
+      }
+    };
+
+    void loadNotes();
+  }, [reloadKey, stockCode]);
 
   const { decoratedDescending, cyclesDescending } = buildTradeHistory(records);
   const latestRecord = records.length > 0 ? [...records].sort((left, right) => {
@@ -360,6 +399,36 @@ const StockHistoryPage = () => {
 
           <section className="shp-section">
             <div className="shp-section__header">
+              <h2 className="shp-section__title">相关笔记</h2>
+              <span className="shp-section__meta">
+                {notesLoading ? '加载中...' : `共 ${notes.length} 条`}
+              </span>
+            </div>
+            {notesError ? (
+              <div className="shp-notes-state shp-notes-state--error">{notesError}</div>
+            ) : notesLoading ? (
+              <div className="shp-notes-state">笔记加载中...</div>
+            ) : notes.length === 0 ? (
+              <div className="shp-notes-state">这只股票还没有关联笔记。</div>
+            ) : (
+              <div className="shp-notes-list">
+                {notes.map((note) => (
+                  <article className="shp-note-card" key={note.id}>
+                    <div className="shp-note-card__header">
+                      <span className="shp-note-card__date">{extractDatePart(note.date)}</span>
+                      <span className="shp-note-card__stamp">
+                        更新于 {extractDatePart(note.updatedAt || note.createdAt)}
+                      </span>
+                    </div>
+                    <div className="shp-note-card__content">{note.content}</div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="shp-section">
+            <div className="shp-section__header">
               <h2 className="shp-section__title">建仓清仓历史</h2>
               <span className="shp-section__meta">共 {cyclesDescending.length} 个周期</span>
             </div>
@@ -417,6 +486,7 @@ const StockHistoryPage = () => {
                     <th>日期</th>
                     <th>周期</th>
                     <th>动作</th>
+                    <th>标签</th>
                     <th className="shp-num">买入价</th>
                     <th className="shp-num">买入量</th>
                     <th className="shp-num">卖出价</th>
@@ -436,6 +506,9 @@ const StockHistoryPage = () => {
                         <span className={`shp-tag shp-tag--action-${record.action}`}>
                           {record.action}
                         </span>
+                      </td>
+                      <td data-label="标签">
+                        <TradeTagList tags={record.tradeTags} />
                       </td>
                       <td data-label="买入价" className="shp-num">{record.buyPrice > 0 ? record.buyPrice.toFixed(3) : '-'}</td>
                       <td data-label="买入量" className="shp-num">{record.buyQuantity > 0 ? record.buyQuantity.toLocaleString() : '-'}</td>

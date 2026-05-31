@@ -3,7 +3,7 @@ import { statisticsService } from '../services/StatisticsService';
 import type { TradeSummaryResponse, PnLFilter, DateFilterType } from '../services/StatisticsService';
 import { clampPage, getTotalPages, nextSortState, paginateItems, sortItemsBy, type SortOrder } from '../utils/table';
 
-export type StatisticsSortField = 'stockCode' | 'stockName' | 'board' | 'totalCumulativePnL';
+export type StatisticsSortField = 'stockCode' | 'stockName' | 'board' | 'totalCumulativePnL' | 'contributionRate';
 
 export class StatisticsStore {
   // 筛选条件
@@ -129,6 +129,7 @@ export class StatisticsStore {
       stockName: item => item.stockName,
       board: item => item.board,
       totalCumulativePnL: item => item.totalCumulativePnL,
+      contributionRate: item => item.contributionRate,
     };
 
     return sortItemsBy(filtered, [
@@ -157,6 +158,14 @@ export class StatisticsStore {
   };
 
   formatPercent = (val: number): string => `${(val * 100).toFixed(2)}%`;
+
+  formatNullablePercent = (val: number | null | undefined): string => {
+    if (val == null || Number.isNaN(val)) {
+      return '--';
+    }
+
+    return this.formatPercent(val);
+  };
 
   formatDate = (value: string | Date): string => {
     const date = value instanceof Date ? value : new Date(value);

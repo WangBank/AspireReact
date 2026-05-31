@@ -10,6 +10,7 @@ export interface TradeSummaryItem {
   totalPositionPnL: number;
   totalCumulativePnL: number;
   winRate: number;
+  contributionRate: number;
 }
 
 export interface PositionSummaryItem {
@@ -22,6 +23,8 @@ export interface PositionSummaryItem {
   positionPnL: number;
   dailyPnL: number;
   lastUpdateDate: string;
+  openDate: string | null;
+  holdingDays: number;
 }
 
 export interface DailyWinRateItem {
@@ -46,11 +49,94 @@ export interface DrawdownAnalysisItem {
   troughValue: number;
   drawdownAmount: number;
   drawdownRate: number;
+  recoveryDate: string | null;
+  recoveryDays: number | null;
+}
+
+export interface AdjustedReturnSummary {
+  returnRate: number | null;
+  startAssets: number;
+  endAssets: number;
+  netBankFlow: number;
+  weightedCapitalBase: number;
+}
+
+export interface DailyPnLHeatmapItem {
+  date: string;
+  dailyPnL: number;
+  totalAssets: number | null;
+  netBankFlow: number;
+  capitalUtilization: number | null;
+}
+
+export interface DayOutcomeSummary {
+  profitDays: number;
+  lossDays: number;
+  flatDays: number;
+  profitDayRate: number;
+  lossDayRate: number;
+  flatDayRate: number;
+}
+
+export interface StreakAnalysisSummary {
+  maxWinDays: number;
+  maxWinStartDate: string | null;
+  maxWinEndDate: string | null;
+  maxLossDays: number;
+  maxLossStartDate: string | null;
+  maxLossEndDate: string | null;
+}
+
+export interface CycleAnalysisSummary {
+  totalCycles: number;
+  closedCycles: number;
+  openCycles: number;
+  closedWinRate: number;
+  averageProfitPerCycle: number;
+  averageLossPerCycle: number;
+  averageHoldingDays: number;
+  maxProfitCyclePnL: number;
+  maxLossCyclePnL: number;
+}
+
+export interface TTradeAnalysisSummary {
+  tradeCount: number;
+  winCount: number;
+  loseCount: number;
+  winRate: number;
+  totalPnL: number;
+  averagePnL: number;
+}
+
+export interface CapitalAnalysisSummary {
+  latestUtilization: number | null;
+  averageUtilization: number | null;
+  maxUtilization: number | null;
+  dailyVolatility: number | null;
+}
+
+export interface PeriodPnLDistributionItem {
+  label: string;
+  startDate: string;
+  endDate: string;
+  totalPnL: number;
+}
+
+export interface BoardRotationItem {
+  board: string;
+  totalPnL: number;
+  contributionRate: number;
+  activeDays: number;
+  profitDays: number;
+  lossDays: number;
+  winDayRate: number;
 }
 
 export interface TradeSummaryResponse {
   totalTrades: number;
   totalPnL: number;
+  realizedPnL: number;
+  unrealizedPnL: number;
   netBankFlow: number;
   totalBankInflow: number;
   totalBankOutflow: number;
@@ -70,6 +156,17 @@ export interface TradeSummaryResponse {
   worstWinRateDay: DailyWinRateItem | null;
   bestProfitInterval: PnLIntervalAnalysisItem | null;
   maxDrawdownInterval: DrawdownAnalysisItem | null;
+  adjustedReturn: AdjustedReturnSummary | null;
+  dayOutcomes: DayOutcomeSummary | null;
+  streakAnalysis: StreakAnalysisSummary | null;
+  cycleAnalysis: CycleAnalysisSummary | null;
+  tTradeAnalysis: TTradeAnalysisSummary | null;
+  capitalAnalysis: CapitalAnalysisSummary | null;
+  dailyPnLHeatmap: DailyPnLHeatmapItem[];
+  weeklyPnL: PeriodPnLDistributionItem[];
+  monthlyPnL: PeriodPnLDistributionItem[];
+  quarterlyPnL: PeriodPnLDistributionItem[];
+  boardRotations: BoardRotationItem[];
 }
 
 export interface StatisticsApiResponse {

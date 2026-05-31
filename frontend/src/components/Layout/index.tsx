@@ -4,79 +4,22 @@ import { observer } from 'mobx-react-lite';
 import { useStore } from '../../stores/StoreProvider';
 import './Layout.css';
 
-const NAV_ITEMS = [
-  { label: '首页', path: '/dashboard', type: 'link' },
-  { label: '录入', type: 'link', path: '/entry/unified' },
-  { label: '数据列表', type: 'link', path: '/list/unified' },
-  { label: '统计', path: '/statistics', type: 'link' },
-  {
-    label: '笔记',
-    type: 'dropdown',
-    children: [
-      { label: '全局笔记', path: '/notes/global' },
-      { label: '心魔笔记', path: '/notes/stock' },
-      { label: '吾日三省吾身', path: '/notes/reflection' },
-    ],
-  },
-  { label: '设置', path: '/config', type: 'link' },
-] as const;
-
-const NavDropdown = observer(({ label, children }: {
+interface NavLinkItem {
   label: string;
-  children: { label: string; path: string }[];
-}) => {
-  const [open, setOpen] = useState(false);
-  const location = useLocation();
+  path: string;
+  type: 'link';
+}
 
-  const isActive = children.some((item) => location.pathname.startsWith(item.path));
-
-  useEffect(() => {
-    if (!open) return;
-
-    const handler = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.navbar-dropdown')) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  useEffect(() => {
-    setOpen(false);
-  }, [location.pathname]);
-
-  return (
-    <li className="navbar-dropdown">
-      <button
-        className={`navbar-link${isActive ? ' navbar-link--active' : ''}`}
-        onClick={() => setOpen((value) => !value)}
-        type="button"
-        aria-haspopup="true"
-        aria-expanded={open}
-      >
-        {label}
-        <span className={`navbar-link__arrow${open ? ' navbar-link__arrow--open' : ''}`}>▾</span>
-      </button>
-      {open && (
-        <div className="navbar-dropdown__menu">
-          {children.map((child) => (
-            <NavLink
-              key={child.path}
-              to={child.path}
-              className="navbar-dropdown__item"
-              onClick={() => setOpen(false)}
-            >
-              {child.label}
-            </NavLink>
-          ))}
-        </div>
-      )}
-    </li>
-  );
-});
+const NAV_ITEMS: NavLinkItem[] = [
+  { label: '首页', path: '/dashboard', type: 'link' },
+  { label: '录入', path: '/entry/unified', type: 'link' },
+  { label: '数据列表', path: '/list/unified', type: 'link' },
+  { label: '统计', path: '/statistics', type: 'link' },
+  { label: '全局笔记', path: '/notes/global', type: 'link' },
+  { label: '心魔笔记', path: '/notes/stock', type: 'link' },
+  { label: '吾日三省吾身', path: '/notes/reflection', type: 'link' },
+  { label: '设置', path: '/config', type: 'link' },
+];
 
 const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const { authStore } = useStore();
@@ -122,30 +65,18 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
           </NavLink>
 
           <ul className="navbar-links">
-            {NAV_ITEMS.map((item) => {
-              if (item.type === 'dropdown') {
-                return (
-                  <NavDropdown
-                    key={item.label}
-                    label={item.label}
-                    children={[...item.children]}
-                  />
-                );
-              }
-
-              return (
-                <li key={item.path}>
-                  <NavLink
-                    to={item.path}
-                    className={({ isActive }) =>
-                      `navbar-link${isActive ? ' navbar-link--active' : ''}`
-                    }
-                  >
-                    {item.label}
-                  </NavLink>
-                </li>
-              );
-            })}
+            {NAV_ITEMS.map((item) => (
+              <li key={item.path}>
+                <NavLink
+                  to={item.path}
+                  className={({ isActive }) =>
+                    `navbar-link${isActive ? ' navbar-link--active' : ''}`
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              </li>
+            ))}
           </ul>
         </div>
 
@@ -227,42 +158,18 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
         </div>
 
         <div className="navbar-mobile-drawer__content">
-          {NAV_ITEMS.map((item) => {
-            if (item.type === 'dropdown') {
-              return (
-                <div className="navbar-mobile-group" key={item.label}>
-                  <div className="navbar-mobile-group__label">{item.label}</div>
-                  <div className="navbar-mobile-group__items">
-                    {item.children.map((child) => (
-                      <NavLink
-                        key={child.path}
-                        to={child.path}
-                        className={({ isActive }) =>
-                          `navbar-mobile-link${isActive ? ' navbar-mobile-link--active' : ''}`
-                        }
-                        onClick={() => setMobileMenuOpen(false)}
-                      >
-                        {child.label}
-                      </NavLink>
-                    ))}
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  `navbar-mobile-link${isActive ? ' navbar-mobile-link--active' : ''}`
-                }
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {item.label}
-              </NavLink>
-            );
-          })}
+          {NAV_ITEMS.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                `navbar-mobile-link${isActive ? ' navbar-mobile-link--active' : ''}`
+              }
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              {item.label}
+            </NavLink>
+          ))}
         </div>
 
         <div className="navbar-mobile-drawer__footer">

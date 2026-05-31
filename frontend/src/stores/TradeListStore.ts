@@ -15,6 +15,7 @@ export type TradeSortField =
   | 'sellQuantity'
   | 'positionPnL'
   | 'cumulativePnL'
+  | 'tradeTags'
   | 'tradeNote';
 
 export class TradeListStore {
@@ -101,6 +102,7 @@ export class TradeListStore {
       sellQuantity: item => item.sellQuantity,
       positionPnL: item => item.positionPnL,
       cumulativePnL: item => item.cumulativePnL,
+      tradeTags: item => item.tradeTags?.join(','),
       tradeNote: item => item.tradeNote,
     };
 

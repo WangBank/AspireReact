@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import StockSearchInput from '../components/StockSearchInput';
 import StockHistoryLink from '../components/StockHistoryLink';
+import TradeTagsEditor from '../components/TradeTagsEditor';
 import { formatLocalDate } from '../utils/date';
 import './AccountEntryPage.css';
 
@@ -20,6 +21,7 @@ const TradeEntryPage = observer(() => {
   const [sellQuantity, setSellQuantity] = useState('');
   const [positionPnL, setPositionPnL] = useState('0');
   const [cumulativePnL, setCumulativePnL] = useState('0');
+  const [tradeTags, setTradeTags] = useState<string[]>([]);
   const [tradeNote, setTradeNote] = useState('');
   const [tonghuashunLink, setTonghuashunLink] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -82,6 +84,7 @@ const TradeEntryPage = observer(() => {
       positionQuantity: 0,
       dailyPnL: 0,
       isLiquidated: false,
+      tradeTags: tradeTags.length > 0 ? tradeTags : undefined,
       tradeNote: tradeNote.trim() || undefined,
       tonghuashunLink: tonghuashunLink.trim() || undefined,
     });
@@ -96,6 +99,7 @@ const TradeEntryPage = observer(() => {
       setSellQuantity('');
       setPositionPnL('0');
       setCumulativePnL('0');
+      setTradeTags([]);
       setTradeNote('');
       setTonghuashunLink('');
       setErrors({});
@@ -248,6 +252,11 @@ const TradeEntryPage = observer(() => {
               onChange={(e) => setCumulativePnL(e.target.value)}
             />
           </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">交易标签</label>
+          <TradeTagsEditor value={tradeTags} onChange={setTradeTags} />
         </div>
 
         <div className="form-group">

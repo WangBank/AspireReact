@@ -12,6 +12,7 @@ import type { BankFlowRequest } from '../services/BankFlowService';
 import type { StockTradeRequest } from '../services/TradeService';
 import StockSearchInput from '../components/StockSearchInput';
 import StockHistoryLink from '../components/StockHistoryLink';
+import TradeTagsEditor from '../components/TradeTagsEditor';
 import { formatLocalDate } from '../utils/date';
 import './AccountEntryPage.css';
 import './UnifiedEntryPage.css';
@@ -34,6 +35,7 @@ interface TradeRow {
   dailyPnL: string;
   cumulativePnL: string;
   isLiquidated: boolean;
+  tradeTags: string[];
 }
 
 let nextRowId = 1;
@@ -54,6 +56,7 @@ const emptyTradeRow = (): TradeRow => ({
   dailyPnL: '',
   cumulativePnL: '',
   isLiquidated: false,
+  tradeTags: [],
 });
 
 const PAGE_TITLES: Record<EntryType, { create: string; edit: string }> = {
@@ -206,6 +209,7 @@ const UnifiedEntryPage = observer(() => {
             dailyPnL: d.dailyPnL != null ? String(d.dailyPnL) : '',
             cumulativePnL: d.cumulativePnL != null ? String(d.cumulativePnL) : '',
             isLiquidated: d.isLiquidated ?? false,
+            tradeTags: d.tradeTags || [],
           }]);
         }
       }
@@ -251,13 +255,41 @@ const UnifiedEntryPage = observer(() => {
   const validateTrades = (): string | null => {
     const validRows = tradeRows.filter(r => r.stockCode && r.board);
     if (validRows.length === 0) return '请至少添加一条持仓记录';
+
+    const issues: string[] = [];
+    const seenStockCodes = new Set<string>();
+
     for (const row of validRows) {
-      if (!row.positionValue || isNaN(Number(row.positionValue)))
-        return `心魔 ${row.stockCode} 的持仓盈亏无效`;
-      if (!row.positionQuantity || isNaN(Number(row.positionQuantity)) || Number(row.positionQuantity) < 0)
-        return `心魔 ${row.stockCode} 的持仓数量无效`;
+      const stockLabel = row.stockName.trim() || row.stockCode;
+      const buyPrice = Number(row.buyPrice) || 0;
+      const buyQuantity = Number(row.buyQuantity) || 0;
+      const sellPrice = Number(row.sellPrice) || 0;
+      const sellQuantity = Number(row.sellQuantity) || 0;
+
+      if (seenStockCodes.has(row.stockCode)) {
+        issues.push(`心魔 ${stockLabel} 在当前批量录入中重复出现`);
+      } else {
+        seenStockCodes.add(row.stockCode);
+      }
+
+      if ((buyPrice > 0 && buyQuantity === 0) || (buyPrice === 0 && buyQuantity > 0)) {
+        issues.push(`心魔 ${stockLabel} 的买入价格和买入数量需要同时填写`);
+      }
+
+      if ((sellPrice > 0 && sellQuantity === 0) || (sellPrice === 0 && sellQuantity > 0)) {
+        issues.push(`心魔 ${stockLabel} 的卖出价格和卖出数量需要同时填写`);
+      }
+
+      if (!row.isLiquidated && (!row.positionValue || isNaN(Number(row.positionValue)))) {
+        issues.push(`心魔 ${stockLabel} 的持仓盈亏无效`);
+      }
+
+      if (!row.isLiquidated && (!row.positionQuantity || isNaN(Number(row.positionQuantity)) || Number(row.positionQuantity) < 0)) {
+        issues.push(`心魔 ${stockLabel} 的持仓数量无效`);
+      }
     }
-    return null;
+
+    return issues.length > 0 ? issues.join('；') : null;
   };
 
   // ── 心魔搜索回调 ──
@@ -404,6 +436,7 @@ const UnifiedEntryPage = observer(() => {
         positionQuantity: Number(r.positionQuantity) || 0,
         dailyPnL: Number(r.dailyPnL) || 0,
         isLiquidated: r.isLiquidated,
+        tradeTags: r.tradeTags.length > 0 ? r.tradeTags : undefined,
         tradeNote: undefined,
         tonghuashunLink: undefined,
       }))
@@ -458,6 +491,7 @@ const UnifiedEntryPage = observer(() => {
         dailyPnL: String(position.dailyPnL),
         cumulativePnL: String(position.cumulativePnL),
         isLiquidated: position.isLiquidated,
+        tradeTags: [],
       })));
     } else {
       setTradeRows([emptyTradeRow()]);
@@ -678,7 +712,8 @@ const UnifiedEntryPage = observer(() => {
       || row.currentPrice.trim() !== ''
       || row.dailyPnL.trim() !== ''
       || row.cumulativePnL.trim() !== ''
-      || row.isLiquidated);
+      || row.isLiquidated
+      || row.tradeTags.length > 0);
   const hasCustomDraftDate = tradeDate !== today || acDate !== today || bfDate !== today || importDate !== today;
   const shouldShowDraftInsight = hasDraftValues || hasCustomDraftDate;
   const currentRecordDateText = shouldShowDraftInsight
@@ -692,6 +727,14 @@ const UnifiedEntryPage = observer(() => {
   const displayedDailyPnLText = displayedDailyPnL == null
     ? '--'
     : dashboardStore.formatPnL(displayedDailyPnL);
+  const accountBalanceDiff = acTotalAssets.trim() !== ''
+    && acPositionValue.trim() !== ''
+    && acAvailable.trim() !== ''
+    ? Number(acTotalAssets) - Number(acPositionValue) - Number(acAvailable)
+    : null;
+  const hasAccountBalanceWarning = accountBalanceDiff != null
+    && !Number.isNaN(accountBalanceDiff)
+    && Math.abs(accountBalanceDiff) >= 1;
   const importCriticalIssues = lastImportResult ? buildImportCriticalTradeIssues(tradeRows) : [];
   const hasImportCriticalIssues = importCriticalIssues.length > 0;
 
@@ -888,6 +931,12 @@ const UnifiedEntryPage = observer(() => {
               {errors.acDate && <span className="form-error">{errors.acDate}</span>}
             </div>
 
+            {hasAccountBalanceWarning && (
+              <div className="entry-warning-banner" role="alert">
+                当前总资产与持仓市值 + 可用资金相差 {accountBalanceDiff!.toFixed(2)} 元，请确认是否有识别遗漏、在途资金或录入误差。
+              </div>
+            )}
+
             <div className="form-row">
               <div className="form-group form-group-half">
                 <label htmlFor="ue-ac-total" className="form-label">总资产（元）<span className="required-star">*</span></label>
@@ -1033,6 +1082,14 @@ const UnifiedEntryPage = observer(() => {
                     />
                     清仓（只记录盈亏，不记录持仓）
                   </label>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">交易标签</label>
+                  <TradeTagsEditor
+                    value={row.tradeTags}
+                    onChange={next => updateTradeRow(row.id, 'tradeTags', next)}
+                  />
                 </div>
 
                 {!row.isLiquidated && (

@@ -49,6 +49,7 @@ public class StockTradeService : IStockTradeService
             PositionQuantity = request.PositionQuantity,
             DailyPnL = request.DailyPnL,
             IsLiquidated = request.IsLiquidated,
+            TradeTags = NormalizeTradeTags(request.TradeTags),
             TradeNote = request.TradeNote,
             TonghuashunLink = request.TonghuashunLink
         };
@@ -73,9 +74,18 @@ public class StockTradeService : IStockTradeService
         var errors = new List<string>();
         int successCount = 0;
         int failCount = 0;
+        var requestKeys = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var tradeRequest in request.Trades)
         {
+            var requestKey = BuildTradeRequestKey(tradeRequest.TradeDate, tradeRequest.StockCode);
+            if (!requestKeys.Add(requestKey))
+            {
+                failCount++;
+                errors.Add($"心魔 {tradeRequest.StockCode} 在 {tradeRequest.TradeDate:yyyy-MM-dd} 在本次批量录入中重复出现，已跳过");
+                continue;
+            }
+
             // 验证：同一心魔在同一天不应重复录入
             var exists = await _db.StockTrades.AnyAsync(t =>
                 t.TradeDate == tradeRequest.TradeDate.Date &&
@@ -104,6 +114,7 @@ public class StockTradeService : IStockTradeService
                 PositionQuantity = tradeRequest.PositionQuantity,
                 DailyPnL = tradeRequest.DailyPnL,
                 IsLiquidated = tradeRequest.IsLiquidated,
+                TradeTags = NormalizeTradeTags(tradeRequest.TradeTags),
                 TradeNote = tradeRequest.TradeNote,
                 TonghuashunLink = tradeRequest.TonghuashunLink
             };
@@ -177,6 +188,7 @@ public class StockTradeService : IStockTradeService
         entity.PositionQuantity = request.PositionQuantity;
         entity.DailyPnL = request.DailyPnL;
         entity.IsLiquidated = request.IsLiquidated;
+        entity.TradeTags = NormalizeTradeTags(request.TradeTags);
         entity.TradeNote = request.TradeNote;
         entity.TonghuashunLink = request.TonghuashunLink;
 
@@ -199,6 +211,7 @@ public class StockTradeService : IStockTradeService
         var errors = new List<string>();
         int successCount = 0;
         int failCount = 0;
+        var requestKeys = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var item in request.Trades)
         {
@@ -211,6 +224,14 @@ public class StockTradeService : IStockTradeService
             }
 
             var req = item.Data;
+            var requestKey = BuildTradeRequestKey(req.TradeDate, req.StockCode);
+            if (!requestKeys.Add(requestKey))
+            {
+                failCount++;
+                errors.Add($"心魔 {req.StockCode} 在 {req.TradeDate:yyyy-MM-dd} 在本次批量修改中重复出现，跳过 ID {item.Id}");
+                continue;
+            }
+
             // 如果修改了日期或心魔代码，检查是否与其他记录冲突
             if (entity.TradeDate != req.TradeDate.Date || entity.StockCode != req.StockCode)
             {
@@ -241,6 +262,7 @@ public class StockTradeService : IStockTradeService
             entity.PositionQuantity = req.PositionQuantity;
             entity.DailyPnL = req.DailyPnL;
             entity.IsLiquidated = req.IsLiquidated;
+            entity.TradeTags = NormalizeTradeTags(req.TradeTags);
             entity.TradeNote = req.TradeNote;
             entity.TonghuashunLink = req.TonghuashunLink;
 
@@ -417,6 +439,13 @@ public class StockTradeService : IStockTradeService
             .Where(snapshot => IsWithinRange(snapshot.Trade.TradeDate, start, end))
             .ToList();
         var bankFlowRecords = await bankFlowQuery.ToListAsync();
+        var bankFlowByDate = bankFlowRecords
+            .GroupBy(flow => flow.Date.Date)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Sum(flow => string.Equals(flow.FlowType, "转入", StringComparison.Ordinal)
+                    ? flow.Amount
+                    : -flow.Amount));
         var accountRecords = await BuildAccountAnalysisRecordsAsync(start, end);
 
         var stockAggregates = correctedRecords
@@ -471,7 +500,8 @@ public class StockTradeService : IStockTradeService
                 TotalCumulativePnL = item.TotalCumulativePnL,
                 WinRate = (item.WinCount + item.LoseCount) > 0
                     ? (decimal)item.WinCount / (item.WinCount + item.LoseCount)
-                    : 0
+                    : 0,
+                ContributionRate = 0
             })
             .OrderByDescending(x => x.TotalCumulativePnL)
             .ToList();
@@ -491,13 +521,26 @@ public class StockTradeService : IStockTradeService
                     WinRate = (g.Sum(item => item.WinCount) + g.Sum(item => item.LoseCount)) > 0
                         ? (decimal)g.Sum(item => item.WinCount) /
                           (g.Sum(item => item.WinCount) + g.Sum(item => item.LoseCount))
-                        : 0
+                        : 0,
+                    ContributionRate = 0
                 };
             })
             .OrderByDescending(x => x.TotalCumulativePnL)
             .ToList();
 
         var totalPnL = stockAggregates.Sum(item => item.TotalCumulativePnL);
+        if (totalPnL != 0)
+        {
+            foreach (var item in byStock)
+            {
+                item.ContributionRate = decimal.Round(item.TotalCumulativePnL / totalPnL, 4, MidpointRounding.AwayFromZero);
+            }
+
+            foreach (var item in byBoard)
+            {
+                item.ContributionRate = decimal.Round(item.TotalCumulativePnL / totalPnL, 4, MidpointRounding.AwayFromZero);
+            }
+        }
 
         var totalTrades = stockAggregates.Sum(item => item.TradeCount);
         var winRecords = stockAggregates.Sum(item => item.WinCount);
@@ -514,6 +557,7 @@ public class StockTradeService : IStockTradeService
                 .Last())
             .ToList();
 
+        var openPositionStartDates = BuildOpenPositionStartDates(correctedRecords);
         var positionOnlyRecords = latestRecordsByStock
             .Where(p => p != null)
             .Where(p => !TradeMetricsCalculator.IsHoldingClosed(p.Trade))
@@ -527,19 +571,36 @@ public class StockTradeService : IStockTradeService
                 CurrentPrice = p.Trade.CurrentPrice,
                 PositionPnL = p.PositionPnL,
                 DailyPnL = p.Trade.DailyPnL,
-                LastUpdateDate = p.Trade.TradeDate
+                LastUpdateDate = p.Trade.TradeDate,
+                OpenDate = openPositionStartDates.TryGetValue(p.Trade.StockCode, out var openDate) ? openDate : null,
+                HoldingDays = openPositionStartDates.TryGetValue(p.Trade.StockCode, out var startDateForHolding)
+                    ? Math.Max(1, (p.Trade.TradeDate.Date - startDateForHolding.Date).Days + 1)
+                    : 0
             })
             .OrderByDescending(p => p.PositionPnL)
             .ToList();
 
         var totalPositionValue = positionOnlyRecords.Sum(p => p.CurrentPrice * p.PositionQuantity);
         var totalPositionPnL = positionOnlyRecords.Sum(p => p.PositionPnL);
+        var realizedPnL = totalPnL - totalPositionPnL;
         var totalDailyPnL = latestRecordsByStock.Sum(p => p.Trade.DailyPnL);
+        var cycleRecords = BuildTradeCycles(correctedRecords, start, end);
+        var cycleAnalysis = BuildCycleAnalysisSummary(cycleRecords);
+        var dailyPnLHeatmap = BuildDailyPnLHeatmap(accountRecords, rangeRecords, bankFlowByDate);
+        var dayOutcomes = BuildDayOutcomeSummary(dailyPnLHeatmap);
+        var streakAnalysis = BuildStreakAnalysis(dailyPnLHeatmap);
         var dailyWinRates = BuildDailyWinRates(rangeRecords);
         var bestWinRateDay = SelectBestWinRateDay(dailyWinRates);
         var worstWinRateDay = SelectWorstWinRateDay(dailyWinRates);
         var bestProfitInterval = BuildBestProfitInterval(accountRecords, rangeRecords);
         var maxDrawdownInterval = BuildMaxDrawdownInterval(accountRecords, rangeRecords);
+        var adjustedReturn = BuildAdjustedReturnSummary(accountRecords, bankFlowRecords);
+        var tTradeAnalysis = BuildTTradeAnalysis(rangeRecords);
+        var capitalAnalysis = BuildCapitalAnalysis(accountRecords);
+        var weeklyPnL = BuildPeriodPnLDistribution(dailyPnLHeatmap, PeriodBucketType.Week);
+        var monthlyPnL = BuildPeriodPnLDistribution(dailyPnLHeatmap, PeriodBucketType.Month);
+        var quarterlyPnL = BuildPeriodPnLDistribution(dailyPnLHeatmap, PeriodBucketType.Quarter);
+        var boardRotations = BuildBoardRotations(rangeRecords, totalPnL);
         var totalBankInflow = bankFlowRecords
             .Where(flow => string.Equals(flow.FlowType, "转入", StringComparison.Ordinal))
             .Sum(flow => flow.Amount);
@@ -556,6 +617,8 @@ public class StockTradeService : IStockTradeService
         {
             TotalTrades = totalTrades,
             TotalPnL = totalPnL,
+            RealizedPnL = realizedPnL,
+            UnrealizedPnL = totalPositionPnL,
             NetBankFlow = totalBankInflow - totalBankOutflow,
             TotalBankInflow = totalBankInflow,
             TotalBankOutflow = totalBankOutflow,
@@ -574,7 +637,18 @@ public class StockTradeService : IStockTradeService
             BestWinRateDay = bestWinRateDay,
             WorstWinRateDay = worstWinRateDay,
             BestProfitInterval = bestProfitInterval,
-            MaxDrawdownInterval = maxDrawdownInterval
+            MaxDrawdownInterval = maxDrawdownInterval,
+            AdjustedReturn = adjustedReturn,
+            DayOutcomes = dayOutcomes,
+            StreakAnalysis = streakAnalysis,
+            CycleAnalysis = cycleAnalysis,
+            TTradeAnalysis = tTradeAnalysis,
+            CapitalAnalysis = capitalAnalysis,
+            DailyPnLHeatmap = dailyPnLHeatmap,
+            WeeklyPnL = weeklyPnL,
+            MonthlyPnL = monthlyPnL,
+            QuarterlyPnL = quarterlyPnL,
+            BoardRotations = boardRotations
         };
     }
 
@@ -592,6 +666,42 @@ public class StockTradeService : IStockTradeService
             "北交所" => TradeBoard.北交所,
             _ => Enum.TryParse<TradeBoard>(board, out var result) ? result : TradeBoard.主板
         };
+    }
+
+    private static string? NormalizeTradeTags(IEnumerable<string>? tags)
+    {
+        if (tags == null)
+        {
+            return null;
+        }
+
+        var normalized = tags
+            .Select(tag => tag?.Trim())
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Distinct(StringComparer.Ordinal)
+            .Take(20)
+            .ToArray();
+
+        return normalized.Length == 0 ? null : string.Join(",", normalized);
+    }
+
+    private static List<string> ParseTradeTags(string? tags)
+    {
+        if (string.IsNullOrWhiteSpace(tags))
+        {
+            return new List<string>();
+        }
+
+        return tags
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(tag => !string.IsNullOrWhiteSpace(tag))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static string BuildTradeRequestKey(DateTime tradeDate, string stockCode)
+    {
+        return $"{tradeDate.Date:yyyy-MM-dd}|{stockCode.Trim()}";
     }
 
     private static List<decimal> BuildPnLContributions(
@@ -657,7 +767,8 @@ public class StockTradeService : IStockTradeService
             {
                 Date = item.Date.Date,
                 TotalAssets = item.TotalAssets,
-                DailyPnL = item.DailyPnL
+                DailyPnL = item.DailyPnL,
+                PositionValue = item.PositionValue
             })
             .ToListAsync();
     }
@@ -703,6 +814,496 @@ public class StockTradeService : IStockTradeService
         }
 
         return true;
+    }
+
+    private static bool HasBuyAction(StockTrade trade)
+    {
+        return trade.BuyPrice > 0 && trade.BuyQuantity > 0;
+    }
+
+    private static bool HasSellAction(StockTrade trade)
+    {
+        return trade.SellPrice > 0 && trade.SellQuantity > 0;
+    }
+
+    private static Dictionary<string, DateTime> BuildOpenPositionStartDates(
+        IReadOnlyCollection<TradeMetricSnapshot> correctedRecords)
+    {
+        var openDates = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+
+        foreach (var group in correctedRecords
+                     .GroupBy(snapshot => snapshot.Trade.StockCode, StringComparer.Ordinal))
+        {
+            DateTime? cycleStartDate = null;
+            TradeMetricSnapshot? latestSnapshot = null;
+
+            foreach (var snapshot in group
+                         .OrderBy(item => item.Trade.TradeDate)
+                         .ThenBy(item => item.Trade.Id))
+            {
+                latestSnapshot = snapshot;
+                cycleStartDate ??= snapshot.Trade.TradeDate.Date;
+
+                if (ClosesHoldingCycle(snapshot.Trade))
+                {
+                    cycleStartDate = null;
+                }
+            }
+
+            if (latestSnapshot != null
+                && !ClosesHoldingCycle(latestSnapshot.Trade)
+                && cycleStartDate.HasValue)
+            {
+                openDates[group.Key] = cycleStartDate.Value;
+            }
+        }
+
+        return openDates;
+    }
+
+    private static List<TradeCycleRecord> BuildTradeCycles(
+        IReadOnlyCollection<TradeMetricSnapshot> correctedRecords,
+        DateTime? startDate,
+        DateTime? endDate)
+    {
+        var cycles = new List<TradeCycleRecord>();
+
+        foreach (var group in correctedRecords
+                     .GroupBy(snapshot => new
+                     {
+                         snapshot.Trade.StockCode,
+                         snapshot.Trade.StockName,
+                         snapshot.Trade.Board
+                     }))
+        {
+            TradeCycleBuilder? current = null;
+
+            foreach (var snapshot in group
+                         .OrderBy(item => item.Trade.TradeDate)
+                         .ThenBy(item => item.Trade.Id))
+            {
+                current ??= new TradeCycleBuilder(
+                    group.Key.StockCode,
+                    group.Key.StockName,
+                    group.Key.Board.ToString(),
+                    snapshot.Trade.TradeDate.Date);
+
+                current.LastRecordDate = snapshot.Trade.TradeDate.Date;
+                current.IsClosed = ClosesHoldingCycle(snapshot.Trade);
+
+                if (IsWithinRange(snapshot.Trade.TradeDate, startDate, endDate))
+                {
+                    current.HasRangeRecord = true;
+                    current.RangePnL += snapshot.Trade.DailyPnL;
+                }
+
+                if (!current.IsClosed)
+                {
+                    continue;
+                }
+
+                if (current.HasRangeRecord)
+                {
+                    cycles.Add(current.Build());
+                }
+
+                current = null;
+            }
+
+            if (current?.HasRangeRecord == true)
+            {
+                cycles.Add(current.Build());
+            }
+        }
+
+        return cycles;
+    }
+
+    private static CycleAnalysisSummary? BuildCycleAnalysisSummary(
+        IReadOnlyCollection<TradeCycleRecord> cycles)
+    {
+        if (cycles.Count == 0)
+        {
+            return null;
+        }
+
+        var closedCycles = cycles.Where(cycle => cycle.IsClosed).ToList();
+        var winningClosedCycles = closedCycles.Where(cycle => cycle.TotalPnL > 0).ToList();
+        var losingClosedCycles = closedCycles.Where(cycle => cycle.TotalPnL < 0).ToList();
+        var durationSource = closedCycles.Count > 0 ? closedCycles : cycles.ToList();
+
+        return new CycleAnalysisSummary
+        {
+            TotalCycles = cycles.Count,
+            ClosedCycles = closedCycles.Count,
+            OpenCycles = cycles.Count - closedCycles.Count,
+            ClosedWinRate = closedCycles.Count > 0
+                ? decimal.Round((decimal)winningClosedCycles.Count / closedCycles.Count, 4, MidpointRounding.AwayFromZero)
+                : 0,
+            AverageProfitPerCycle = winningClosedCycles.Count > 0
+                ? decimal.Round(winningClosedCycles.Average(cycle => cycle.TotalPnL), 2, MidpointRounding.AwayFromZero)
+                : 0,
+            AverageLossPerCycle = losingClosedCycles.Count > 0
+                ? decimal.Round(losingClosedCycles.Average(cycle => cycle.TotalPnL), 2, MidpointRounding.AwayFromZero)
+                : 0,
+            AverageHoldingDays = durationSource.Count > 0
+                ? decimal.Round((decimal)durationSource.Average(cycle => cycle.HoldingDays), 2, MidpointRounding.AwayFromZero)
+                : 0,
+            MaxProfitCyclePnL = decimal.Round(cycles.Max(cycle => cycle.TotalPnL), 2, MidpointRounding.AwayFromZero),
+            MaxLossCyclePnL = decimal.Round(cycles.Min(cycle => cycle.TotalPnL), 2, MidpointRounding.AwayFromZero)
+        };
+    }
+
+    private static List<DailyPnLHeatmapItem> BuildDailyPnLHeatmap(
+        IReadOnlyList<AccountAnalysisRecord> accountRecords,
+        IReadOnlyCollection<TradeMetricSnapshot> rangeRecords,
+        IReadOnlyDictionary<DateTime, decimal> bankFlowByDate)
+    {
+        if (accountRecords.Count > 0)
+        {
+            return accountRecords
+                .OrderBy(item => item.Date)
+                .Select(item =>
+                {
+                    bankFlowByDate.TryGetValue(item.Date.Date, out var netFlow);
+                    return new DailyPnLHeatmapItem
+                    {
+                        Date = item.Date.Date,
+                        DailyPnL = item.DailyPnL,
+                        TotalAssets = item.TotalAssets,
+                        NetBankFlow = netFlow,
+                        CapitalUtilization = item.TotalAssets > 0
+                            ? decimal.Round(item.PositionValue / item.TotalAssets, 4, MidpointRounding.AwayFromZero)
+                            : null
+                    };
+                })
+                .ToList();
+        }
+
+        return rangeRecords
+            .GroupBy(snapshot => snapshot.Trade.TradeDate.Date)
+            .OrderBy(group => group.Key)
+            .Select(group =>
+            {
+                bankFlowByDate.TryGetValue(group.Key, out var netFlow);
+                return new DailyPnLHeatmapItem
+                {
+                    Date = group.Key,
+                    DailyPnL = group.Sum(snapshot => snapshot.Trade.DailyPnL),
+                    TotalAssets = null,
+                    NetBankFlow = netFlow,
+                    CapitalUtilization = null
+                };
+            })
+            .ToList();
+    }
+
+    private static DayOutcomeSummary? BuildDayOutcomeSummary(
+        IReadOnlyCollection<DailyPnLHeatmapItem> dailySeries)
+    {
+        if (dailySeries.Count == 0)
+        {
+            return null;
+        }
+
+        var profitDays = dailySeries.Count(item => item.DailyPnL > 0);
+        var lossDays = dailySeries.Count(item => item.DailyPnL < 0);
+        var flatDays = dailySeries.Count - profitDays - lossDays;
+        var totalDays = dailySeries.Count;
+
+        return new DayOutcomeSummary
+        {
+            ProfitDays = profitDays,
+            LossDays = lossDays,
+            FlatDays = flatDays,
+            ProfitDayRate = decimal.Round((decimal)profitDays / totalDays, 4, MidpointRounding.AwayFromZero),
+            LossDayRate = decimal.Round((decimal)lossDays / totalDays, 4, MidpointRounding.AwayFromZero),
+            FlatDayRate = decimal.Round((decimal)flatDays / totalDays, 4, MidpointRounding.AwayFromZero)
+        };
+    }
+
+    private static StreakAnalysisSummary? BuildStreakAnalysis(
+        IReadOnlyList<DailyPnLHeatmapItem> dailySeries)
+    {
+        if (dailySeries.Count == 0)
+        {
+            return null;
+        }
+
+        var summary = new StreakAnalysisSummary();
+        var currentWinLength = 0;
+        var currentLossLength = 0;
+        DateTime? currentWinStart = null;
+        DateTime? currentLossStart = null;
+
+        foreach (var item in dailySeries.OrderBy(point => point.Date))
+        {
+            if (item.DailyPnL > 0)
+            {
+                currentLossLength = 0;
+                currentLossStart = null;
+                currentWinStart ??= item.Date;
+                currentWinLength += 1;
+
+                if (currentWinLength > summary.MaxWinDays)
+                {
+                    summary.MaxWinDays = currentWinLength;
+                    summary.MaxWinStartDate = currentWinStart;
+                    summary.MaxWinEndDate = item.Date;
+                }
+
+                continue;
+            }
+
+            if (item.DailyPnL < 0)
+            {
+                currentWinLength = 0;
+                currentWinStart = null;
+                currentLossStart ??= item.Date;
+                currentLossLength += 1;
+
+                if (currentLossLength > summary.MaxLossDays)
+                {
+                    summary.MaxLossDays = currentLossLength;
+                    summary.MaxLossStartDate = currentLossStart;
+                    summary.MaxLossEndDate = item.Date;
+                }
+
+                continue;
+            }
+
+            currentWinLength = 0;
+            currentLossLength = 0;
+            currentWinStart = null;
+            currentLossStart = null;
+        }
+
+        return summary;
+    }
+
+    private static AdjustedReturnSummary? BuildAdjustedReturnSummary(
+        IReadOnlyList<AccountAnalysisRecord> accountRecords,
+        IReadOnlyCollection<BankFlow> bankFlows)
+    {
+        if (accountRecords.Count == 0)
+        {
+            return null;
+        }
+
+        var startRecord = accountRecords.First();
+        var endRecord = accountRecords.Last();
+        var flowsInRange = bankFlows
+            .Where(flow => flow.Date.Date >= startRecord.Date.Date && flow.Date.Date <= endRecord.Date.Date)
+            .ToList();
+        var totalDays = Math.Max(1, (endRecord.Date.Date - startRecord.Date.Date).Days);
+        var netBankFlow = flowsInRange.Sum(flow => string.Equals(flow.FlowType, "转入", StringComparison.Ordinal)
+            ? flow.Amount
+            : -flow.Amount);
+        var weightedCapitalBase = startRecord.TotalAssets;
+
+        foreach (var flow in flowsInRange)
+        {
+            var weight = totalDays == 0
+                ? 0m
+                : decimal.Round((decimal)(endRecord.Date.Date - flow.Date.Date).Days / totalDays, 6, MidpointRounding.AwayFromZero);
+            var signedAmount = string.Equals(flow.FlowType, "转入", StringComparison.Ordinal)
+                ? flow.Amount
+                : -flow.Amount;
+            weightedCapitalBase += signedAmount * weight;
+        }
+
+        decimal? returnRate = null;
+        if (weightedCapitalBase != 0)
+        {
+            returnRate = decimal.Round(
+                (endRecord.TotalAssets - startRecord.TotalAssets - netBankFlow) / weightedCapitalBase,
+                4,
+                MidpointRounding.AwayFromZero);
+        }
+
+        return new AdjustedReturnSummary
+        {
+            ReturnRate = returnRate,
+            StartAssets = startRecord.TotalAssets,
+            EndAssets = endRecord.TotalAssets,
+            NetBankFlow = netBankFlow,
+            WeightedCapitalBase = decimal.Round(weightedCapitalBase, 2, MidpointRounding.AwayFromZero)
+        };
+    }
+
+    private static TTradeAnalysisSummary? BuildTTradeAnalysis(
+        IReadOnlyCollection<TradeMetricSnapshot> rangeRecords)
+    {
+        var tTrades = rangeRecords
+            .Where(snapshot => HasBuyAction(snapshot.Trade) && HasSellAction(snapshot.Trade))
+            .ToList();
+
+        if (tTrades.Count == 0)
+        {
+            return null;
+        }
+
+        var winCount = tTrades.Count(snapshot => snapshot.Trade.DailyPnL > 0);
+        var loseCount = tTrades.Count(snapshot => snapshot.Trade.DailyPnL < 0);
+        var totalPnL = tTrades.Sum(snapshot => snapshot.Trade.DailyPnL);
+
+        return new TTradeAnalysisSummary
+        {
+            TradeCount = tTrades.Count,
+            WinCount = winCount,
+            LoseCount = loseCount,
+            WinRate = (winCount + loseCount) > 0
+                ? decimal.Round((decimal)winCount / (winCount + loseCount), 4, MidpointRounding.AwayFromZero)
+                : 0,
+            TotalPnL = decimal.Round(totalPnL, 2, MidpointRounding.AwayFromZero),
+            AveragePnL = decimal.Round(totalPnL / tTrades.Count, 2, MidpointRounding.AwayFromZero)
+        };
+    }
+
+    private static CapitalAnalysisSummary? BuildCapitalAnalysis(
+        IReadOnlyList<AccountAnalysisRecord> accountRecords)
+    {
+        if (accountRecords.Count == 0)
+        {
+            return null;
+        }
+
+        var utilizationSeries = accountRecords
+            .Where(item => item.TotalAssets > 0)
+            .Select(item => item.PositionValue / item.TotalAssets)
+            .ToList();
+
+        decimal? dailyVolatility = null;
+        var dailyReturns = new List<double>();
+        for (var index = 1; index < accountRecords.Count; index++)
+        {
+            var previousAssets = accountRecords[index - 1].TotalAssets;
+            if (previousAssets == 0)
+            {
+                continue;
+            }
+
+            dailyReturns.Add((double)(accountRecords[index].DailyPnL / previousAssets));
+        }
+
+        if (dailyReturns.Count > 1)
+        {
+            var mean = dailyReturns.Average();
+            var variance = dailyReturns.Average(value => Math.Pow(value - mean, 2));
+            dailyVolatility = decimal.Round((decimal)Math.Sqrt(variance), 4, MidpointRounding.AwayFromZero);
+        }
+
+        return new CapitalAnalysisSummary
+        {
+            LatestUtilization = utilizationSeries.Count > 0
+                ? decimal.Round(utilizationSeries[^1], 4, MidpointRounding.AwayFromZero)
+                : null,
+            AverageUtilization = utilizationSeries.Count > 0
+                ? decimal.Round(utilizationSeries.Average(), 4, MidpointRounding.AwayFromZero)
+                : null,
+            MaxUtilization = utilizationSeries.Count > 0
+                ? decimal.Round(utilizationSeries.Max(), 4, MidpointRounding.AwayFromZero)
+                : null,
+            DailyVolatility = dailyVolatility
+        };
+    }
+
+    private static List<PeriodPnLDistributionItem> BuildPeriodPnLDistribution(
+        IReadOnlyCollection<DailyPnLHeatmapItem> dailySeries,
+        PeriodBucketType bucketType)
+    {
+        return dailySeries
+            .GroupBy(item => GetPeriodRange(item.Date, bucketType))
+            .Select(group =>
+            {
+                var range = group.Key;
+                return new PeriodPnLDistributionItem
+                {
+                    Label = BuildPeriodLabel(range.StartDate, bucketType),
+                    StartDate = range.StartDate,
+                    EndDate = range.EndDate,
+                    TotalPnL = decimal.Round(group.Sum(item => item.DailyPnL), 2, MidpointRounding.AwayFromZero)
+                };
+            })
+            .OrderByDescending(item => item.StartDate)
+            .ToList();
+    }
+
+    private static List<BoardRotationItem> BuildBoardRotations(
+        IReadOnlyCollection<TradeMetricSnapshot> rangeRecords,
+        decimal totalPnL)
+    {
+        return rangeRecords
+            .GroupBy(snapshot => snapshot.Trade.Board.ToString())
+            .Select(group =>
+            {
+                var dailySeries = group
+                    .GroupBy(snapshot => snapshot.Trade.TradeDate.Date)
+                    .Select(dayGroup => dayGroup.Sum(snapshot => snapshot.Trade.DailyPnL))
+                    .ToList();
+                var groupTotalPnL = dailySeries.Sum();
+                var profitDays = dailySeries.Count(value => value > 0);
+                var lossDays = dailySeries.Count(value => value < 0);
+
+                return new BoardRotationItem
+                {
+                    Board = group.Key,
+                    TotalPnL = decimal.Round(groupTotalPnL, 2, MidpointRounding.AwayFromZero),
+                    ContributionRate = totalPnL != 0
+                        ? decimal.Round(groupTotalPnL / totalPnL, 4, MidpointRounding.AwayFromZero)
+                        : 0,
+                    ActiveDays = dailySeries.Count,
+                    ProfitDays = profitDays,
+                    LossDays = lossDays,
+                    WinDayRate = dailySeries.Count > 0
+                        ? decimal.Round((decimal)profitDays / dailySeries.Count, 4, MidpointRounding.AwayFromZero)
+                        : 0
+                };
+            })
+            .OrderByDescending(item => item.TotalPnL)
+            .ToList();
+    }
+
+    private static PeriodDateRange GetPeriodRange(DateTime date, PeriodBucketType bucketType)
+    {
+        var day = date.Date;
+
+        return bucketType switch
+        {
+            PeriodBucketType.Week => BuildWeekRange(day),
+            PeriodBucketType.Month => new PeriodDateRange(
+                new DateTime(day.Year, day.Month, 1),
+                new DateTime(day.Year, day.Month, DateTime.DaysInMonth(day.Year, day.Month))),
+            PeriodBucketType.Quarter => BuildQuarterRange(day),
+            _ => new PeriodDateRange(day, day)
+        };
+    }
+
+    private static PeriodDateRange BuildWeekRange(DateTime date)
+    {
+        var offset = ((int)date.DayOfWeek + 6) % 7;
+        var start = date.AddDays(-offset).Date;
+        var end = start.AddDays(6);
+        return new PeriodDateRange(start, end);
+    }
+
+    private static PeriodDateRange BuildQuarterRange(DateTime date)
+    {
+        var quarterStartMonth = ((date.Month - 1) / 3) * 3 + 1;
+        var start = new DateTime(date.Year, quarterStartMonth, 1);
+        var end = start.AddMonths(3).AddDays(-1);
+        return new PeriodDateRange(start, end);
+    }
+
+    private static string BuildPeriodLabel(DateTime startDate, PeriodBucketType bucketType)
+    {
+        return bucketType switch
+        {
+            PeriodBucketType.Week => $"{startDate:yyyy-MM-dd} 当周",
+            PeriodBucketType.Month => $"{startDate:yyyy-MM}",
+            PeriodBucketType.Quarter => $"{startDate.Year} Q{((startDate.Month - 1) / 3) + 1}",
+            _ => $"{startDate:yyyy-MM-dd}"
+        };
     }
 
     private static List<DailyWinRateItem> BuildDailyWinRates(IReadOnlyCollection<TradeMetricSnapshot> rangeRecords)
@@ -840,6 +1441,35 @@ public class StockTradeService : IStockTradeService
                 return null;
             }
 
+            DateTime? recoveryDate = null;
+            int? recoveryDays = null;
+            var selectedPeakIndex = -1;
+            var selectedTroughIndex = -1;
+            for (var index = 0; index < accountRecords.Count; index++)
+            {
+                if (selectedPeakIndex < 0 && accountRecords[index].Date == selectedPeak.Date)
+                {
+                    selectedPeakIndex = index;
+                }
+
+                if (selectedTroughIndex < 0 && accountRecords[index].Date == selectedTrough.Date)
+                {
+                    selectedTroughIndex = index;
+                }
+            }
+            if (selectedPeakIndex >= 0 && selectedTroughIndex >= selectedPeakIndex)
+            {
+                for (var index = selectedTroughIndex + 1; index < accountRecords.Count; index++)
+                {
+                    if (accountRecords[index].TotalAssets > selectedPeak.TotalAssets)
+                    {
+                        recoveryDate = accountRecords[index].Date;
+                        recoveryDays = Math.Max(1, (accountRecords[index].Date.Date - selectedTrough.Date.Date).Days);
+                        break;
+                    }
+                }
+            }
+
             return new DrawdownAnalysisItem
             {
                 PeakDate = selectedPeak.Date,
@@ -847,7 +1477,9 @@ public class StockTradeService : IStockTradeService
                 PeakValue = selectedPeak.TotalAssets,
                 TroughValue = selectedTrough.TotalAssets,
                 DrawdownAmount = decimal.Round(maxDrawdownAmount, 2, MidpointRounding.AwayFromZero),
-                DrawdownRate = maxDrawdownRate
+                DrawdownRate = maxDrawdownRate,
+                RecoveryDate = recoveryDate,
+                RecoveryDays = recoveryDays
             };
         }
 
@@ -899,7 +1531,9 @@ public class StockTradeService : IStockTradeService
             PeakValue = peakValue,
             TroughValue = peakValue - maxDrawdown,
             DrawdownAmount = decimal.Round(maxDrawdown, 2, MidpointRounding.AwayFromZero),
-            DrawdownRate = 0
+            DrawdownRate = 0,
+            RecoveryDate = null,
+            RecoveryDays = null
         };
     }
 
@@ -920,7 +1554,65 @@ public class StockTradeService : IStockTradeService
         public DateTime Date { get; init; }
         public decimal TotalAssets { get; init; }
         public decimal DailyPnL { get; init; }
+        public decimal PositionValue { get; init; }
     }
+
+    private sealed class TradeCycleBuilder
+    {
+        public TradeCycleBuilder(string stockCode, string stockName, string board, DateTime startDate)
+        {
+            StockCode = stockCode;
+            StockName = stockName;
+            Board = board;
+            StartDate = startDate.Date;
+            LastRecordDate = startDate.Date;
+        }
+
+        public string StockCode { get; }
+        public string StockName { get; }
+        public string Board { get; }
+        public DateTime StartDate { get; }
+        public DateTime LastRecordDate { get; set; }
+        public decimal RangePnL { get; set; }
+        public bool HasRangeRecord { get; set; }
+        public bool IsClosed { get; set; }
+
+        public TradeCycleRecord Build()
+        {
+            return new TradeCycleRecord
+            {
+                StockCode = StockCode,
+                StockName = StockName,
+                Board = Board,
+                StartDate = StartDate,
+                EndDate = IsClosed ? LastRecordDate : null,
+                HoldingDays = Math.Max(1, (LastRecordDate.Date - StartDate.Date).Days + 1),
+                TotalPnL = decimal.Round(RangePnL, 2, MidpointRounding.AwayFromZero),
+                IsClosed = IsClosed
+            };
+        }
+    }
+
+    private sealed class TradeCycleRecord
+    {
+        public string StockCode { get; init; } = string.Empty;
+        public string StockName { get; init; } = string.Empty;
+        public string Board { get; init; } = string.Empty;
+        public DateTime StartDate { get; init; }
+        public DateTime? EndDate { get; init; }
+        public int HoldingDays { get; init; }
+        public decimal TotalPnL { get; init; }
+        public bool IsClosed { get; init; }
+    }
+
+    private enum PeriodBucketType
+    {
+        Week,
+        Month,
+        Quarter
+    }
+
+    private sealed record PeriodDateRange(DateTime StartDate, DateTime EndDate);
 
     private sealed record PnLSeriesPoint(DateTime Date, decimal PnL);
 
@@ -944,6 +1636,7 @@ public class StockTradeService : IStockTradeService
             PositionQuantity = entity.PositionQuantity,
             DailyPnL = entity.DailyPnL,
             IsLiquidated = entity.IsLiquidated,
+            TradeTags = ParseTradeTags(entity.TradeTags),
             TradeNote = entity.TradeNote,
             TonghuashunLink = entity.TonghuashunLink
         };
@@ -970,6 +1663,7 @@ public class StockTradeService : IStockTradeService
             PositionQuantity = entity.PositionQuantity,
             DailyPnL = entity.DailyPnL,
             IsLiquidated = entity.IsLiquidated,
+            TradeTags = ParseTradeTags(entity.TradeTags),
             TradeNote = entity.TradeNote,
             TonghuashunLink = entity.TonghuashunLink
         };

@@ -52,6 +52,9 @@ public class StockTradeRequest : IValidatableObject
     /// </summary>
     public bool IsLiquidated { get; set; }
 
+    [MaxLength(20, ErrorMessage = "交易标签最多20个")]
+    public List<string>? TradeTags { get; set; }
+
     [MaxLength(2000, ErrorMessage = "交易笔记最多2000个字符")]
     public string? TradeNote { get; set; }
 
@@ -109,6 +112,22 @@ public class StockTradeRequest : IValidatableObject
                 new[] { nameof(SellPrice), nameof(SellQuantity) });
         }
 
+        if (TradeTags is { Count: > 0 })
+        {
+            if (TradeTags.Count > 20)
+            {
+                yield return new ValidationResult(
+                    "交易标签最多20个",
+                    new[] { nameof(TradeTags) });
+            }
+
+            if (TradeTags.Any(tag => !string.IsNullOrWhiteSpace(tag) && tag.Trim().Length > 20))
+            {
+                yield return new ValidationResult(
+                    "单个交易标签最多20个字符",
+                    new[] { nameof(TradeTags) });
+            }
+        }
     }
 }
 
@@ -138,6 +157,7 @@ public class StockTradeResponse
     public int PositionQuantity { get; set; }
     public decimal DailyPnL { get; set; }
     public bool IsLiquidated { get; set; }
+    public List<string> TradeTags { get; set; } = new();
     public string? TradeNote { get; set; }
     public string? TonghuashunLink { get; set; }
 }
@@ -248,6 +268,7 @@ public class TradeSummaryItem
     public decimal TotalPositionPnL { get; set; }
     public decimal TotalCumulativePnL { get; set; }
     public decimal WinRate { get; set; }
+    public decimal ContributionRate { get; set; }
 }
 
 /// <summary>
@@ -258,6 +279,8 @@ public class TradeSummaryResponse
     // ── 交易统计（仅包含有实际买卖操作的记录） ──
     public int TotalTrades { get; set; }
     public decimal TotalPnL { get; set; }
+    public decimal RealizedPnL { get; set; }
+    public decimal UnrealizedPnL { get; set; }
     public decimal NetBankFlow { get; set; }
     public decimal TotalBankInflow { get; set; }
     public decimal TotalBankOutflow { get; set; }
@@ -281,6 +304,17 @@ public class TradeSummaryResponse
     public DailyWinRateItem? WorstWinRateDay { get; set; }
     public PnLIntervalAnalysisItem? BestProfitInterval { get; set; }
     public DrawdownAnalysisItem? MaxDrawdownInterval { get; set; }
+    public AdjustedReturnSummary? AdjustedReturn { get; set; }
+    public DayOutcomeSummary? DayOutcomes { get; set; }
+    public StreakAnalysisSummary? StreakAnalysis { get; set; }
+    public CycleAnalysisSummary? CycleAnalysis { get; set; }
+    public TTradeAnalysisSummary? TTradeAnalysis { get; set; }
+    public CapitalAnalysisSummary? CapitalAnalysis { get; set; }
+    public List<DailyPnLHeatmapItem> DailyPnLHeatmap { get; set; } = new();
+    public List<PeriodPnLDistributionItem> WeeklyPnL { get; set; } = new();
+    public List<PeriodPnLDistributionItem> MonthlyPnL { get; set; } = new();
+    public List<PeriodPnLDistributionItem> QuarterlyPnL { get; set; } = new();
+    public List<BoardRotationItem> BoardRotations { get; set; } = new();
 }
 
 /// <summary>
@@ -297,6 +331,8 @@ public class PositionSummaryItem
     public decimal PositionPnL { get; set; }
     public decimal DailyPnL { get; set; }
     public DateTime LastUpdateDate { get; set; }
+    public DateTime? OpenDate { get; set; }
+    public int HoldingDays { get; set; }
 }
 
 /// <summary>
@@ -333,6 +369,123 @@ public class DrawdownAnalysisItem
     public decimal TroughValue { get; set; }
     public decimal DrawdownAmount { get; set; }
     public decimal DrawdownRate { get; set; }
+    public DateTime? RecoveryDate { get; set; }
+    public int? RecoveryDays { get; set; }
+}
+
+/// <summary>
+/// 净入金修正收益率
+/// </summary>
+public class AdjustedReturnSummary
+{
+    public decimal? ReturnRate { get; set; }
+    public decimal StartAssets { get; set; }
+    public decimal EndAssets { get; set; }
+    public decimal NetBankFlow { get; set; }
+    public decimal WeightedCapitalBase { get; set; }
+}
+
+/// <summary>
+/// 日度盈亏热力图项
+/// </summary>
+public class DailyPnLHeatmapItem
+{
+    public DateTime Date { get; set; }
+    public decimal DailyPnL { get; set; }
+    public decimal? TotalAssets { get; set; }
+    public decimal NetBankFlow { get; set; }
+    public decimal? CapitalUtilization { get; set; }
+}
+
+/// <summary>
+/// 盈亏日分布
+/// </summary>
+public class DayOutcomeSummary
+{
+    public int ProfitDays { get; set; }
+    public int LossDays { get; set; }
+    public int FlatDays { get; set; }
+    public decimal ProfitDayRate { get; set; }
+    public decimal LossDayRate { get; set; }
+    public decimal FlatDayRate { get; set; }
+}
+
+/// <summary>
+/// 连胜连亏分析
+/// </summary>
+public class StreakAnalysisSummary
+{
+    public int MaxWinDays { get; set; }
+    public DateTime? MaxWinStartDate { get; set; }
+    public DateTime? MaxWinEndDate { get; set; }
+    public int MaxLossDays { get; set; }
+    public DateTime? MaxLossStartDate { get; set; }
+    public DateTime? MaxLossEndDate { get; set; }
+}
+
+/// <summary>
+/// 周期分析摘要
+/// </summary>
+public class CycleAnalysisSummary
+{
+    public int TotalCycles { get; set; }
+    public int ClosedCycles { get; set; }
+    public int OpenCycles { get; set; }
+    public decimal ClosedWinRate { get; set; }
+    public decimal AverageProfitPerCycle { get; set; }
+    public decimal AverageLossPerCycle { get; set; }
+    public decimal AverageHoldingDays { get; set; }
+    public decimal MaxProfitCyclePnL { get; set; }
+    public decimal MaxLossCyclePnL { get; set; }
+}
+
+/// <summary>
+/// 做T分析摘要
+/// </summary>
+public class TTradeAnalysisSummary
+{
+    public int TradeCount { get; set; }
+    public int WinCount { get; set; }
+    public int LoseCount { get; set; }
+    public decimal WinRate { get; set; }
+    public decimal TotalPnL { get; set; }
+    public decimal AveragePnL { get; set; }
+}
+
+/// <summary>
+/// 资金使用率与波动率分析
+/// </summary>
+public class CapitalAnalysisSummary
+{
+    public decimal? LatestUtilization { get; set; }
+    public decimal? AverageUtilization { get; set; }
+    public decimal? MaxUtilization { get; set; }
+    public decimal? DailyVolatility { get; set; }
+}
+
+/// <summary>
+/// 周/月/季度盈亏分布
+/// </summary>
+public class PeriodPnLDistributionItem
+{
+    public string Label { get; set; } = string.Empty;
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
+    public decimal TotalPnL { get; set; }
+}
+
+/// <summary>
+/// 板块轮动复盘
+/// </summary>
+public class BoardRotationItem
+{
+    public string Board { get; set; } = string.Empty;
+    public decimal TotalPnL { get; set; }
+    public decimal ContributionRate { get; set; }
+    public int ActiveDays { get; set; }
+    public int ProfitDays { get; set; }
+    public int LossDays { get; set; }
+    public decimal WinDayRate { get; set; }
 }
 
 /// <summary>

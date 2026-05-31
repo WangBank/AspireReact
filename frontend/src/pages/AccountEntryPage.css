@@ -129,6 +129,15 @@
   font-size: 0.875rem;
 }
 
+.entry-warning-banner {
+  background: #fffbeb;
+  border-left: 4px solid #f59e0b;
+  color: #92400e;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
 .entry-submit-btn {
   width: 100%;
   padding: 0.75rem;

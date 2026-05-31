@@ -1,6 +1,7 @@
 import { makeAutoObservable, runInAction } from 'mobx';
 import { noteService } from '../services/NoteService';
 import type { NoteResponse, NoteRequest } from '../services/NoteService';
+import { formatLocalDate } from '../utils/date';
 
 export class NotesStore {
   notes: NoteResponse[] = [];
@@ -117,7 +118,7 @@ export class NotesStore {
   /** 打开新建编辑器 */
   openCreate = (defaultDate?: string, defaultStockCode?: string) => {
     this.editingNote = null;
-    this.editDate = defaultDate || new Date().toISOString().slice(0, 10);
+    this.editDate = defaultDate || formatLocalDate();
     this.editStockCode = defaultStockCode || '';
     this.editContent = '';
     this.editorOpen = true;

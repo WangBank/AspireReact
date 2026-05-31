@@ -453,6 +453,164 @@
   color: #065f46;
 }
 
+.sp-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.sp-mini-card {
+  padding: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f9fafb;
+}
+
+.sp-mini-card__label {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sp-mini-card__value {
+  margin: 0;
+  font-size: 1.18rem;
+  font-weight: 800;
+  color: #111827;
+}
+
+.sp-mini-card__detail {
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.sp-analysis-card__extra {
+  margin: 10px 0 0;
+  color: #4b5563;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.sp-distribution-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.sp-distribution-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f9fafb;
+  padding: 16px;
+}
+
+.sp-distribution-panel__header {
+  margin-bottom: 12px;
+}
+
+.sp-distribution-panel__title {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.sp-distribution-panel__caption {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+.sp-heatmap-months {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.sp-heatmap-month {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f9fafb;
+  padding: 16px;
+}
+
+.sp-heatmap-month__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.sp-heatmap-month__header span:first-child {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.sp-heatmap-weekdays,
+.sp-heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.sp-heatmap-weekdays {
+  margin-bottom: 6px;
+}
+
+.sp-heatmap-weekdays span {
+  text-align: center;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.sp-heatmap-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-height: 34px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(148, 163, 184, 0.08);
+  color: #475569;
+}
+
+.sp-heatmap-cell--profit {
+  background: rgba(220, 38, 38, var(--heatmap-alpha, 0.2));
+  color: #991b1b;
+}
+
+.sp-heatmap-cell--loss {
+  background: rgba(22, 163, 74, var(--heatmap-alpha, 0.2));
+  color: #166534;
+}
+
+.sp-heatmap-cell--flat {
+  background: rgba(148, 163, 184, 0.14);
+  color: #64748b;
+}
+
+.sp-heatmap-cell--blank,
+.sp-heatmap-cell--empty {
+  background: rgba(148, 163, 184, 0.05);
+  color: #cbd5e1;
+}
+
+.sp-heatmap-cell--empty {
+  border-style: dashed;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sp-header {
@@ -474,6 +632,13 @@
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .sp-mini-grid,
+  .sp-analysis-grid,
+  .sp-distribution-grid,
+  .sp-heatmap-months {
+    grid-template-columns: 1fr;
+  }
+
   .sp-table-wrap {
     margin: 0 -16px;
     padding: 0 16px;
@@ -491,5 +656,10 @@
   .sp-table td {
     padding: 8px 10px;
     white-space: nowrap;
+  }
+
+  .sp-heatmap-cell {
+    min-height: 30px;
+    font-size: 0.74rem;
   }
 }

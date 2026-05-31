@@ -15,6 +15,18 @@ const AccountEntryPage = observer(() => {
   const [dailyPnL, setDailyPnL] = useState('');
   const [remark, setRemark] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const totalAssetsValue = totalAssets === '' ? null : Number(totalAssets);
+  const positionValueValue = positionValue === '' ? null : Number(positionValue);
+  const availableFundsValue = availableFunds === '' ? null : Number(availableFunds);
+  const accountBalanceDiff = totalAssetsValue != null
+    && positionValueValue != null
+    && availableFundsValue != null
+    && !Number.isNaN(totalAssetsValue)
+    && !Number.isNaN(positionValueValue)
+    && !Number.isNaN(availableFundsValue)
+    ? totalAssetsValue - positionValueValue - availableFundsValue
+    : null;
+  const hasAccountBalanceWarning = accountBalanceDiff != null && Math.abs(accountBalanceDiff) >= 1;
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -68,6 +80,11 @@ const AccountEntryPage = observer(() => {
         {accountEntryStore.successMessage && (
           <div className="entry-success-banner" role="status">
             {accountEntryStore.successMessage}
+          </div>
+        )}
+        {hasAccountBalanceWarning && (
+          <div className="entry-warning-banner" role="alert">
+            当前总资产与持仓市值 + 可用资金相差 {accountBalanceDiff!.toFixed(2)} 元，请确认是否有识别遗漏、在途资金或手动录入误差。
           </div>
         )}
 

@@ -6,6 +6,7 @@ import SortableHeader from '../components/Table/SortableHeader';
 import TablePagination from '../components/Table/TablePagination';
 import StockLink from '../components/StockLink';
 import StockHistoryLink from '../components/StockHistoryLink';
+import TradeTagList from '../components/TradeTagList';
 import { extractDatePart } from '../utils/date';
 import './TradeListPage.css';
 
@@ -132,6 +133,9 @@ const TradeListPage = observer(() => {
                     <SortableHeader field={'status' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
                       状态
                     </SortableHeader>
+                    <SortableHeader field={'tradeTags' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      标签
+                    </SortableHeader>
                     <SortableHeader field={'buyPrice' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort} className="tlp-num">
                       买入价
                     </SortableHeader>
@@ -171,6 +175,9 @@ const TradeListPage = observer(() => {
                         <span className={`tlp-status-tag ${getTradeStatusClassName(row)}`}>
                           {getTradeStatus(row)}
                         </span>
+                      </td>
+                      <td data-label="标签">
+                        <TradeTagList tags={row.tradeTags} />
                       </td>
                       <td data-label="买入价" className="tlp-num">{row.buyPrice.toFixed(2)}</td>
                       <td data-label="买入量" className="tlp-num">{row.buyQuantity}</td>

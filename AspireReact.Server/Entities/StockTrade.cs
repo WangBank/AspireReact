@@ -20,6 +20,7 @@ public class StockTrade
     public int PositionQuantity { get; set; }
     public decimal DailyPnL { get; set; }
     public bool IsLiquidated { get; set; }
+    public string? TradeTags { get; set; }
     public string? TradeNote { get; set; }
     public string? TonghuashunLink { get; set; }
 }

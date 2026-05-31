@@ -1,6 +1,8 @@
 import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
+import { STOCK_NOTE_TEMPLATES, mergeTemplateContent } from '../constants/noteTemplates';
+import { formatLocalDate } from '../utils/date';
 import './StockNotesPage.css';
 
 const StockNotesPage = observer(() => {
@@ -108,7 +110,7 @@ const StockNotesPage = observer(() => {
               </button>
               <button
                 className="snp-btn-primary"
-                onClick={() => store.openCreate(new Date().toISOString().slice(0, 10), stockCode)}
+                onClick={() => store.openCreate(formatLocalDate(), stockCode)}
               >
                 + 新建笔记
               </button>
@@ -192,7 +194,7 @@ const StockNotesPage = observer(() => {
             <span>暂无笔记</span>
             <button
               className="snp-btn-primary"
-              onClick={() => store.openCreate(new Date().toISOString().slice(0, 10), stockCode)}
+              onClick={() => store.openCreate(formatLocalDate(), stockCode)}
             >
               为 {stockCode} 写第一篇笔记
             </button>
@@ -235,6 +237,25 @@ const StockNotesPage = observer(() => {
                   value={store.editStockCode}
                   onChange={(e) => { store.editStockCode = e.target.value; }}
                 />
+              </div>
+              <div className="snp-form-group">
+                <label>复盘模板</label>
+                <div className="snp-template-list">
+                  {STOCK_NOTE_TEMPLATES.map((template) => (
+                    <button
+                      key={template.key}
+                      type="button"
+                      className="snp-template-btn"
+                      onClick={() => {
+                        store.editContent = mergeTemplateContent(store.editContent, template.content);
+                      }}
+                    >
+                      <span className="snp-template-label">{template.label}</span>
+                      <span className="snp-template-desc">{template.description}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="snp-template-hint">推荐在一轮交易结束后补一份清仓总结，后面回看会更清晰。</p>
               </div>
               <div className="snp-form-group">
                 <label>内容 <span className="snp-required">*</span></label>
