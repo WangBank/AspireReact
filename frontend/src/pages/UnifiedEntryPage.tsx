@@ -11,6 +11,7 @@ import type { PortfolioImportResponse } from '../services/ImageImportService';
 import type { BankFlowRequest } from '../services/BankFlowService';
 import type { StockTradeRequest } from '../services/TradeService';
 import StockSearchInput from '../components/StockSearchInput';
+import StockHistoryLink from '../components/StockHistoryLink';
 import { formatLocalDate } from '../utils/date';
 import './AccountEntryPage.css';
 import './UnifiedEntryPage.css';
@@ -1007,7 +1008,11 @@ const UnifiedEntryPage = observer(() => {
                 {row.stockCode && (
                   <div className="selected-stock-info">
                     <span className="selected-stock-code">{row.stockCode}</span>
-                    <span className="selected-stock-name">{row.stockName}</span>
+                    <StockHistoryLink
+                      stockCode={row.stockCode}
+                      stockName={row.stockName}
+                      className="selected-stock-name"
+                    />
                     <span className="selected-stock-board">{row.board}</span>
                   </div>
                 )}

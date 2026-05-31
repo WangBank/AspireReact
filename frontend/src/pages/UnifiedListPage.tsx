@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../stores/StoreProvider';
 import type { UnifiedItemType, UnifiedListItem, UnifiedSortField } from '../stores/UnifiedListStore';
 import StockLink from '../components/StockLink';
+import StockHistoryLink from '../components/StockHistoryLink';
 import SortableHeader from '../components/Table/SortableHeader';
 import TablePagination from '../components/Table/TablePagination';
 import './UnifiedListPage.css';
@@ -417,7 +418,9 @@ const UnifiedListPage = observer(() => {
       <td data-label="代码" className="ulp-mono">
         <StockLink stockCode={item.stockCode || ''} stockName={item.stockName || ''} />
       </td>
-      <td data-label="名称">{item.stockName || '-'}</td>
+      <td data-label="名称">
+        <StockHistoryLink stockCode={item.stockCode} stockName={item.stockName} />
+      </td>
       <td data-label="板块">{item.board || '-'}</td>
       <td data-label="状态">
         <span className={`ulp-status-tag ${getTradeStatusClassName(item)}`}>

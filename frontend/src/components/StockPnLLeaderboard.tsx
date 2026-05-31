@@ -2,6 +2,7 @@ import { observer } from 'mobx-react-lite';
 import { useEffect } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import StockLink from './StockLink';
+import StockHistoryLink from './StockHistoryLink';
 import './StockPnLLeaderboard.css';
 
 interface StockPnLLeaderboardProps {
@@ -40,7 +41,9 @@ const StockPnLLeaderboard = observer(({ title = '全部盈亏榜' }: StockPnLLea
                   <td data-label="心魔代码">
                     <StockLink stockCode={item.stockCode} stockName={item.stockName} />
                   </td>
-                  <td data-label="心魔名称">{item.stockName}</td>
+                  <td data-label="心魔名称">
+                    <StockHistoryLink stockCode={item.stockCode} stockName={item.stockName} />
+                  </td>
                   <td data-label="板块">
                     <span className={`spl-board-tag spl-board-tag--${item.board}`}>{item.board}</span>
                   </td>

@@ -93,6 +93,7 @@ a {
 .tlp-container,
 .unified-entry-container,
 .ulp-container,
+.shp-container,
 .gnp-container,
 .snp-container,
 .entry-page-container {
@@ -107,6 +108,7 @@ a {
 .bflp-title,
 .tlp-title,
 .ulp-title,
+.shp-title,
 .gnp-title,
 .snp-title,
 .entry-page-title,
@@ -125,6 +127,7 @@ a {
 .bflp-subtitle,
 .tlp-subtitle,
 .ulp-subtitle,
+.shp-subtitle,
 .gnp-subtitle,
 .snp-subtitle,
 .entry-page-subtitle,
@@ -142,6 +145,9 @@ a {
 .bflp-table-wrap,
 .tlp-table-wrap,
 .ulp-table-wrap,
+.shp-overview,
+.shp-card,
+.shp-section,
 .image-import-panel,
 .image-import-panel__summary,
 .image-import-panel__preview,
@@ -288,6 +294,7 @@ a {
 .bflp-table,
 .tlp-table,
 .ulp-table,
+.shp-table,
 .spl-table {
   table-layout: auto !important;
 }
@@ -297,6 +304,7 @@ a {
 .bflp-table th,
 .tlp-table th,
 .ulp-table th,
+.shp-table th,
 .spl-table th {
   background: var(--app-surface-muted) !important;
   color: var(--app-text-muted) !important;
@@ -308,6 +316,7 @@ a {
 .bflp-table td,
 .tlp-table td,
 .ulp-table td,
+.shp-table td,
 .spl-table td {
   color: var(--app-text-muted) !important;
   border-bottom-color: #eef2f6 !important;
@@ -318,6 +327,7 @@ a {
 .bflp-table tbody tr:hover,
 .tlp-table tbody tr:hover,
 .ulp-table tbody tr:hover,
+.shp-table tbody tr:hover td,
 .spl-table tbody tr:hover td {
   background: #f8fbff !important;
 }
@@ -595,6 +605,7 @@ a {
   .bflp-table,
   .tlp-table,
   .ulp-table,
+  .shp-table,
   .spl-table {
     width: max-content !important;
     min-width: 100% !important;
@@ -610,6 +621,8 @@ a {
   .tlp-table td,
   .ulp-table th,
   .ulp-table td,
+  .shp-table th,
+  .shp-table td,
   .spl-table th,
   .spl-table td {
     white-space: nowrap !important;

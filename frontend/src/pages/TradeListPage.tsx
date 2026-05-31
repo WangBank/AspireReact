@@ -5,6 +5,7 @@ import type { TradeSortField } from '../stores/TradeListStore';
 import SortableHeader from '../components/Table/SortableHeader';
 import TablePagination from '../components/Table/TablePagination';
 import StockLink from '../components/StockLink';
+import StockHistoryLink from '../components/StockHistoryLink';
 import { extractDatePart } from '../utils/date';
 import './TradeListPage.css';
 
@@ -162,7 +163,9 @@ const TradeListPage = observer(() => {
                       <td data-label="代码" className="tlp-mono">
                         <StockLink stockCode={row.stockCode} stockName={row.stockName} />
                       </td>
-                      <td data-label="名称">{row.stockName}</td>
+                      <td data-label="名称">
+                        <StockHistoryLink stockCode={row.stockCode} stockName={row.stockName} />
+                      </td>
                       <td data-label="板块">{row.board}</td>
                       <td data-label="状态">
                         <span className={`tlp-status-tag ${getTradeStatusClassName(row)}`}>

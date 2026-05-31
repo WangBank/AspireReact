@@ -1,5 +1,6 @@
 import { observer } from 'mobx-react-lite';
 import { useStore } from '../../stores/StoreProvider';
+import StockHistoryLink from '../StockHistoryLink';
 import './RecentRecords.css';
 
 const RecentRecords = observer(() => {
@@ -50,7 +51,11 @@ const RecentRecords = observer(() => {
                   <div key={trade.id} className="recent-item">
                     <div className="recent-item__header">
                       <span className="recent-item__stock">
-                        {trade.stockName}
+                        <StockHistoryLink
+                          stockCode={trade.stockCode}
+                          stockName={trade.stockName}
+                          className="recent-item__stock-link"
+                        />
                         <span className="recent-item__code">({trade.stockCode})</span>
                       </span>
                       <span className={`recent-item__tag recent-item__tag--${type === '买入' ? 'buy' : type === '卖出' ? 'sell' : type === '持仓' ? 'hold' : type === '清仓' ? 'liquidated' : 'both'}`}>

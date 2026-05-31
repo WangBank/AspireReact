@@ -18,6 +18,7 @@ import ReflectionPage from './pages/ReflectionPage';
 import ConfigPage from './pages/ConfigPage';
 import ProfilePage from './pages/ProfilePage';
 import UnifiedListPage from './pages/UnifiedListPage';
+import StockHistoryPage from './pages/StockHistoryPage';
 import './App.css';
 
 const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) => {
@@ -185,6 +186,16 @@ const App = observer(() => {
           <ProtectedRoute>
             <Layout>
               <ProfilePage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/stocks/:stockCode/history"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <StockHistoryPage />
             </Layout>
           </ProtectedRoute>
         }

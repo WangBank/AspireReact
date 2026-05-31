@@ -6,6 +6,7 @@ import SortableHeader from '../components/Table/SortableHeader';
 import TablePagination from '../components/Table/TablePagination';
 import StockPnLLeaderboard from '../components/StockPnLLeaderboard';
 import StockLink from '../components/StockLink';
+import StockHistoryLink from '../components/StockHistoryLink';
 import './StatisticsPage.css';
 
 const DATE_FILTERS = [
@@ -148,7 +149,9 @@ const StatisticsPage = observer(() => {
                   <td data-label="心魔代码">
                     <StockLink stockCode={item.stockCode} stockName={item.stockName} />
                   </td>
-                  <td data-label="心魔名称">{item.stockName}</td>
+                  <td data-label="心魔名称">
+                    <StockHistoryLink stockCode={item.stockCode} stockName={item.stockName} />
+                  </td>
                   <td data-label="板块">
                     <span className={`sp-board-tag sp-board-tag--${item.board}`}>{item.board}</span>
                   </td>

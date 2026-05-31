@@ -2,6 +2,7 @@ import { observer } from 'mobx-react-lite';
 import { useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import StockSearchInput from '../components/StockSearchInput';
+import StockHistoryLink from '../components/StockHistoryLink';
 import { formatLocalDate } from '../utils/date';
 import './AccountEntryPage.css';
 
@@ -143,7 +144,11 @@ const TradeEntryPage = observer(() => {
         {stockCode && (
           <div className="selected-stock-info">
             <span className="selected-stock-code">{stockCode}</span>
-            <span className="selected-stock-name">{stockName}</span>
+            <StockHistoryLink
+              stockCode={stockCode}
+              stockName={stockName}
+              className="selected-stock-name"
+            />
             <span className="selected-stock-board">{board}</span>
           </div>
         )}

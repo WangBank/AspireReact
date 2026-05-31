@@ -49,6 +49,15 @@
   color: #111827;
 }
 
+.recent-item__stock-link {
+  color: inherit;
+  font-weight: inherit;
+}
+
+.recent-item__stock-link:hover {
+  color: #0969da;
+}
+
 .recent-item__code {
   color: #9ca3af;
   font-weight: 400;

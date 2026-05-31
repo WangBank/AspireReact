@@ -1,0 +1,11 @@
+.stock-history-link {
+  color: var(--app-accent);
+  text-decoration: none;
+  font-weight: 700;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+
+.stock-history-link:hover {
+  color: var(--app-accent-strong);
+  text-decoration: underline;
+}
