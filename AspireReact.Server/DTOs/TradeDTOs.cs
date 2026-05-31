@@ -274,6 +274,13 @@ public class TradeSummaryResponse
     public decimal TotalPositionPnL { get; set; }
     public decimal TotalDailyPnL { get; set; }
     public List<PositionSummaryItem> Positions { get; set; } = new();
+
+    // ── 分析视图 ──
+    public List<DailyWinRateItem> DailyWinRates { get; set; } = new();
+    public DailyWinRateItem? BestWinRateDay { get; set; }
+    public DailyWinRateItem? WorstWinRateDay { get; set; }
+    public PnLIntervalAnalysisItem? BestProfitInterval { get; set; }
+    public DrawdownAnalysisItem? MaxDrawdownInterval { get; set; }
 }
 
 /// <summary>
@@ -290,6 +297,42 @@ public class PositionSummaryItem
     public decimal PositionPnL { get; set; }
     public decimal DailyPnL { get; set; }
     public DateTime LastUpdateDate { get; set; }
+}
+
+/// <summary>
+/// 日度胜率分析项
+/// </summary>
+public class DailyWinRateItem
+{
+    public DateTime Date { get; set; }
+    public int WinCount { get; set; }
+    public int LoseCount { get; set; }
+    public decimal WinRate { get; set; }
+    public decimal TotalPnL { get; set; }
+}
+
+/// <summary>
+/// 盈亏区间分析项
+/// </summary>
+public class PnLIntervalAnalysisItem
+{
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
+    public int TradingDays { get; set; }
+    public decimal TotalPnL { get; set; }
+}
+
+/// <summary>
+/// 回撤区间分析项
+/// </summary>
+public class DrawdownAnalysisItem
+{
+    public DateTime PeakDate { get; set; }
+    public DateTime TroughDate { get; set; }
+    public decimal PeakValue { get; set; }
+    public decimal TroughValue { get; set; }
+    public decimal DrawdownAmount { get; set; }
+    public decimal DrawdownRate { get; set; }
 }
 
 /// <summary>

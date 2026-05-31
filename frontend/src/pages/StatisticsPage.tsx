@@ -173,6 +173,90 @@ const StatisticsPage = observer(() => {
     );
   };
 
+  const renderAnalysisSection = () => {
+    if (!store.data) return null;
+
+    const {
+      bestWinRateDay,
+      worstWinRateDay,
+      bestProfitInterval,
+      maxDrawdownInterval,
+    } = store.data;
+
+    const cards = [
+      {
+        label: '胜率最高交易日',
+        title: bestWinRateDay
+          ? `${store.formatDate(bestWinRateDay.date)} · ${store.formatPercent(bestWinRateDay.winRate)}`
+          : '暂无数据',
+        detail: bestWinRateDay
+          ? `${bestWinRateDay.winCount} 胜 ${bestWinRateDay.loseCount} 负 · ${store.formatMoney(bestWinRateDay.totalPnL)}`
+          : '当前区间没有可统计的交易日胜率',
+        tone: bestWinRateDay ? (bestWinRateDay.totalPnL >= 0 ? 'positive' : 'negative') : 'neutral',
+      },
+      {
+        label: '胜率最低交易日',
+        title: worstWinRateDay
+          ? `${store.formatDate(worstWinRateDay.date)} · ${store.formatPercent(worstWinRateDay.winRate)}`
+          : '暂无数据',
+        detail: worstWinRateDay
+          ? `${worstWinRateDay.winCount} 胜 ${worstWinRateDay.loseCount} 负 · ${store.formatMoney(worstWinRateDay.totalPnL)}`
+          : '当前区间没有可统计的交易日胜率',
+        tone: worstWinRateDay ? (worstWinRateDay.totalPnL >= 0 ? 'positive' : 'negative') : 'neutral',
+      },
+      {
+        label: '最大盈利区间',
+        title: bestProfitInterval
+          ? `${store.formatDateRange(bestProfitInterval.startDate, bestProfitInterval.endDate)}`
+          : '暂无数据',
+        detail: bestProfitInterval
+          ? `${bestProfitInterval.tradingDays} 天 · ${store.formatMoney(bestProfitInterval.totalPnL)}`
+          : '当前区间没有可分析的账户或交易数据',
+        tone: bestProfitInterval ? (bestProfitInterval.totalPnL >= 0 ? 'positive' : 'negative') : 'neutral',
+      },
+      {
+        label: '最大回撤区间',
+        title: maxDrawdownInterval
+          ? `${store.formatDateRange(maxDrawdownInterval.peakDate, maxDrawdownInterval.troughDate)}`
+          : '暂无数据',
+        detail: maxDrawdownInterval
+          ? `${store.formatMoney(-maxDrawdownInterval.drawdownAmount)} · ${store.formatPercent(maxDrawdownInterval.drawdownRate)}`
+          : '当前区间没有可分析的账户或交易数据',
+        tone: 'negative',
+      },
+    ];
+
+    return (
+      <div className="sp-section">
+        <div className="sp-section-heading">
+          <div>
+            <p className="sp-section-title">分析胜率</p>
+            <p className="sp-section-caption">按当前统计区间的交易日和账户曲线自动计算</p>
+          </div>
+        </div>
+        <div className="sp-analysis-grid">
+          {cards.map((card) => (
+            <article className="sp-analysis-card" key={card.label}>
+              <p className="sp-analysis-card__label">{card.label}</p>
+              <p
+                className={`sp-analysis-card__title ${
+                  card.tone === 'positive'
+                    ? 'sp-analysis-card__title--positive'
+                    : card.tone === 'negative'
+                      ? 'sp-analysis-card__title--negative'
+                      : ''
+                }`}
+              >
+                {card.title}
+              </p>
+              <p className="sp-analysis-card__detail">{card.detail}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="sp-container">
       <div className="sp-header">
@@ -259,6 +343,8 @@ const StatisticsPage = observer(() => {
 
         {/* 统计卡片 */}
         {!store.loading && !store.error && store.data && renderStatCards()}
+
+        {!store.loading && !store.error && store.data && renderAnalysisSection()}
 
         {/* 按心魔汇总表格 */}
         {!store.loading && !store.error && store.data && renderByStockTable()}

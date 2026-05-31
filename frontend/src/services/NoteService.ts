@@ -1,3 +1,5 @@
+import { getAuthToken } from '../utils/authToken';
+
 const API_BASE = '/api/note';
 
 export interface NoteResponse {
@@ -23,7 +25,7 @@ export interface NoteApiResponse<T> {
 
 export class NoteService {
   private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem('jwt_token');
+    const token = getAuthToken();
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

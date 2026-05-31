@@ -1,3 +1,5 @@
+import { getAuthToken } from '../utils/authToken';
+
 const API_BASE = '/api/config';
 
 export interface ConfigResponse {
@@ -12,7 +14,7 @@ export interface ConfigApiResponse {
 
 export class ConfigService {
   private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem('jwt_token');
+    const token = getAuthToken();
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

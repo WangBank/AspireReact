@@ -1,3 +1,5 @@
+import { getAuthToken } from '../utils/authToken';
+
 const API_BASE = '/api/auth';
 
 export interface CaptchaData {
@@ -111,7 +113,7 @@ export class AuthService {
   }
 
   async getProfile(): Promise<UserProfile> {
-    const token = localStorage.getItem('jwt_token');
+    const token = getAuthToken();
     const response = await fetch(`${API_BASE}/profile`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
@@ -126,7 +128,7 @@ export class AuthService {
   }
 
   async updateProfile(data: UpdateProfileRequest): Promise<UpdateProfileResponse> {
-    const token = localStorage.getItem('jwt_token');
+    const token = getAuthToken();
     const response = await fetch(`${API_BASE}/profile`, {
       method: 'PUT',
       headers: {
@@ -146,7 +148,7 @@ export class AuthService {
   }
 
   async changePassword(data: ChangePasswordRequest): Promise<UpdateProfileResponse> {
-    const token = localStorage.getItem('jwt_token');
+    const token = getAuthToken();
     const response = await fetch(`${API_BASE}/password`, {
       method: 'PUT',
       headers: {

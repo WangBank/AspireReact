@@ -1,3 +1,5 @@
+import { getAuthToken } from '../utils/authToken';
+
 const API_BASE = '/api/stocktrade';
 
 export interface TradeSummaryItem {
@@ -22,6 +24,30 @@ export interface PositionSummaryItem {
   lastUpdateDate: string;
 }
 
+export interface DailyWinRateItem {
+  date: string;
+  winCount: number;
+  loseCount: number;
+  winRate: number;
+  totalPnL: number;
+}
+
+export interface PnLIntervalAnalysisItem {
+  startDate: string;
+  endDate: string;
+  tradingDays: number;
+  totalPnL: number;
+}
+
+export interface DrawdownAnalysisItem {
+  peakDate: string;
+  troughDate: string;
+  peakValue: number;
+  troughValue: number;
+  drawdownAmount: number;
+  drawdownRate: number;
+}
+
 export interface TradeSummaryResponse {
   totalTrades: number;
   totalPnL: number;
@@ -39,6 +65,11 @@ export interface TradeSummaryResponse {
   totalPositionPnL: number;
   totalDailyPnL: number;
   positions: PositionSummaryItem[];
+  dailyWinRates: DailyWinRateItem[];
+  bestWinRateDay: DailyWinRateItem | null;
+  worstWinRateDay: DailyWinRateItem | null;
+  bestProfitInterval: PnLIntervalAnalysisItem | null;
+  maxDrawdownInterval: DrawdownAnalysisItem | null;
 }
 
 export interface StatisticsApiResponse {
@@ -52,7 +83,7 @@ export type DateFilterType = 'today' | 'week' | 'month' | 'year' | 'all' | 'cust
 
 export class StatisticsService {
   private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem('jwt_token');
+    const token = getAuthToken();
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

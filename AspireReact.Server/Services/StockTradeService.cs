@@ -417,6 +417,7 @@ public class StockTradeService : IStockTradeService
             .Where(snapshot => IsWithinRange(snapshot.Trade.TradeDate, start, end))
             .ToList();
         var bankFlowRecords = await bankFlowQuery.ToListAsync();
+        var accountRecords = await BuildAccountAnalysisRecordsAsync(start, end);
 
         var stockAggregates = correctedRecords
             .GroupBy(snapshot => new { snapshot.Trade.StockCode, snapshot.Trade.StockName, snapshot.Trade.Board })
@@ -534,6 +535,11 @@ public class StockTradeService : IStockTradeService
         var totalPositionValue = positionOnlyRecords.Sum(p => p.CurrentPrice * p.PositionQuantity);
         var totalPositionPnL = positionOnlyRecords.Sum(p => p.PositionPnL);
         var totalDailyPnL = latestRecordsByStock.Sum(p => p.Trade.DailyPnL);
+        var dailyWinRates = BuildDailyWinRates(rangeRecords);
+        var bestWinRateDay = SelectBestWinRateDay(dailyWinRates);
+        var worstWinRateDay = SelectWorstWinRateDay(dailyWinRates);
+        var bestProfitInterval = BuildBestProfitInterval(accountRecords, rangeRecords);
+        var maxDrawdownInterval = BuildMaxDrawdownInterval(accountRecords, rangeRecords);
         var totalBankInflow = bankFlowRecords
             .Where(flow => string.Equals(flow.FlowType, "转入", StringComparison.Ordinal))
             .Sum(flow => flow.Amount);
@@ -563,7 +569,12 @@ public class StockTradeService : IStockTradeService
             TotalPositionValue = totalPositionValue,
             TotalPositionPnL = totalPositionPnL,
             TotalDailyPnL = totalDailyPnL,
-            Positions = positionOnlyRecords
+            Positions = positionOnlyRecords,
+            DailyWinRates = dailyWinRates,
+            BestWinRateDay = bestWinRateDay,
+            WorstWinRateDay = worstWinRateDay,
+            BestProfitInterval = bestProfitInterval,
+            MaxDrawdownInterval = maxDrawdownInterval
         };
     }
 
@@ -626,6 +637,31 @@ public class StockTradeService : IStockTradeService
         return TradeMetricsCalculator.Recalculate(historyRecords).ToList();
     }
 
+    private async Task<List<AccountAnalysisRecord>> BuildAccountAnalysisRecordsAsync(DateTime? startDate, DateTime? endDate)
+    {
+        var query = _db.AccountDailies.AsNoTracking();
+
+        if (startDate.HasValue)
+        {
+            query = query.Where(item => item.Date >= startDate.Value.Date);
+        }
+
+        if (endDate.HasValue)
+        {
+            query = query.Where(item => item.Date <= endDate.Value.Date);
+        }
+
+        return await query
+            .OrderBy(item => item.Date)
+            .Select(item => new AccountAnalysisRecord
+            {
+                Date = item.Date.Date,
+                TotalAssets = item.TotalAssets,
+                DailyPnL = item.DailyPnL
+            })
+            .ToListAsync();
+    }
+
     private static bool ClosesHoldingCycle(StockTrade trade)
     {
         return TradeMetricsCalculator.IsHoldingClosed(trade);
@@ -669,6 +705,204 @@ public class StockTradeService : IStockTradeService
         return true;
     }
 
+    private static List<DailyWinRateItem> BuildDailyWinRates(IReadOnlyCollection<TradeMetricSnapshot> rangeRecords)
+    {
+        return rangeRecords
+            .GroupBy(snapshot => snapshot.Trade.TradeDate.Date)
+            .Select(group =>
+            {
+                var winCount = group.Count(snapshot => snapshot.Trade.DailyPnL > 0);
+                var loseCount = group.Count(snapshot => snapshot.Trade.DailyPnL < 0);
+                return new DailyWinRateItem
+                {
+                    Date = group.Key,
+                    WinCount = winCount,
+                    LoseCount = loseCount,
+                    WinRate = (winCount + loseCount) > 0
+                        ? decimal.Round((decimal)winCount / (winCount + loseCount), 4, MidpointRounding.AwayFromZero)
+                        : 0,
+                    TotalPnL = group.Sum(snapshot => snapshot.Trade.DailyPnL)
+                };
+            })
+            .Where(item => item.WinCount + item.LoseCount > 0)
+            .OrderBy(item => item.Date)
+            .ToList();
+    }
+
+    private static DailyWinRateItem? SelectBestWinRateDay(IReadOnlyCollection<DailyWinRateItem> dailyWinRates)
+    {
+        return dailyWinRates
+            .OrderByDescending(item => item.WinRate)
+            .ThenByDescending(item => item.WinCount + item.LoseCount)
+            .ThenByDescending(item => item.TotalPnL)
+            .ThenBy(item => item.Date)
+            .FirstOrDefault();
+    }
+
+    private static DailyWinRateItem? SelectWorstWinRateDay(IReadOnlyCollection<DailyWinRateItem> dailyWinRates)
+    {
+        return dailyWinRates
+            .OrderBy(item => item.WinRate)
+            .ThenByDescending(item => item.WinCount + item.LoseCount)
+            .ThenBy(item => item.TotalPnL)
+            .ThenBy(item => item.Date)
+            .FirstOrDefault();
+    }
+
+    private static PnLIntervalAnalysisItem? BuildBestProfitInterval(
+        IReadOnlyList<AccountAnalysisRecord> accountRecords,
+        IReadOnlyCollection<TradeMetricSnapshot> rangeRecords)
+    {
+        var series = accountRecords.Count > 0
+            ? accountRecords.Select(item => new PnLSeriesPoint(item.Date, item.DailyPnL)).ToList()
+            : rangeRecords
+                .GroupBy(snapshot => snapshot.Trade.TradeDate.Date)
+                .Select(group => new PnLSeriesPoint(group.Key, group.Sum(snapshot => snapshot.Trade.DailyPnL)))
+                .OrderBy(item => item.Date)
+                .ToList();
+
+        if (series.Count == 0)
+        {
+            return null;
+        }
+
+        var bestSum = decimal.MinValue;
+        var currentSum = 0m;
+        var bestStartIndex = 0;
+        var bestEndIndex = 0;
+        var currentStartIndex = 0;
+
+        for (var index = 0; index < series.Count; index++)
+        {
+            if (currentSum <= 0)
+            {
+                currentSum = series[index].PnL;
+                currentStartIndex = index;
+            }
+            else
+            {
+                currentSum += series[index].PnL;
+            }
+
+            if (currentSum > bestSum)
+            {
+                bestSum = currentSum;
+                bestStartIndex = currentStartIndex;
+                bestEndIndex = index;
+            }
+        }
+
+        return new PnLIntervalAnalysisItem
+        {
+            StartDate = series[bestStartIndex].Date,
+            EndDate = series[bestEndIndex].Date,
+            TradingDays = bestEndIndex - bestStartIndex + 1,
+            TotalPnL = decimal.Round(bestSum, 2, MidpointRounding.AwayFromZero)
+        };
+    }
+
+    private static DrawdownAnalysisItem? BuildMaxDrawdownInterval(
+        IReadOnlyList<AccountAnalysisRecord> accountRecords,
+        IReadOnlyCollection<TradeMetricSnapshot> rangeRecords)
+    {
+        if (accountRecords.Count > 0)
+        {
+            var peakRecord = accountRecords[0];
+            var selectedPeak = peakRecord;
+            var selectedTrough = peakRecord;
+            var maxDrawdownAmount = 0m;
+            var maxDrawdownRate = 0m;
+
+            foreach (var record in accountRecords)
+            {
+                if (record.TotalAssets > peakRecord.TotalAssets)
+                {
+                    peakRecord = record;
+                }
+
+                var drawdownAmount = peakRecord.TotalAssets - record.TotalAssets;
+                var drawdownRate = peakRecord.TotalAssets > 0
+                    ? decimal.Round(drawdownAmount / peakRecord.TotalAssets, 4, MidpointRounding.AwayFromZero)
+                    : 0;
+
+                if (drawdownAmount > maxDrawdownAmount
+                    || (drawdownAmount == maxDrawdownAmount && drawdownRate > maxDrawdownRate))
+                {
+                    selectedPeak = peakRecord;
+                    selectedTrough = record;
+                    maxDrawdownAmount = drawdownAmount;
+                    maxDrawdownRate = drawdownRate;
+                }
+            }
+
+            if (maxDrawdownAmount <= 0)
+            {
+                return null;
+            }
+
+            return new DrawdownAnalysisItem
+            {
+                PeakDate = selectedPeak.Date,
+                TroughDate = selectedTrough.Date,
+                PeakValue = selectedPeak.TotalAssets,
+                TroughValue = selectedTrough.TotalAssets,
+                DrawdownAmount = decimal.Round(maxDrawdownAmount, 2, MidpointRounding.AwayFromZero),
+                DrawdownRate = maxDrawdownRate
+            };
+        }
+
+        var fallbackSeries = rangeRecords
+            .GroupBy(snapshot => snapshot.Trade.TradeDate.Date)
+            .Select(group => new PnLSeriesPoint(group.Key, group.Sum(snapshot => snapshot.Trade.DailyPnL)))
+            .OrderBy(item => item.Date)
+            .ToList();
+
+        if (fallbackSeries.Count == 0)
+        {
+            return null;
+        }
+
+        var cumulativeValue = 0m;
+        var peakValue = 0m;
+        var peakDate = fallbackSeries[0].Date;
+        var selectedPeakDate = peakDate;
+        var selectedTroughDate = peakDate;
+        var maxDrawdown = 0m;
+
+        foreach (var point in fallbackSeries)
+        {
+            cumulativeValue += point.PnL;
+            if (cumulativeValue > peakValue)
+            {
+                peakValue = cumulativeValue;
+                peakDate = point.Date;
+            }
+
+            var drawdown = peakValue - cumulativeValue;
+            if (drawdown > maxDrawdown)
+            {
+                maxDrawdown = drawdown;
+                selectedPeakDate = peakDate;
+                selectedTroughDate = point.Date;
+            }
+        }
+
+        if (maxDrawdown <= 0)
+        {
+            return null;
+        }
+
+        return new DrawdownAnalysisItem
+        {
+            PeakDate = selectedPeakDate,
+            TroughDate = selectedTroughDate,
+            PeakValue = peakValue,
+            TroughValue = peakValue - maxDrawdown,
+            DrawdownAmount = decimal.Round(maxDrawdown, 2, MidpointRounding.AwayFromZero),
+            DrawdownRate = 0
+        };
+    }
+
     private sealed class StockAggregate
     {
         public string StockCode { get; init; } = string.Empty;
@@ -680,6 +914,15 @@ public class StockTradeService : IStockTradeService
         public int WinCount { get; init; }
         public int LoseCount { get; init; }
     }
+
+    private sealed class AccountAnalysisRecord
+    {
+        public DateTime Date { get; init; }
+        public decimal TotalAssets { get; init; }
+        public decimal DailyPnL { get; init; }
+    }
+
+    private sealed record PnLSeriesPoint(DateTime Date, decimal PnL);
 
     private static StockTradeResponse ToResponse(StockTrade entity)
     {

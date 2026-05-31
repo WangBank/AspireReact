@@ -1,3 +1,5 @@
+import { getAuthToken } from '../utils/authToken';
+
 const API_BASE = '/api/account';
 
 export interface AccountDailyRequest {
@@ -34,7 +36,7 @@ export interface AccountListResponse {
 
 export class AccountService {
   private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem('jwt_token');
+    const token = getAuthToken();
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

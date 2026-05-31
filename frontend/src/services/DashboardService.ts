@@ -1,3 +1,5 @@
+import { getAuthToken } from '../utils/authToken';
+
 const API_BASE = '/api/dashboard';
 
 export interface AccountDailyResponse {
@@ -60,7 +62,7 @@ export interface DashboardResponse {
 
 export class DashboardService {
   async getDashboard(): Promise<DashboardData> {
-    const token = localStorage.getItem('jwt_token');
+    const token = getAuthToken();
 
     const response = await fetch(API_BASE, {
       headers: {

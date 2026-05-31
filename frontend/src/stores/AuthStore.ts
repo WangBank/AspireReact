@@ -1,8 +1,8 @@
 import { makeAutoObservable, runInAction } from 'mobx';
 import { authService } from '../services/AuthService';
 import type { CaptchaData, UserProfile } from '../services/AuthService';
+import { hydrateAuthToken, setAuthToken } from '../utils/authToken';
 
-const TOKEN_KEY = 'jwt_token';
 const USERNAME_KEY = 'auth_username';
 
 export class AuthStore {
@@ -20,8 +20,12 @@ export class AuthStore {
   }
 
   private loadFromStorage() {
-    this.token = localStorage.getItem(TOKEN_KEY);
-    this.username = localStorage.getItem(USERNAME_KEY);
+    this.token = hydrateAuthToken();
+    try {
+      this.username = localStorage.getItem(USERNAME_KEY);
+    } catch {
+      this.username = null;
+    }
   }
 
   get isAuthenticated(): boolean {
@@ -52,8 +56,12 @@ export class AuthStore {
         this.username = result.data.username;
         this.loading = false;
       });
-      localStorage.setItem(TOKEN_KEY, result.data.token);
-      localStorage.setItem(USERNAME_KEY, result.data.username);
+      setAuthToken(result.data.token);
+      try {
+        localStorage.setItem(USERNAME_KEY, result.data.username);
+      } catch {
+        // 忽略存储失败，当前会话仍然保留内存态用户名。
+      }
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '登录失败';
@@ -86,8 +94,12 @@ export class AuthStore {
         this.username = result.data.username;
         this.loading = false;
       });
-      localStorage.setItem(TOKEN_KEY, result.data.token);
-      localStorage.setItem(USERNAME_KEY, result.data.username);
+      setAuthToken(result.data.token);
+      try {
+        localStorage.setItem(USERNAME_KEY, result.data.username);
+      } catch {
+        // 忽略存储失败，当前会话仍然保留内存态用户名。
+      }
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '注册失败';
@@ -105,7 +117,11 @@ export class AuthStore {
         this.email = profile.email;
         this.username = profile.username;
       });
-      localStorage.setItem(USERNAME_KEY, profile.username);
+      try {
+        localStorage.setItem(USERNAME_KEY, profile.username);
+      } catch {
+        // 忽略存储失败，当前会话仍然保留内存态用户名。
+      }
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '获取个人信息失败';
@@ -130,7 +146,11 @@ export class AuthStore {
         this.loading = false;
       });
       if (result.data) {
-        localStorage.setItem(USERNAME_KEY, result.data.username);
+        try {
+          localStorage.setItem(USERNAME_KEY, result.data.username);
+        } catch {
+          // 忽略存储失败，当前会话仍然保留内存态用户名。
+        }
       }
       return result;
     } catch (err) {
@@ -171,8 +191,12 @@ export class AuthStore {
     this.profile = null;
     this.captcha = null;
     this.error = null;
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USERNAME_KEY);
+    setAuthToken(null);
+    try {
+      localStorage.removeItem(USERNAME_KEY);
+    } catch {
+      // 忽略存储失败。
+    }
   };
 
   clearError = () => {

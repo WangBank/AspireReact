@@ -1,3 +1,5 @@
+import { getAuthToken } from '../utils/authToken';
+
 const API_BASE = '/api/portfolio-import';
 
 export interface PortfolioImportAccount {
@@ -48,7 +50,7 @@ interface PortfolioImportApiResponse {
 
 export class ImageImportService {
   private getAuthHeaders(): HeadersInit {
-    const token = localStorage.getItem('jwt_token');
+    const token = getAuthToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 

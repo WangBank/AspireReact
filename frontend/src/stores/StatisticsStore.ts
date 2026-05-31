@@ -36,23 +36,23 @@ export class StatisticsStore {
 
     switch (type) {
       case 'today':
-        this.startDate = this.formatDate(today);
-        this.endDate = this.formatDate(today);
+        this.startDate = this.formatDateInput(today);
+        this.endDate = this.formatDateInput(today);
         break;
       case 'week': {
         const weekStart = new Date(today);
         weekStart.setDate(today.getDate() - today.getDay()); // 周日
-        this.startDate = this.formatDate(weekStart);
-        this.endDate = this.formatDate(today);
+        this.startDate = this.formatDateInput(weekStart);
+        this.endDate = this.formatDateInput(today);
         break;
       }
       case 'month':
-        this.startDate = this.formatDate(new Date(today.getFullYear(), today.getMonth(), 1));
-        this.endDate = this.formatDate(today);
+        this.startDate = this.formatDateInput(new Date(today.getFullYear(), today.getMonth(), 1));
+        this.endDate = this.formatDateInput(today);
         break;
       case 'year':
-        this.startDate = this.formatDate(new Date(today.getFullYear(), 0, 1));
-        this.endDate = this.formatDate(today);
+        this.startDate = this.formatDateInput(new Date(today.getFullYear(), 0, 1));
+        this.endDate = this.formatDateInput(today);
         break;
       case 'all':
         this.startDate = '';
@@ -156,6 +156,26 @@ export class StatisticsStore {
     return `${sign}${val.toFixed(2)}`;
   };
 
+  formatPercent = (val: number): string => `${(val * 100).toFixed(2)}%`;
+
+  formatDate = (value: string | Date): string => {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '--';
+    }
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  formatDateRange = (start: string | Date, end: string | Date): string => {
+    const startText = this.formatDate(start);
+    const endText = this.formatDate(end);
+    return startText === endText ? startText : `${startText} ~ ${endText}`;
+  };
+
   /** 判断盈亏正负 */
   isPnLPositive = (val: number): boolean => {
     return val >= 0;
@@ -180,7 +200,7 @@ export class StatisticsStore {
     this.stockPage = clampPage(page, this.byStockTotalPages);
   };
 
-  private formatDate(date: Date): string {
+  private formatDateInput(date: Date): string {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');

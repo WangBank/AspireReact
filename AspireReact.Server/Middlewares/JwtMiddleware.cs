@@ -62,12 +62,22 @@ public class JwtMiddleware
             if (validationResult.IsValid)
             {
                 var jwtToken = (JwtSecurityToken)validationResult.SecurityToken;
-                var claimsIdentity = new ClaimsIdentity(jwtToken.Claims, "jwt");
+                var claimsIdentity = validationResult.ClaimsIdentity ?? new ClaimsIdentity(jwtToken.Claims, "jwt");
                 context.User = new ClaimsPrincipal(claimsIdentity);
 
-                // 附加 userId 和 username 到 HttpContext.Items 方便后续使用
-                var userIdClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
-                var usernameClaim = jwtToken.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name);
+                // 优先从验证后的 ClaimsIdentity 取值，兼容 ClaimTypes 与 JWT 短 claim 名之间的映射差异。
+                var claims = claimsIdentity.Claims.ToList();
+                var userIdClaim = claims.FirstOrDefault(c =>
+                    c.Type == ClaimTypes.NameIdentifier
+                    || c.Type == JwtRegisteredClaimNames.NameId
+                    || c.Type == "nameid"
+                    || c.Type == JwtRegisteredClaimNames.Sub
+                    || c.Type == "sub");
+                var usernameClaim = claims.FirstOrDefault(c =>
+                    c.Type == ClaimTypes.Name
+                    || c.Type == JwtRegisteredClaimNames.UniqueName
+                    || c.Type == "unique_name"
+                    || c.Type == "name");
 
                 if (userIdClaim != null)
                     context.Items["UserId"] = userIdClaim.Value;

@@ -14,6 +14,7 @@ import TradeListPage from './pages/TradeListPage';
 import StatisticsPage from './pages/StatisticsPage';
 import GlobalNotesPage from './pages/GlobalNotesPage';
 import StockNotesPage from './pages/StockNotesPage';
+import ReflectionPage from './pages/ReflectionPage';
 import ConfigPage from './pages/ConfigPage';
 import ProfilePage from './pages/ProfilePage';
 import UnifiedListPage from './pages/UnifiedListPage';
@@ -154,6 +155,16 @@ const App = observer(() => {
           <ProtectedRoute>
             <Layout>
               <StockNotesPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/notes/reflection"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <ReflectionPage />
             </Layout>
           </ProtectedRoute>
         }
