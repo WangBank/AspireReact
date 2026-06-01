@@ -133,6 +133,12 @@ const TradeListPage = observer(() => {
                     <SortableHeader field={'status' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
                       状态
                     </SortableHeader>
+                    <SortableHeader field={'sellReason' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      卖出原因
+                    </SortableHeader>
+                    <SortableHeader field={'emotionTags' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
+                      情绪标签
+                    </SortableHeader>
                     <SortableHeader field={'tradeTags' as TradeSortField} currentField={store.sortField} currentOrder={store.sortOrder} onSort={handleSort}>
                       标签
                     </SortableHeader>
@@ -175,6 +181,10 @@ const TradeListPage = observer(() => {
                         <span className={`tlp-status-tag ${getTradeStatusClassName(row)}`}>
                           {getTradeStatus(row)}
                         </span>
+                      </td>
+                      <td data-label="卖出原因">{row.sellReason || '-'}</td>
+                      <td data-label="情绪标签">
+                        <TradeTagList tags={row.emotionTags} />
                       </td>
                       <td data-label="标签">
                         <TradeTagList tags={row.tradeTags} />

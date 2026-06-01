@@ -9,6 +9,8 @@ export type TradeSortField =
   | 'stockName'
   | 'board'
   | 'status'
+  | 'sellReason'
+  | 'emotionTags'
   | 'buyPrice'
   | 'buyQuantity'
   | 'sellPrice'
@@ -96,6 +98,8 @@ export class TradeListStore {
       stockName: item => item.stockName,
       board: item => item.board,
       status: item => (item.isLiquidated || item.positionQuantity <= 0 ? 0 : 1),
+      sellReason: item => item.sellReason,
+      emotionTags: item => item.emotionTags?.join(','),
       buyPrice: item => item.buyPrice,
       buyQuantity: item => item.buyQuantity,
       sellPrice: item => item.sellPrice,

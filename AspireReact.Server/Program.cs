@@ -52,6 +52,7 @@ builder.Services.AddScoped<IBankFlowService, BankFlowService>();
 builder.Services.AddScoped<IStockTradeService, StockTradeService>();
 builder.Services.AddScoped<ITradeNoteService, TradeNoteService>();
 builder.Services.AddScoped<IPortfolioScreenshotImportService, PortfolioScreenshotImportService>();
+builder.Services.AddScoped<IDataHealthService, DataHealthService>();
 
 // 添加控制器支持
 builder.Services.AddControllers();

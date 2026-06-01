@@ -5,6 +5,10 @@ import './TradeTags.css';
 interface TradeTagsEditorProps {
   value: string[];
   onChange: (next: string[]) => void;
+  options?: readonly string[];
+  placeholder?: string;
+  hint?: string;
+  emptyText?: string;
 }
 
 const splitCustomTags = (value: string) =>
@@ -13,7 +17,14 @@ const splitCustomTags = (value: string) =>
     .map(item => item.trim())
     .filter(Boolean);
 
-const TradeTagsEditor = ({ value, onChange }: TradeTagsEditorProps) => {
+const TradeTagsEditor = ({
+  value,
+  onChange,
+  options = TRADE_TAG_OPTIONS,
+  placeholder = '自定义标签，按回车或输入逗号添加',
+  hint = '建议用标签标记模式、心态和交易动作，后面就能按标签统计胜率与盈亏。',
+  emptyText = '暂未添加标签',
+}: TradeTagsEditorProps) => {
   const [draft, setDraft] = useState('');
 
   const selected = normalizeTradeTags(value);
@@ -42,7 +53,7 @@ const TradeTagsEditor = ({ value, onChange }: TradeTagsEditorProps) => {
   return (
     <div className="trade-tags">
       <div className="trade-tags__options">
-        {TRADE_TAG_OPTIONS.map(tag => (
+        {options.map(tag => (
           <button
             key={tag}
             type="button"
@@ -58,7 +69,7 @@ const TradeTagsEditor = ({ value, onChange }: TradeTagsEditorProps) => {
         <input
           type="text"
           className="form-input trade-tags__input"
-          placeholder="自定义标签，按回车或输入逗号添加"
+          placeholder={placeholder}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={appendDraftTags}
@@ -70,7 +81,7 @@ const TradeTagsEditor = ({ value, onChange }: TradeTagsEditorProps) => {
           }}
           maxLength={200}
         />
-        <button type="button" className="entry-reset-btn" onClick={appendDraftTags}>
+        <button type="button" className="trade-tags__action-btn" onClick={appendDraftTags}>
           添加
         </button>
       </div>
@@ -92,10 +103,10 @@ const TradeTagsEditor = ({ value, onChange }: TradeTagsEditorProps) => {
           ))}
         </div>
       ) : (
-        <span className="trade-tags__empty">暂未添加标签</span>
+        <span className="trade-tags__empty">{emptyText}</span>
       )}
 
-      <p className="trade-tags__hint">建议用标签标记模式、心态和交易动作，后面就能按标签统计胜率与盈亏。</p>
+      <p className="trade-tags__hint">{hint}</p>
     </div>
   );
 };

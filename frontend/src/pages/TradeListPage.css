@@ -208,6 +208,7 @@
 
 .tlp-table {
   width: 100%;
+  min-width: 1680px;
   border-collapse: collapse;
   font-size: 0.84rem;
   table-layout: fixed;

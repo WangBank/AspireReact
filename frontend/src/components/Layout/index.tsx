@@ -15,6 +15,8 @@ const NAV_ITEMS: NavLinkItem[] = [
   { label: '录入', path: '/entry/unified', type: 'link' },
   { label: '数据列表', path: '/list/unified', type: 'link' },
   { label: '统计', path: '/statistics', type: 'link' },
+  { label: '体检', path: '/health', type: 'link' },
+  { label: '审计', path: '/audits/imports', type: 'link' },
   { label: '全局笔记', path: '/notes/global', type: 'link' },
   { label: '心魔笔记', path: '/notes/stock', type: 'link' },
   { label: '吾日三省吾身', path: '/notes/reflection', type: 'link' },

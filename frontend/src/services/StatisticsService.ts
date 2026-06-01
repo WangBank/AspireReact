@@ -13,6 +13,16 @@ export interface TradeSummaryItem {
   contributionRate: number;
 }
 
+export interface TradeBehaviorSummaryItem {
+  label: string;
+  tradeCount: number;
+  winCount: number;
+  loseCount: number;
+  winRate: number;
+  totalPnL: number;
+  averagePnL: number;
+}
+
 export interface PositionSummaryItem {
   stockCode: string;
   stockName: string;
@@ -99,6 +109,17 @@ export interface CycleAnalysisSummary {
   maxLossCyclePnL: number;
 }
 
+export interface CycleDetailItem {
+  stockCode: string;
+  stockName: string;
+  board: string;
+  startDate: string;
+  endDate: string | null;
+  holdingDays: number;
+  totalPnL: number;
+  isClosed: boolean;
+}
+
 export interface TTradeAnalysisSummary {
   tradeCount: number;
   winCount: number;
@@ -106,6 +127,20 @@ export interface TTradeAnalysisSummary {
   winRate: number;
   totalPnL: number;
   averagePnL: number;
+}
+
+export interface TTradeDetailItem {
+  tradeDate: string;
+  stockCode: string;
+  stockName: string;
+  board: string;
+  buyPrice: number;
+  buyQuantity: number;
+  sellPrice: number;
+  sellQuantity: number;
+  positionQuantity: number;
+  dailyPnL: number;
+  isLiquidated: boolean;
 }
 
 export interface CapitalAnalysisSummary {
@@ -151,6 +186,9 @@ export interface TradeSummaryResponse {
   totalPositionPnL: number;
   totalDailyPnL: number;
   positions: PositionSummaryItem[];
+  bySellReason: TradeBehaviorSummaryItem[];
+  byEmotionTag: TradeBehaviorSummaryItem[];
+  byTradeTag: TradeBehaviorSummaryItem[];
   dailyWinRates: DailyWinRateItem[];
   bestWinRateDay: DailyWinRateItem | null;
   worstWinRateDay: DailyWinRateItem | null;
@@ -160,7 +198,9 @@ export interface TradeSummaryResponse {
   dayOutcomes: DayOutcomeSummary | null;
   streakAnalysis: StreakAnalysisSummary | null;
   cycleAnalysis: CycleAnalysisSummary | null;
+  cycleDetails: CycleDetailItem[];
   tTradeAnalysis: TTradeAnalysisSummary | null;
+  tTradeDetails: TTradeDetailItem[];
   capitalAnalysis: CapitalAnalysisSummary | null;
   dailyPnLHeatmap: DailyPnLHeatmapItem[];
   weeklyPnL: PeriodPnLDistributionItem[];

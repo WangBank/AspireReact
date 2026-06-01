@@ -1,4 +1,5 @@
 import { getAuthToken } from '../utils/authToken';
+import type { DailyPnLHeatmapItem } from './StatisticsService';
 
 const API_BASE = '/api/dashboard';
 
@@ -52,6 +53,7 @@ export interface DashboardData {
   latestAccount: AccountDailyResponse | null;
   recentBankFlows: BankFlowResponse[];
   recentTrades: StockTradeResponse[];
+  dailyPnLHeatmap: DailyPnLHeatmapItem[];
 }
 
 export interface DashboardResponse {
@@ -80,7 +82,10 @@ export class DashboardService {
       throw new Error(json.message || '获取首页概览失败');
     }
 
-    return json.data;
+    return {
+      ...json.data,
+      dailyPnLHeatmap: json.data.dailyPnLHeatmap ?? [],
+    };
   }
 }
 

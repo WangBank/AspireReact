@@ -12,6 +12,7 @@ import AccountListPage from './pages/AccountListPage';
 import BankFlowListPage from './pages/BankFlowListPage';
 import TradeListPage from './pages/TradeListPage';
 import StatisticsPage from './pages/StatisticsPage';
+import DataHealthPage from './pages/DataHealthPage';
 import GlobalNotesPage from './pages/GlobalNotesPage';
 import StockNotesPage from './pages/StockNotesPage';
 import ReflectionPage from './pages/ReflectionPage';
@@ -19,6 +20,7 @@ import ConfigPage from './pages/ConfigPage';
 import ProfilePage from './pages/ProfilePage';
 import UnifiedListPage from './pages/UnifiedListPage';
 import StockHistoryPage from './pages/StockHistoryPage';
+import PortfolioImportAuditPage from './pages/PortfolioImportAuditPage';
 import './App.css';
 
 const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) => {
@@ -136,6 +138,26 @@ const App = observer(() => {
           <ProtectedRoute>
             <Layout>
               <StatisticsPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/health"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <DataHealthPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/audits/imports"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <PortfolioImportAuditPage />
             </Layout>
           </ProtectedRoute>
         }

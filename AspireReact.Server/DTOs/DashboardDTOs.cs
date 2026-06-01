@@ -51,4 +51,9 @@ public class DashboardResponse
     /// 最近交易记录（最多5条）
     /// </summary>
     public List<StockTradeResponse> RecentTrades { get; set; } = new();
+
+    /// <summary>
+    /// 日度盈亏日历数据
+    /// </summary>
+    public List<DailyPnLHeatmapItem> DailyPnLHeatmap { get; set; } = new();
 }

@@ -35,6 +35,7 @@ export interface PortfolioImportPosition {
 }
 
 export interface PortfolioImportResponse {
+  auditId: number;
   recognizedDate?: string | null;
   account: PortfolioImportAccount | null;
   bankFlow: PortfolioImportBankFlow | null;

@@ -230,8 +230,19 @@
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  padding: 16px 32px 32px;
+  padding: 16px 328px 32px 32px;
   box-sizing: border-box;
+  position: relative;
+}
+
+.sp-index-nav {
+  position: fixed;
+  top: calc(var(--app-navbar-height, 64px) + 16px);
+  right: max(16px, calc((100vw - 1400px) / 2 + 16px));
+  width: min(280px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--app-navbar-height, 64px) - 32px);
+  overflow: auto;
+  z-index: 100;
 }
 
 /* Status */
@@ -290,12 +301,21 @@
   font-size: 1rem;
 }
 
+.sp-empty--compact {
+  padding: 24px 0 8px;
+  font-size: 0.92rem;
+}
+
 /* Stat cards */
 .sp-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
+}
+
+.sp-cards--inside {
+  margin-bottom: 0;
 }
 
 .sp-card {
@@ -351,12 +371,83 @@
   margin: 0 0 16px;
 }
 
+.sp-section-caption {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
 .sp-section-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.sp-section-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.sp-chip-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sp-chip-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sp-chip-group__label,
+.sp-section-meta {
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.sp-chip-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sp-chip {
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+  background: #f6f8fa;
+  color: #57606a;
+  padding: 7px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.sp-chip:hover {
+  background: #eef2ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.sp-chip--active {
+  background: #0969da;
+  border-color: #0969da;
+  color: #fff;
+}
+
+.sp-chip--active:hover {
+  background: #0550ae;
+  border-color: #0550ae;
+  color: #fff;
 }
 
 /* Table */
@@ -453,6 +544,27 @@
   color: #065f46;
 }
 
+.sp-status-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sp-status-badge--closed {
+  background: #dafbe1;
+  color: #1a7f37;
+}
+
+.sp-status-badge--open {
+  background: #ddf4ff;
+  color: #0969da;
+}
+
 .sp-mini-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -483,6 +595,43 @@
 }
 
 .sp-mini-card__detail {
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.sp-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.sp-analysis-card {
+  padding: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f9fafb;
+}
+
+.sp-analysis-card__label {
+  margin: 0 0 8px;
+  color: #6b7280;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sp-analysis-card__title {
+  margin: 0;
+  color: #111827;
+  font-size: 1.12rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.sp-analysis-card__detail {
   margin: 8px 0 0;
   color: #6b7280;
   font-size: 0.84rem;
@@ -612,6 +761,21 @@
 }
 
 /* Responsive */
+@media (max-width: 1180px) {
+  .sp-main {
+    padding-right: 32px;
+  }
+
+  .sp-index-nav {
+    position: sticky;
+    top: calc(var(--app-navbar-height, 64px) + 12px);
+    right: auto;
+    width: auto;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
 @media (max-width: 768px) {
   .sp-header {
     flex-direction: column;
@@ -628,8 +792,19 @@
     padding: 16px 16px 32px;
   }
 
+  .sp-index-nav {
+    top: calc(var(--app-navbar-height, 58px) + 10px);
+  }
+
   .sp-cards {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .sp-section-toolbar,
+  .sp-chip-groups,
+  .sp-chip-group {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .sp-mini-grid,

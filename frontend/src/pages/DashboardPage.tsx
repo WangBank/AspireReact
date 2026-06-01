@@ -1,14 +1,18 @@
 import { observer } from 'mobx-react-lite';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
+import PnLCalendarExplorer from '../components/PnLCalendarExplorer';
+import SectionJumpNav, { type SectionJumpItem } from '../components/SectionJumpNav';
 import StockPnLLeaderboard from '../components/StockPnLLeaderboard';
 import StatsCards from '../components/Dashboard/StatsCards';
+import TradingSnapshot from '../components/Dashboard/TradingSnapshot';
 import QuickEntry from '../components/Dashboard/QuickEntry';
 import RecentRecords from '../components/Dashboard/RecentRecords';
 import './DashboardPage.css';
 
 const DashboardPage = observer(() => {
   const { dashboardStore, stockLeaderboardStore } = useStore();
+  const [snapshotReloadToken, setSnapshotReloadToken] = useState(0);
 
   const latestRecordDateText = dashboardStore.formatRecordDate(dashboardStore.latestRecordDate);
   const latestRecordDailyPnLText = dashboardStore.data
@@ -18,7 +22,17 @@ const DashboardPage = observer(() => {
   const handleRefresh = () => {
     void dashboardStore.fetchDashboard();
     void stockLeaderboardStore.fetch(true);
+    setSnapshotReloadToken((value) => value + 1);
   };
+
+  const dashboardSections: SectionJumpItem[] = [
+    { id: 'dashboard-overview', label: '核心概览' },
+    ...(dashboardStore.data ? [{ id: 'dashboard-trading-snapshot', label: '复盘快照' }] : []),
+    ...(dashboardStore.data ? [{ id: 'dashboard-calendar', label: '收益日历' }] : []),
+    { id: 'dashboard-quick-entry', label: '快捷录入' },
+    { id: 'dashboard-recent-records', label: '最近记录' },
+    { id: 'dashboard-leaderboard', label: '盈亏榜' },
+  ];
 
   useEffect(() => {
     dashboardStore.fetchDashboard();
@@ -84,10 +98,41 @@ const DashboardPage = observer(() => {
 
         {(dashboardStore.data || !dashboardStore.loading) && (
           <>
-            <StatsCards />
-            <QuickEntry />
-            <RecentRecords />
-            <StockPnLLeaderboard />
+            <SectionJumpNav
+              title="首页索引"
+              items={dashboardSections}
+              className="dashboard-index-nav"
+            />
+            <section id="dashboard-overview" className="dashboard-section section-jump-anchor">
+              <StatsCards />
+            </section>
+            {dashboardStore.data && (
+              <TradingSnapshot
+                referenceDate={dashboardStore.latestRecordDate}
+                reloadToken={snapshotReloadToken}
+              />
+            )}
+            {dashboardStore.data && (
+              <section id="dashboard-calendar" className="dashboard-section section-jump-anchor">
+                <PnLCalendarExplorer
+                  title="收益日历"
+                  caption="首页也支持按月、按年、按日切换，方便快速查看资金曲线节奏"
+                  items={dashboardStore.data.dailyPnLHeatmap ?? []}
+                  emptyText="暂无可展示的收益日历数据"
+                  initialMode="year"
+                  dayPageSize={15}
+                />
+              </section>
+            )}
+            <section id="dashboard-quick-entry" className="dashboard-section section-jump-anchor">
+              <QuickEntry />
+            </section>
+            <section id="dashboard-recent-records" className="dashboard-section section-jump-anchor">
+              <RecentRecords />
+            </section>
+            <section id="dashboard-leaderboard" className="dashboard-section section-jump-anchor">
+              <StockPnLLeaderboard />
+            </section>
           </>
         )}
       </main>

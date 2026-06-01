@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
     public DbSet<BankFlow> BankFlows { get; set; }
     public DbSet<StockTrade> StockTrades { get; set; }
     public DbSet<TradeNote> TradeNotes { get; set; }
+    public DbSet<PortfolioImportAudit> PortfolioImportAudits { get; set; }
     public DbSet<StockBasic> StockBasics { get; set; }
     public DbSet<User> Users { get; set; }
 
@@ -34,6 +35,9 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<BankFlow>().HasIndex(b => b.Date);
         modelBuilder.Entity<StockTrade>().HasIndex(s => new { s.TradeDate, s.StockCode });
         modelBuilder.Entity<TradeNote>().HasIndex(t => new { t.Date, t.StockCode });
+        modelBuilder.Entity<PortfolioImportAudit>().HasIndex(a => a.CreatedAt);
+        modelBuilder.Entity<PortfolioImportAudit>().HasIndex(a => a.ImportDate);
+        modelBuilder.Entity<PortfolioImportAudit>().HasIndex(a => a.SaveStatus);
         
         // StockBasic 配置
         modelBuilder.Entity<StockBasic>()

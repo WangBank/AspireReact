@@ -49,6 +49,8 @@ public class StockTradeService : IStockTradeService
             PositionQuantity = request.PositionQuantity,
             DailyPnL = request.DailyPnL,
             IsLiquidated = request.IsLiquidated,
+            SellReason = request.SellReason?.Trim(),
+            EmotionTags = NormalizeEmotionTags(request.EmotionTags),
             TradeTags = NormalizeTradeTags(request.TradeTags),
             TradeNote = request.TradeNote,
             TonghuashunLink = request.TonghuashunLink
@@ -114,6 +116,8 @@ public class StockTradeService : IStockTradeService
                 PositionQuantity = tradeRequest.PositionQuantity,
                 DailyPnL = tradeRequest.DailyPnL,
                 IsLiquidated = tradeRequest.IsLiquidated,
+                SellReason = tradeRequest.SellReason?.Trim(),
+                EmotionTags = NormalizeEmotionTags(tradeRequest.EmotionTags),
                 TradeTags = NormalizeTradeTags(tradeRequest.TradeTags),
                 TradeNote = tradeRequest.TradeNote,
                 TonghuashunLink = tradeRequest.TonghuashunLink
@@ -188,6 +192,8 @@ public class StockTradeService : IStockTradeService
         entity.PositionQuantity = request.PositionQuantity;
         entity.DailyPnL = request.DailyPnL;
         entity.IsLiquidated = request.IsLiquidated;
+        entity.SellReason = request.SellReason?.Trim();
+        entity.EmotionTags = NormalizeEmotionTags(request.EmotionTags);
         entity.TradeTags = NormalizeTradeTags(request.TradeTags);
         entity.TradeNote = request.TradeNote;
         entity.TonghuashunLink = request.TonghuashunLink;
@@ -262,6 +268,8 @@ public class StockTradeService : IStockTradeService
             entity.PositionQuantity = req.PositionQuantity;
             entity.DailyPnL = req.DailyPnL;
             entity.IsLiquidated = req.IsLiquidated;
+            entity.SellReason = req.SellReason?.Trim();
+            entity.EmotionTags = NormalizeEmotionTags(req.EmotionTags);
             entity.TradeTags = NormalizeTradeTags(req.TradeTags);
             entity.TradeNote = req.TradeNote;
             entity.TonghuashunLink = req.TonghuashunLink;
@@ -586,6 +594,7 @@ public class StockTradeService : IStockTradeService
         var totalDailyPnL = latestRecordsByStock.Sum(p => p.Trade.DailyPnL);
         var cycleRecords = BuildTradeCycles(correctedRecords, start, end);
         var cycleAnalysis = BuildCycleAnalysisSummary(cycleRecords);
+        var cycleDetails = BuildCycleDetails(cycleRecords);
         var dailyPnLHeatmap = BuildDailyPnLHeatmap(accountRecords, rangeRecords, bankFlowByDate);
         var dayOutcomes = BuildDayOutcomeSummary(dailyPnLHeatmap);
         var streakAnalysis = BuildStreakAnalysis(dailyPnLHeatmap);
@@ -596,11 +605,23 @@ public class StockTradeService : IStockTradeService
         var maxDrawdownInterval = BuildMaxDrawdownInterval(accountRecords, rangeRecords);
         var adjustedReturn = BuildAdjustedReturnSummary(accountRecords, bankFlowRecords);
         var tTradeAnalysis = BuildTTradeAnalysis(rangeRecords);
+        var tTradeDetails = BuildTTradeDetails(rangeRecords);
         var capitalAnalysis = BuildCapitalAnalysis(accountRecords);
         var weeklyPnL = BuildPeriodPnLDistribution(dailyPnLHeatmap, PeriodBucketType.Week);
         var monthlyPnL = BuildPeriodPnLDistribution(dailyPnLHeatmap, PeriodBucketType.Month);
         var quarterlyPnL = BuildPeriodPnLDistribution(dailyPnLHeatmap, PeriodBucketType.Quarter);
         var boardRotations = BuildBoardRotations(rangeRecords, totalPnL);
+        var bySellReason = BuildTradeBehaviorSummaries(
+            rangeRecords.Where(snapshot =>
+                !string.IsNullOrWhiteSpace(snapshot.Trade.SellReason)
+                && (HasSellOperation(snapshot.Trade) || snapshot.Trade.IsLiquidated)),
+            snapshot => new[] { snapshot.Trade.SellReason! });
+        var byEmotionTag = BuildTradeBehaviorSummaries(
+            rangeRecords.Where(snapshot => !string.IsNullOrWhiteSpace(snapshot.Trade.EmotionTags)),
+            snapshot => ParseEmotionTags(snapshot.Trade.EmotionTags));
+        var byTradeTag = BuildTradeBehaviorSummaries(
+            rangeRecords.Where(snapshot => !string.IsNullOrWhiteSpace(snapshot.Trade.TradeTags)),
+            snapshot => ParseTradeTags(snapshot.Trade.TradeTags));
         var totalBankInflow = bankFlowRecords
             .Where(flow => string.Equals(flow.FlowType, "转入", StringComparison.Ordinal))
             .Sum(flow => flow.Amount);
@@ -633,6 +654,9 @@ public class StockTradeService : IStockTradeService
             TotalPositionPnL = totalPositionPnL,
             TotalDailyPnL = totalDailyPnL,
             Positions = positionOnlyRecords,
+            BySellReason = bySellReason,
+            ByEmotionTag = byEmotionTag,
+            ByTradeTag = byTradeTag,
             DailyWinRates = dailyWinRates,
             BestWinRateDay = bestWinRateDay,
             WorstWinRateDay = worstWinRateDay,
@@ -642,7 +666,9 @@ public class StockTradeService : IStockTradeService
             DayOutcomes = dayOutcomes,
             StreakAnalysis = streakAnalysis,
             CycleAnalysis = cycleAnalysis,
+            CycleDetails = cycleDetails,
             TTradeAnalysis = tTradeAnalysis,
+            TTradeDetails = tTradeDetails,
             CapitalAnalysis = capitalAnalysis,
             DailyPnLHeatmap = dailyPnLHeatmap,
             WeeklyPnL = weeklyPnL,
@@ -670,6 +696,16 @@ public class StockTradeService : IStockTradeService
 
     private static string? NormalizeTradeTags(IEnumerable<string>? tags)
     {
+        return NormalizeTagList(tags);
+    }
+
+    private static string? NormalizeEmotionTags(IEnumerable<string>? tags)
+    {
+        return NormalizeTagList(tags);
+    }
+
+    private static string? NormalizeTagList(IEnumerable<string>? tags)
+    {
         if (tags == null)
         {
             return null;
@@ -687,6 +723,16 @@ public class StockTradeService : IStockTradeService
 
     private static List<string> ParseTradeTags(string? tags)
     {
+        return ParseTagList(tags);
+    }
+
+    private static List<string> ParseEmotionTags(string? tags)
+    {
+        return ParseTagList(tags);
+    }
+
+    private static List<string> ParseTagList(string? tags)
+    {
         if (string.IsNullOrWhiteSpace(tags))
         {
             return new List<string>();
@@ -702,6 +748,51 @@ public class StockTradeService : IStockTradeService
     private static string BuildTradeRequestKey(DateTime tradeDate, string stockCode)
     {
         return $"{tradeDate.Date:yyyy-MM-dd}|{stockCode.Trim()}";
+    }
+
+    private static bool HasSellOperation(StockTrade trade)
+    {
+        return trade.SellPrice > 0 && trade.SellQuantity > 0;
+    }
+
+    private static List<TradeBehaviorSummaryItem> BuildTradeBehaviorSummaries(
+        IEnumerable<TradeMetricSnapshot> rangeRecords,
+        Func<TradeMetricSnapshot, IEnumerable<string>> labelsSelector)
+    {
+        return rangeRecords
+            .SelectMany(snapshot => labelsSelector(snapshot)
+                .Select(label => new
+                {
+                    Label = label?.Trim(),
+                    TradePnL = snapshot.Trade.DailyPnL
+                }))
+            .Where(item => !string.IsNullOrWhiteSpace(item.Label))
+            .GroupBy(item => item.Label!, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var pnlValues = group.Select(item => item.TradePnL).ToList();
+                var tradeCount = pnlValues.Count;
+                var winCount = pnlValues.Count(value => value > 0);
+                var loseCount = pnlValues.Count(value => value < 0);
+                var totalPnL = pnlValues.Sum();
+
+                return new TradeBehaviorSummaryItem
+                {
+                    Label = group.Key,
+                    TradeCount = tradeCount,
+                    WinCount = winCount,
+                    LoseCount = loseCount,
+                    WinRate = (winCount + loseCount) > 0 ? (decimal)winCount / (winCount + loseCount) : 0,
+                    TotalPnL = decimal.Round(totalPnL, 2, MidpointRounding.AwayFromZero),
+                    AveragePnL = tradeCount > 0
+                        ? decimal.Round(totalPnL / tradeCount, 2, MidpointRounding.AwayFromZero)
+                        : 0
+                };
+            })
+            .OrderByDescending(item => item.TotalPnL)
+            .ThenByDescending(item => item.TradeCount)
+            .ThenBy(item => item.Label, StringComparer.Ordinal)
+            .ToList();
     }
 
     private static List<decimal> BuildPnLContributions(
@@ -954,6 +1045,27 @@ public class StockTradeService : IStockTradeService
         };
     }
 
+    private static List<CycleDetailItem> BuildCycleDetails(
+        IReadOnlyCollection<TradeCycleRecord> cycles)
+    {
+        return cycles
+            .OrderByDescending(cycle => cycle.StartDate)
+            .ThenByDescending(cycle => cycle.TotalPnL)
+            .ThenBy(cycle => cycle.StockCode, StringComparer.Ordinal)
+            .Select(cycle => new CycleDetailItem
+            {
+                StockCode = cycle.StockCode,
+                StockName = cycle.StockName,
+                Board = cycle.Board,
+                StartDate = cycle.StartDate,
+                EndDate = cycle.EndDate,
+                HoldingDays = cycle.HoldingDays,
+                TotalPnL = cycle.TotalPnL,
+                IsClosed = cycle.IsClosed
+            })
+            .ToList();
+    }
+
     private static List<DailyPnLHeatmapItem> BuildDailyPnLHeatmap(
         IReadOnlyList<AccountAnalysisRecord> accountRecords,
         IReadOnlyCollection<TradeMetricSnapshot> rangeRecords,
@@ -1158,6 +1270,31 @@ public class StockTradeService : IStockTradeService
             TotalPnL = decimal.Round(totalPnL, 2, MidpointRounding.AwayFromZero),
             AveragePnL = decimal.Round(totalPnL / tTrades.Count, 2, MidpointRounding.AwayFromZero)
         };
+    }
+
+    private static List<TTradeDetailItem> BuildTTradeDetails(
+        IReadOnlyCollection<TradeMetricSnapshot> rangeRecords)
+    {
+        return rangeRecords
+            .Where(snapshot => HasBuyAction(snapshot.Trade) && HasSellAction(snapshot.Trade))
+            .OrderByDescending(snapshot => snapshot.Trade.TradeDate)
+            .ThenByDescending(snapshot => snapshot.Trade.DailyPnL)
+            .ThenBy(snapshot => snapshot.Trade.StockCode, StringComparer.Ordinal)
+            .Select(snapshot => new TTradeDetailItem
+            {
+                TradeDate = snapshot.Trade.TradeDate,
+                StockCode = snapshot.Trade.StockCode,
+                StockName = snapshot.Trade.StockName,
+                Board = snapshot.Trade.Board.ToString(),
+                BuyPrice = snapshot.Trade.BuyPrice,
+                BuyQuantity = snapshot.Trade.BuyQuantity,
+                SellPrice = snapshot.Trade.SellPrice,
+                SellQuantity = snapshot.Trade.SellQuantity,
+                PositionQuantity = snapshot.Trade.PositionQuantity,
+                DailyPnL = snapshot.Trade.DailyPnL,
+                IsLiquidated = snapshot.Trade.IsLiquidated
+            })
+            .ToList();
     }
 
     private static CapitalAnalysisSummary? BuildCapitalAnalysis(
@@ -1636,6 +1773,8 @@ public class StockTradeService : IStockTradeService
             PositionQuantity = entity.PositionQuantity,
             DailyPnL = entity.DailyPnL,
             IsLiquidated = entity.IsLiquidated,
+            SellReason = entity.SellReason,
+            EmotionTags = ParseEmotionTags(entity.EmotionTags),
             TradeTags = ParseTradeTags(entity.TradeTags),
             TradeNote = entity.TradeNote,
             TonghuashunLink = entity.TonghuashunLink
@@ -1663,6 +1802,8 @@ public class StockTradeService : IStockTradeService
             PositionQuantity = entity.PositionQuantity,
             DailyPnL = entity.DailyPnL,
             IsLiquidated = entity.IsLiquidated,
+            SellReason = entity.SellReason,
+            EmotionTags = ParseEmotionTags(entity.EmotionTags),
             TradeTags = ParseTradeTags(entity.TradeTags),
             TradeNote = entity.TradeNote,
             TonghuashunLink = entity.TonghuashunLink

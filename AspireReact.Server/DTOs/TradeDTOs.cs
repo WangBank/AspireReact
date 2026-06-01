@@ -52,6 +52,12 @@ public class StockTradeRequest : IValidatableObject
     /// </summary>
     public bool IsLiquidated { get; set; }
 
+    [MaxLength(50, ErrorMessage = "卖出原因最多50个字符")]
+    public string? SellReason { get; set; }
+
+    [MaxLength(20, ErrorMessage = "情绪标签最多20个")]
+    public List<string>? EmotionTags { get; set; }
+
     [MaxLength(20, ErrorMessage = "交易标签最多20个")]
     public List<string>? TradeTags { get; set; }
 
@@ -67,6 +73,47 @@ public class StockTradeRequest : IValidatableObject
     /// </summary>
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        if (!string.IsNullOrWhiteSpace(SellReason) && SellReason.Trim().Length > 50)
+        {
+            yield return new ValidationResult(
+                "卖出原因最多50个字符",
+                new[] { nameof(SellReason) });
+        }
+
+        if (EmotionTags is { Count: > 0 })
+        {
+            if (EmotionTags.Count > 20)
+            {
+                yield return new ValidationResult(
+                    "情绪标签最多20个",
+                    new[] { nameof(EmotionTags) });
+            }
+
+            if (EmotionTags.Any(tag => !string.IsNullOrWhiteSpace(tag) && tag.Trim().Length > 20))
+            {
+                yield return new ValidationResult(
+                    "单个情绪标签最多20个字符",
+                    new[] { nameof(EmotionTags) });
+            }
+        }
+
+        if (TradeTags is { Count: > 0 })
+        {
+            if (TradeTags.Count > 20)
+            {
+                yield return new ValidationResult(
+                    "交易标签最多20个",
+                    new[] { nameof(TradeTags) });
+            }
+
+            if (TradeTags.Any(tag => !string.IsNullOrWhiteSpace(tag) && tag.Trim().Length > 20))
+            {
+                yield return new ValidationResult(
+                    "单个交易标签最多20个字符",
+                    new[] { nameof(TradeTags) });
+            }
+        }
+
         // 清仓模式：允许只填写盈亏相关字段，跳过持仓验证
         if (IsLiquidated)
         {
@@ -111,23 +158,6 @@ public class StockTradeRequest : IValidatableObject
                 "卖出价格和数量必须同时填写或同时为空",
                 new[] { nameof(SellPrice), nameof(SellQuantity) });
         }
-
-        if (TradeTags is { Count: > 0 })
-        {
-            if (TradeTags.Count > 20)
-            {
-                yield return new ValidationResult(
-                    "交易标签最多20个",
-                    new[] { nameof(TradeTags) });
-            }
-
-            if (TradeTags.Any(tag => !string.IsNullOrWhiteSpace(tag) && tag.Trim().Length > 20))
-            {
-                yield return new ValidationResult(
-                    "单个交易标签最多20个字符",
-                    new[] { nameof(TradeTags) });
-            }
-        }
     }
 }
 
@@ -157,6 +187,8 @@ public class StockTradeResponse
     public int PositionQuantity { get; set; }
     public decimal DailyPnL { get; set; }
     public bool IsLiquidated { get; set; }
+    public string? SellReason { get; set; }
+    public List<string> EmotionTags { get; set; } = new();
     public List<string> TradeTags { get; set; } = new();
     public string? TradeNote { get; set; }
     public string? TonghuashunLink { get; set; }
@@ -271,6 +303,17 @@ public class TradeSummaryItem
     public decimal ContributionRate { get; set; }
 }
 
+public class TradeBehaviorSummaryItem
+{
+    public string Label { get; set; } = string.Empty;
+    public int TradeCount { get; set; }
+    public int WinCount { get; set; }
+    public int LoseCount { get; set; }
+    public decimal WinRate { get; set; }
+    public decimal TotalPnL { get; set; }
+    public decimal AveragePnL { get; set; }
+}
+
 /// <summary>
 /// 统计汇总响应
 /// </summary>
@@ -297,6 +340,9 @@ public class TradeSummaryResponse
     public decimal TotalPositionPnL { get; set; }
     public decimal TotalDailyPnL { get; set; }
     public List<PositionSummaryItem> Positions { get; set; } = new();
+    public List<TradeBehaviorSummaryItem> BySellReason { get; set; } = new();
+    public List<TradeBehaviorSummaryItem> ByEmotionTag { get; set; } = new();
+    public List<TradeBehaviorSummaryItem> ByTradeTag { get; set; } = new();
 
     // ── 分析视图 ──
     public List<DailyWinRateItem> DailyWinRates { get; set; } = new();
@@ -308,7 +354,9 @@ public class TradeSummaryResponse
     public DayOutcomeSummary? DayOutcomes { get; set; }
     public StreakAnalysisSummary? StreakAnalysis { get; set; }
     public CycleAnalysisSummary? CycleAnalysis { get; set; }
+    public List<CycleDetailItem> CycleDetails { get; set; } = new();
     public TTradeAnalysisSummary? TTradeAnalysis { get; set; }
+    public List<TTradeDetailItem> TTradeDetails { get; set; } = new();
     public CapitalAnalysisSummary? CapitalAnalysis { get; set; }
     public List<DailyPnLHeatmapItem> DailyPnLHeatmap { get; set; } = new();
     public List<PeriodPnLDistributionItem> WeeklyPnL { get; set; } = new();
@@ -440,6 +488,21 @@ public class CycleAnalysisSummary
 }
 
 /// <summary>
+/// 单个交易周期明细
+/// </summary>
+public class CycleDetailItem
+{
+    public string StockCode { get; set; } = string.Empty;
+    public string StockName { get; set; } = string.Empty;
+    public string Board { get; set; } = string.Empty;
+    public DateTime StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
+    public int HoldingDays { get; set; }
+    public decimal TotalPnL { get; set; }
+    public bool IsClosed { get; set; }
+}
+
+/// <summary>
 /// 做T分析摘要
 /// </summary>
 public class TTradeAnalysisSummary
@@ -450,6 +513,24 @@ public class TTradeAnalysisSummary
     public decimal WinRate { get; set; }
     public decimal TotalPnL { get; set; }
     public decimal AveragePnL { get; set; }
+}
+
+/// <summary>
+/// 单条做T明细
+/// </summary>
+public class TTradeDetailItem
+{
+    public DateTime TradeDate { get; set; }
+    public string StockCode { get; set; } = string.Empty;
+    public string StockName { get; set; } = string.Empty;
+    public string Board { get; set; } = string.Empty;
+    public decimal BuyPrice { get; set; }
+    public int BuyQuantity { get; set; }
+    public decimal SellPrice { get; set; }
+    public int SellQuantity { get; set; }
+    public int PositionQuantity { get; set; }
+    public decimal DailyPnL { get; set; }
+    public bool IsLiquidated { get; set; }
 }
 
 /// <summary>

@@ -92,6 +92,15 @@ const formatRatio = (value: number | null) => {
   return `${value.toFixed(2)} : 1`;
 };
 
+const getNotePreview = (content: string) => {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= 48) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 48)}...`;
+};
+
 const buildTradeHistory = (records: StockTradeResponse[]) => {
   const ordered = [...records].sort((left, right) => {
     const dateCompare = new Date(left.tradeDate).getTime() - new Date(right.tradeDate).getTime();
@@ -291,6 +300,22 @@ const StockHistoryPage = () => {
 
   const totalPages = getTotalPages(decoratedDescending.length, DETAIL_PAGE_SIZE);
   const pagedRecords = paginateItems(decoratedDescending, page, DETAIL_PAGE_SIZE);
+  const tradeDateKeys = new Set(records.map(record => extractDatePart(record.tradeDate)));
+  const tradeRecordCountByDate = records.reduce<Record<string, number>>((accumulator, record) => {
+    const key = extractDatePart(record.tradeDate);
+    accumulator[key] = (accumulator[key] ?? 0) + 1;
+    return accumulator;
+  }, {});
+  const notesByDate = notes.reduce<Record<string, NoteResponse[]>>((accumulator, note) => {
+    const key = extractDatePart(note.date);
+    if (!accumulator[key]) {
+      accumulator[key] = [];
+    }
+
+    accumulator[key].push(note);
+    return accumulator;
+  }, {});
+  const matchedTradeDates = Object.keys(notesByDate).filter(date => tradeDateKeys.has(date));
 
   useEffect(() => {
     setPage((current) => clampPage(current, totalPages));
@@ -401,7 +426,7 @@ const StockHistoryPage = () => {
             <div className="shp-section__header">
               <h2 className="shp-section__title">相关笔记</h2>
               <span className="shp-section__meta">
-                {notesLoading ? '加载中...' : `共 ${notes.length} 条`}
+                {notesLoading ? '加载中...' : `共 ${notes.length} 条 · 命中 ${matchedTradeDates.length} 个交易日`}
               </span>
             </div>
             {notesError ? (
@@ -415,7 +440,14 @@ const StockHistoryPage = () => {
                 {notes.map((note) => (
                   <article className="shp-note-card" key={note.id}>
                     <div className="shp-note-card__header">
-                      <span className="shp-note-card__date">{extractDatePart(note.date)}</span>
+                      <div className="shp-note-card__meta">
+                        <span className="shp-note-card__date">{extractDatePart(note.date)}</span>
+                        {tradeDateKeys.has(extractDatePart(note.date)) ? (
+                          <span className="shp-note-card__match">
+                            命中 {tradeRecordCountByDate[extractDatePart(note.date)] ?? 0} 条同日流水
+                          </span>
+                        ) : null}
+                      </div>
                       <span className="shp-note-card__stamp">
                         更新于 {extractDatePart(note.updatedAt || note.createdAt)}
                       </span>
@@ -486,7 +518,10 @@ const StockHistoryPage = () => {
                     <th>日期</th>
                     <th>周期</th>
                     <th>动作</th>
+                    <th>卖出原因</th>
+                    <th>情绪标签</th>
                     <th>标签</th>
+                    <th>同日笔记</th>
                     <th className="shp-num">买入价</th>
                     <th className="shp-num">买入量</th>
                     <th className="shp-num">卖出价</th>
@@ -507,8 +542,30 @@ const StockHistoryPage = () => {
                           {record.action}
                         </span>
                       </td>
+                      <td data-label="卖出原因">{record.sellReason || '-'}</td>
+                      <td data-label="情绪标签">
+                        <TradeTagList tags={record.emotionTags} />
+                      </td>
                       <td data-label="标签">
                         <TradeTagList tags={record.tradeTags} />
+                      </td>
+                      <td data-label="同日笔记">
+                        {(notesByDate[extractDatePart(record.tradeDate)] ?? []).length === 0 ? (
+                          <span>-</span>
+                        ) : (
+                          <div className="shp-inline-notes">
+                            {(notesByDate[extractDatePart(record.tradeDate)] ?? []).slice(0, 2).map(note => (
+                              <article className="shp-inline-note" key={`note-${record.id}-${note.id}`}>
+                                <p className="shp-inline-note__text">{getNotePreview(note.content)}</p>
+                              </article>
+                            ))}
+                            {(notesByDate[extractDatePart(record.tradeDate)] ?? []).length > 2 ? (
+                              <span className="shp-inline-note__more">
+                                共 {(notesByDate[extractDatePart(record.tradeDate)] ?? []).length} 条
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
                       </td>
                       <td data-label="买入价" className="shp-num">{record.buyPrice > 0 ? record.buyPrice.toFixed(3) : '-'}</td>
                       <td data-label="买入量" className="shp-num">{record.buyQuantity > 0 ? record.buyQuantity.toLocaleString() : '-'}</td>

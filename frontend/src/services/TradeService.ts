@@ -18,6 +18,8 @@ export interface StockTradeRequest {
   positionQuantity: number;
   dailyPnL: number;
   isLiquidated: boolean;
+  sellReason?: string;
+  emotionTags?: string[];
   tradeTags?: string[];
   tradeNote?: string;
   tonghuashunLink?: string;
@@ -53,6 +55,8 @@ export interface StockTradeResponse {
   positionQuantity: number;
   dailyPnL: number;
   isLiquidated: boolean;
+  sellReason?: string;
+  emotionTags: string[];
   tradeTags: string[];
   tradeNote?: string;
   tonghuashunLink?: string;

@@ -3,6 +3,7 @@ using System;
 using AspireReact.Server.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AspireReact.Server.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260531095908_AddSellReasonAndEmotionTagsToStockTrade")]
+    partial class AddSellReasonAndEmotionTagsToStockTrade
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -95,100 +98,6 @@ namespace AspireReact.Server.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("BankFlows");
-                });
-
-            modelBuilder.Entity("AspireReact.Server.Entities.PortfolioImportAudit", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("ContentType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<long>("FileSize")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("FinalPayloadJson")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("ImportDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("ParseMessage")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("ParseSuccess")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("PositionCount")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("RecognizedDate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("RecognizedPayloadJson")
-                        .HasColumnType("text");
-
-                    b.Property<string>("RecognizedText")
-                        .HasColumnType("text");
-
-                    b.Property<int>("RequestedTradeCount")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("SaveAttempted")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("SaveCompletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("SaveErrorsJson")
-                        .HasColumnType("text");
-
-                    b.Property<string>("SaveMessage")
-                        .HasColumnType("text");
-
-                    b.Property<string>("SaveStatus")
-                        .HasColumnType("text");
-
-                    b.Property<bool>("SavedAccount")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("SavedBankFlow")
-                        .HasColumnType("boolean");
-
-                    b.Property<int>("SavedTradeCount")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("SavedTrades")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("SourceFileName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("StoredImagePath")
-                        .HasColumnType("text");
-
-                    b.Property<int>("WarningCount")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("ImportDate");
-
-                    b.HasIndex("SaveStatus");
-
-                    b.ToTable("PortfolioImportAudits");
                 });
 
             modelBuilder.Entity("AspireReact.Server.Entities.StockBasic", b =>

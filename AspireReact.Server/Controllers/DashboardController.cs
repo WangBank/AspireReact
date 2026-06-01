@@ -46,7 +46,8 @@ public class DashboardController : ControllerBase
         var monthStart = new DateTime(today.Year, today.Month, 1);
         var monthPnL = await CalculateAccountDailyPnL(monthStart, today);
 
-        var cumulativePnL = await CalculateCumulativePnL();
+        var summary = await _tradeService.GetSummaryAsync(new TradeSummaryRequest());
+        var cumulativePnL = summary.TotalPnL;
         var latestRecordDate = await GetLatestTradeDateAsync() ?? latestAccount?.Date;
         var latestRecordDailyPnL = await GetLatestRecordDailyPnLAsync(latestRecordDate, latestAccount);
 
@@ -70,7 +71,8 @@ public class DashboardController : ControllerBase
             LatestRecordDailyPnL = latestRecordDailyPnL,
             LatestAccount = latestAccount,
             RecentBankFlows = recentBankFlows,
-            RecentTrades = recentTradesResult.Items
+            RecentTrades = recentTradesResult.Items,
+            DailyPnLHeatmap = summary.DailyPnLHeatmap
         };
 
         return Ok(new
@@ -88,17 +90,6 @@ public class DashboardController : ControllerBase
     {
         var accountRecords = await _accountService.GetByDateRangeAsync(startDate, endDate);
         return accountRecords.Sum(record => record.DailyPnL);
-    }
-
-    /// <summary>
-    /// 计算累计盈亏：基于持仓/交易统计的有效周期口径
-    /// </summary>
-    private async Task<decimal> CalculateCumulativePnL()
-    {
-        var summary = await _tradeService.GetSummaryAsync(new TradeSummaryRequest
-        {
-        });
-        return summary.TotalPnL;
     }
 
     /// <summary>

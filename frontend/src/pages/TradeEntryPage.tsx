@@ -3,7 +3,9 @@ import { useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import StockSearchInput from '../components/StockSearchInput';
 import StockHistoryLink from '../components/StockHistoryLink';
+import SingleChoiceEditor from '../components/SingleChoiceEditor';
 import TradeTagsEditor from '../components/TradeTagsEditor';
+import { EMOTION_TAG_OPTIONS, SELL_REASON_OPTIONS } from '../constants/tradeBehavior';
 import { formatLocalDate } from '../utils/date';
 import './AccountEntryPage.css';
 
@@ -21,6 +23,8 @@ const TradeEntryPage = observer(() => {
   const [sellQuantity, setSellQuantity] = useState('');
   const [positionPnL, setPositionPnL] = useState('0');
   const [cumulativePnL, setCumulativePnL] = useState('0');
+  const [sellReason, setSellReason] = useState('');
+  const [emotionTags, setEmotionTags] = useState<string[]>([]);
   const [tradeTags, setTradeTags] = useState<string[]>([]);
   const [tradeNote, setTradeNote] = useState('');
   const [tonghuashunLink, setTonghuashunLink] = useState('');
@@ -84,6 +88,8 @@ const TradeEntryPage = observer(() => {
       positionQuantity: 0,
       dailyPnL: 0,
       isLiquidated: false,
+      sellReason: sellReason.trim() || undefined,
+      emotionTags: emotionTags.length > 0 ? emotionTags : undefined,
       tradeTags: tradeTags.length > 0 ? tradeTags : undefined,
       tradeNote: tradeNote.trim() || undefined,
       tonghuashunLink: tonghuashunLink.trim() || undefined,
@@ -99,6 +105,8 @@ const TradeEntryPage = observer(() => {
       setSellQuantity('');
       setPositionPnL('0');
       setCumulativePnL('0');
+      setSellReason('');
+      setEmotionTags([]);
       setTradeTags([]);
       setTradeNote('');
       setTonghuashunLink('');
@@ -226,6 +234,30 @@ const TradeEntryPage = observer(() => {
         </fieldset>
 
         {errors.quantity && <span className="form-error">{errors.quantity}</span>}
+
+        <div className="form-group">
+          <label className="form-label">卖出原因</label>
+          <SingleChoiceEditor
+            value={sellReason}
+            onChange={setSellReason}
+            options={SELL_REASON_OPTIONS}
+            placeholder="可补充自定义卖出原因"
+            hint="有卖出、减仓或清仓动作时，尽量记下离场原因，后面更容易复盘。"
+            emptyText="暂未记录卖出原因"
+          />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">情绪标签</label>
+          <TradeTagsEditor
+            value={emotionTags}
+            onChange={setEmotionTags}
+            options={EMOTION_TAG_OPTIONS}
+            placeholder="自定义情绪标签，按回车或输入逗号添加"
+            hint="记录当时的情绪状态，比如冲动、犹豫、格局过头，后面就能分析哪种情绪最伤账户。"
+            emptyText="暂未添加情绪标签"
+          />
+        </div>
 
         <div className="form-row">
           <div className="form-group form-group-half">

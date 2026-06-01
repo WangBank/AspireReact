@@ -1,18 +1,23 @@
 import { observer } from 'mobx-react-lite';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import type {
-  DailyPnLHeatmapItem,
+  CycleDetailItem,
   PeriodPnLDistributionItem,
   PositionSummaryItem,
+  TTradeDetailItem,
+  TradeBehaviorSummaryItem,
 } from '../services/StatisticsService';
 import type { StatisticsSortField } from '../stores/StatisticsStore';
+import PnLCalendarExplorer from '../components/PnLCalendarExplorer';
+import SectionJumpNav, { type SectionJumpItem } from '../components/SectionJumpNav';
 import SortableHeader from '../components/Table/SortableHeader';
 import TablePagination from '../components/Table/TablePagination';
 import StockPnLLeaderboard from '../components/StockPnLLeaderboard';
 import StockLink from '../components/StockLink';
 import StockHistoryLink from '../components/StockHistoryLink';
 import { extractDatePart } from '../utils/date';
+import { nextSortState, sortItemsBy, type SortOrder } from '../utils/table';
 import './StatisticsPage.css';
 
 const DATE_FILTERS = [
@@ -30,6 +35,23 @@ const PNL_FILTERS = [
   { key: 'loss', label: '亏损' },
 ] as const;
 
+const CYCLE_STATUS_FILTERS = [
+  { key: 'all', label: '全部状态' },
+  { key: 'closed', label: '已结束' },
+  { key: 'open', label: '持仓中' },
+] as const;
+
+const T_TRADE_STATUS_FILTERS = [
+  { key: 'all', label: '全部状态' },
+  { key: 'closed', label: '清仓' },
+  { key: 'open', label: '留仓' },
+] as const;
+
+type CycleStatusFilter = (typeof CYCLE_STATUS_FILTERS)[number]['key'];
+type TTradeStatusFilter = (typeof T_TRADE_STATUS_FILTERS)[number]['key'];
+type CycleSortField = 'stockCode' | 'stockName' | 'board' | 'startDate' | 'holdingDays' | 'totalPnL';
+type TTradeSortField = 'tradeDate' | 'stockCode' | 'stockName' | 'board' | 'buyQuantity' | 'sellQuantity' | 'positionQuantity' | 'dailyPnL';
+
 const getToneClass = (value: number | null | undefined) => {
   if (value == null || Number.isNaN(value)) {
     return '';
@@ -38,66 +60,53 @@ const getToneClass = (value: number | null | undefined) => {
   return value >= 0 ? 'sp-positive' : 'sp-negative';
 };
 
-const parseDateOnly = (value: string) => {
-  const [year, month, day] = extractDatePart(value).split('-').map(Number);
-  return new Date(year, (month || 1) - 1, day || 1);
-};
+const CYCLE_PAGE_SIZE = 30;
+const T_TRADE_PAGE_SIZE = 30;
 
-const buildHeatmapMonths = (items: DailyPnLHeatmapItem[]) => {
-  const monthMap = new Map<string, DailyPnLHeatmapItem[]>();
-
-  items.forEach((item) => {
-    const date = parseDateOnly(item.date);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    const current = monthMap.get(key) ?? [];
-    current.push(item);
-    monthMap.set(key, current);
-  });
-
-  return Array.from(monthMap.entries())
-    .sort((left, right) => right[0].localeCompare(left[0]))
-    .map(([key, entries]) => {
-      const monthDate = parseDateOnly(`${key}-01`);
-      const year = monthDate.getFullYear();
-      const month = monthDate.getMonth();
-      const daysInMonth = new Date(year, month + 1, 0).getDate();
-      const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
-      const entriesByDay = new Map<number, DailyPnLHeatmapItem>();
-
-      entries.forEach((entry) => {
-        entriesByDay.set(parseDateOnly(entry.date).getDate(), entry);
-      });
-
-      const cells = [];
-      for (let index = 0; index < firstWeekday; index += 1) {
-        cells.push({ key: `empty-${key}-${index}`, type: 'empty' as const });
-      }
-
-      for (let day = 1; day <= daysInMonth; day += 1) {
-        cells.push({
-          key: `${key}-${day}`,
-          type: 'day' as const,
-          day,
-          item: entriesByDay.get(day) ?? null,
-        });
-      }
-
-      return {
-        key,
-        label: `${year}年${String(month + 1).padStart(2, '0')}月`,
-        cells,
-      };
-    });
+const paginateLocalList = <T,>(items: T[], page: number, pageSize: number): T[] => {
+  const startIndex = Math.max(0, (page - 1) * pageSize);
+  return items.slice(startIndex, startIndex + pageSize);
 };
 
 const StatisticsPage = observer(() => {
   const { statisticsStore: store, stockLeaderboardStore } = useStore();
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [cyclePage, setCyclePage] = useState(1);
+  const [tTradePage, setTTradePage] = useState(1);
+  const [cycleStatusFilter, setCycleStatusFilter] = useState<CycleStatusFilter>('all');
+  const [cyclePnLFilter, setCyclePnLFilter] = useState<'all' | 'profit' | 'loss'>('all');
+  const [cycleSortField, setCycleSortField] = useState<CycleSortField>('startDate');
+  const [cycleSortOrder, setCycleSortOrder] = useState<SortOrder>('desc');
+  const [tTradeStatusFilter, setTTradeStatusFilter] = useState<TTradeStatusFilter>('all');
+  const [tTradePnLFilter, setTTradePnLFilter] = useState<'all' | 'profit' | 'loss'>('all');
+  const [tTradeSortField, setTTradeSortField] = useState<TTradeSortField>('tradeDate');
+  const [tTradeSortOrder, setTTradeSortOrder] = useState<SortOrder>('desc');
 
   useEffect(() => {
     store.setDateFilterType('month');
   }, [store]);
+
+  useEffect(() => {
+    setCyclePage(1);
+    setTTradePage(1);
+  }, [store.data]);
+
+  const handleCycleSort = (field: CycleSortField) => {
+    const defaultOrder: SortOrder = field === 'stockCode' || field === 'stockName' || field === 'board' ? 'asc' : 'desc';
+    const nextState = nextSortState(cycleSortField, cycleSortOrder, field, defaultOrder);
+    setCycleSortField(nextState.field);
+    setCycleSortOrder(nextState.order);
+    setCyclePage(1);
+  };
+
+  const handleTTradeSort = (field: TTradeSortField) => {
+    const defaultOrder: SortOrder = field === 'stockCode' || field === 'stockName' || field === 'board' ? 'asc' : 'desc';
+    const nextState = nextSortState(tTradeSortField, tTradeSortOrder, field, defaultOrder);
+    setTTradeSortField(nextState.field);
+    setTTradeSortOrder(nextState.order);
+    setTTradePage(1);
+  };
 
   const handleDateFilterClick = (type: (typeof DATE_FILTERS)[number]['key']) => {
     store.setDateFilterType(type);
@@ -123,15 +132,34 @@ const StatisticsPage = observer(() => {
       ? '全部时间'
       : '请选择统计时间范围';
 
-  const heatmapMonths = useMemo(
-    () => buildHeatmapMonths(store.data?.dailyPnLHeatmap ?? []),
-    [store.data?.dailyPnLHeatmap]
-  );
-
-  const heatmapMaxAbs = useMemo(() => {
-    const values = (store.data?.dailyPnLHeatmap ?? []).map((item) => Math.abs(item.dailyPnL));
-    return Math.max(1, ...values);
-  }, [store.data?.dailyPnLHeatmap]);
+  const statisticsSections: SectionJumpItem[] = store.data
+    ? [
+        { id: 'stats-overview', label: '核心指标' },
+        ...(store.data.cycleAnalysis ? [{ id: 'stats-cycles', label: '周期统计' }] : []),
+        ...(store.data.cycleDetails.length > 0
+          ? [{ id: 'stats-cycle-details', label: '周期明细', badge: String(store.data.cycleDetails.length) }]
+          : []),
+        ...(store.data.dayOutcomes && store.data.streakAnalysis
+          ? [{ id: 'stats-day-pattern', label: '日度节奏' }]
+          : []),
+        ...(store.data.tTradeAnalysis ? [{ id: 'stats-ttrade', label: '做T分析' }] : []),
+        ...(store.data.tTradeDetails.length > 0
+          ? [{ id: 'stats-ttrade-details', label: '做T明细', badge: String(store.data.tTradeDetails.length) }]
+          : []),
+        ...((store.data.bySellReason.length > 0
+          || store.data.byEmotionTag.length > 0
+          || store.data.byTradeTag.length > 0)
+          ? [{ id: 'stats-behavior-sell-reason', label: '行为分析' }]
+          : []),
+        { id: 'stats-analysis', label: '胜率回撤' },
+        ...(store.data.dailyPnLHeatmap.length > 0 ? [{ id: 'stats-heatmap', label: '收益日历' }] : []),
+        { id: 'stats-distribution', label: '盈亏分布' },
+        ...(store.data.positions.length > 0 ? [{ id: 'stats-holdings', label: '持仓天龄' }] : []),
+        ...(store.data.boardRotations.length > 0 ? [{ id: 'stats-board-rotation', label: '板块轮动' }] : []),
+        { id: 'stats-by-stock', label: '心魔汇总', badge: String(store.filteredByStock.length) },
+        { id: 'stats-leaderboard', label: '盈亏榜' },
+      ]
+    : [];
 
   const renderStatCards = () => {
     if (!store.data) return null;
@@ -192,15 +220,23 @@ const StatisticsPage = observer(() => {
     ];
 
     return (
-      <div className="sp-cards">
-        {cards.map((card) => (
-          <article className="sp-card" key={card.label}>
-            <p className="sp-card-label">{card.label}</p>
-            <p className={`sp-card-value ${card.tone}`.trim()}>{card.value}</p>
-            <p className="sp-card-sub">{card.sub}</p>
-          </article>
-        ))}
-      </div>
+      <section id="stats-overview" className="sp-section section-jump-anchor">
+        <div className="sp-section-heading">
+          <div>
+            <p className="sp-section-title">核心指标</p>
+            <p className="sp-section-caption">先看整体盈亏、净入金修正收益率和账户资金状态</p>
+          </div>
+        </div>
+        <div className="sp-cards sp-cards--inside">
+          {cards.map((card) => (
+            <article className="sp-card" key={card.label}>
+              <p className="sp-card-label">{card.label}</p>
+              <p className={`sp-card-value ${card.tone}`.trim()}>{card.value}</p>
+              <p className="sp-card-sub">{card.sub}</p>
+            </article>
+          ))}
+        </div>
+      </section>
     );
   };
 
@@ -217,7 +253,7 @@ const StatisticsPage = observer(() => {
     ];
 
     return (
-      <section className="sp-section">
+      <section id="stats-cycles" className="sp-section section-jump-anchor">
         <div className="sp-section-heading">
           <div>
             <p className="sp-section-title">交易周期统计</p>
@@ -237,6 +273,180 @@ const StatisticsPage = observer(() => {
     );
   };
 
+  const renderCycleDetailSection = () => {
+    if (!store.data || store.data.cycleDetails.length === 0) return null;
+
+    const cycleDetails = store.data.cycleDetails.filter((item: CycleDetailItem) => {
+      if (cycleStatusFilter === 'closed' && !item.isClosed) {
+        return false;
+      }
+
+      if (cycleStatusFilter === 'open' && item.isClosed) {
+        return false;
+      }
+
+      if (cyclePnLFilter === 'profit' && item.totalPnL < 0) {
+        return false;
+      }
+
+      if (cyclePnLFilter === 'loss' && item.totalPnL >= 0) {
+        return false;
+      }
+
+      return true;
+    });
+
+    const sortedCycleDetails = sortItemsBy(cycleDetails, [
+      {
+        getValue: (item: CycleDetailItem) => {
+          switch (cycleSortField) {
+            case 'stockCode':
+              return item.stockCode;
+            case 'stockName':
+              return item.stockName;
+            case 'board':
+              return item.board;
+            case 'holdingDays':
+              return item.holdingDays;
+            case 'totalPnL':
+              return item.totalPnL;
+            case 'startDate':
+            default:
+              return extractDatePart(item.startDate);
+          }
+        },
+        order: cycleSortOrder,
+      },
+      { getValue: item => item.totalPnL, order: 'desc' },
+      { getValue: item => extractDatePart(item.startDate), order: 'desc' },
+      { getValue: item => item.stockCode, order: 'asc' },
+    ]);
+
+    const cycleTotalPages = Math.max(1, Math.ceil(sortedCycleDetails.length / CYCLE_PAGE_SIZE));
+    const currentCyclePage = Math.min(cyclePage, cycleTotalPages);
+    const pagedCycleDetails = paginateLocalList(sortedCycleDetails, currentCyclePage, CYCLE_PAGE_SIZE);
+
+    return (
+      <section id="stats-cycle-details" className="sp-section section-jump-anchor">
+        <div className="sp-section-heading">
+          <div>
+            <p className="sp-section-title">交易周期明细</p>
+            <p className="sp-section-caption">把每一轮建仓到清仓拉直看，方便你复盘哪一轮做对了，哪一轮拖泥带水。</p>
+          </div>
+        </div>
+        <div className="sp-section-toolbar">
+          <div className="sp-chip-groups">
+            <div className="sp-chip-group">
+              <span className="sp-chip-group__label">状态</span>
+              <div className="sp-chip-list">
+                {CYCLE_STATUS_FILTERS.map((filter) => (
+                  <button
+                    key={`cycle-status-${filter.key}`}
+                    type="button"
+                    className={`sp-chip ${cycleStatusFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                    onClick={() => {
+                      setCycleStatusFilter(filter.key);
+                      setCyclePage(1);
+                    }}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="sp-chip-group">
+              <span className="sp-chip-group__label">盈亏</span>
+              <div className="sp-chip-list">
+                {PNL_FILTERS.map((filter) => (
+                  <button
+                    key={`cycle-pnl-${filter.key}`}
+                    type="button"
+                    className={`sp-chip ${cyclePnLFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                    onClick={() => {
+                      setCyclePnLFilter(filter.key);
+                      setCyclePage(1);
+                    }}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="sp-section-meta">当前 {sortedCycleDetails.length} / {store.data.cycleDetails.length} 个周期</div>
+        </div>
+        {sortedCycleDetails.length === 0 ? (
+          <p className="sp-empty sp-empty--compact">当前筛选条件下没有周期记录。</p>
+        ) : (
+          <>
+        <div className="sp-table-wrap">
+          <table className="sp-table">
+            <thead>
+              <tr>
+                <th>状态</th>
+                <SortableHeader field="stockCode" currentField={cycleSortField} currentOrder={cycleSortOrder} onSort={handleCycleSort}>
+                  代码
+                </SortableHeader>
+                <SortableHeader field="stockName" currentField={cycleSortField} currentOrder={cycleSortOrder} onSort={handleCycleSort}>
+                  名称
+                </SortableHeader>
+                <SortableHeader field="board" currentField={cycleSortField} currentOrder={cycleSortOrder} onSort={handleCycleSort}>
+                  板块
+                </SortableHeader>
+                <SortableHeader field="startDate" currentField={cycleSortField} currentOrder={cycleSortOrder} onSort={handleCycleSort}>
+                  周期区间
+                </SortableHeader>
+                <SortableHeader field="holdingDays" currentField={cycleSortField} currentOrder={cycleSortOrder} onSort={handleCycleSort} className="sp-num">
+                  持有天数
+                </SortableHeader>
+                <SortableHeader field="totalPnL" currentField={cycleSortField} currentOrder={cycleSortOrder} onSort={handleCycleSort} className="sp-num">
+                  周期盈亏
+                </SortableHeader>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedCycleDetails.map((item: CycleDetailItem) => (
+                <tr key={`${item.stockCode}-${item.startDate}-${item.endDate || 'open'}`}>
+                  <td data-label="状态">
+                    <span className={`sp-status-badge ${item.isClosed ? 'sp-status-badge--closed' : 'sp-status-badge--open'}`}>
+                      {item.isClosed ? '已结束' : '持仓中'}
+                    </span>
+                  </td>
+                  <td data-label="代码">
+                    <StockLink stockCode={item.stockCode} stockName={item.stockName} />
+                  </td>
+                  <td data-label="名称">
+                    <StockHistoryLink stockCode={item.stockCode} stockName={item.stockName} />
+                  </td>
+                  <td data-label="板块">
+                    <span className={`sp-board-tag sp-board-tag--${item.board}`}>{item.board}</span>
+                  </td>
+                  <td data-label="周期区间">
+                    {item.endDate
+                      ? store.formatDateRange(item.startDate, item.endDate)
+                      : `${extractDatePart(item.startDate)} ~ 持仓中`}
+                  </td>
+                  <td data-label="持有天数" className="sp-num">{item.holdingDays}</td>
+                  <td data-label="周期盈亏" className={`sp-num ${getToneClass(item.totalPnL)}`.trim()}>
+                    {store.formatMoney(item.totalPnL)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <TablePagination
+          page={currentCyclePage}
+          totalPages={cycleTotalPages}
+          totalItems={sortedCycleDetails.length}
+          onPageChange={setCyclePage}
+        />
+          </>
+        )}
+      </section>
+    );
+  };
+
   const renderTTradeSection = () => {
     if (!store.data?.tTradeAnalysis) return null;
     const t = store.data.tTradeAnalysis;
@@ -248,7 +458,7 @@ const StatisticsPage = observer(() => {
     ];
 
     return (
-      <section className="sp-section">
+      <section id="stats-ttrade" className="sp-section section-jump-anchor">
         <div className="sp-section-heading">
           <div>
             <p className="sp-section-title">做T专项分析</p>
@@ -263,6 +473,254 @@ const StatisticsPage = observer(() => {
               <p className="sp-mini-card__detail">{card.detail}</p>
             </article>
           ))}
+        </div>
+      </section>
+    );
+  };
+
+  const renderTTradeDetailSection = () => {
+    if (!store.data || store.data.tTradeDetails.length === 0) return null;
+
+    const tTradeDetails = store.data.tTradeDetails.filter((item: TTradeDetailItem) => {
+      const isOpen = !item.isLiquidated && item.positionQuantity > 0;
+
+      if (tTradeStatusFilter === 'closed' && isOpen) {
+        return false;
+      }
+
+      if (tTradeStatusFilter === 'open' && !isOpen) {
+        return false;
+      }
+
+      if (tTradePnLFilter === 'profit' && item.dailyPnL < 0) {
+        return false;
+      }
+
+      if (tTradePnLFilter === 'loss' && item.dailyPnL >= 0) {
+        return false;
+      }
+
+      return true;
+    });
+
+    const sortedTTradeDetails = sortItemsBy(tTradeDetails, [
+      {
+        getValue: (item: TTradeDetailItem) => {
+          switch (tTradeSortField) {
+            case 'stockCode':
+              return item.stockCode;
+            case 'stockName':
+              return item.stockName;
+            case 'board':
+              return item.board;
+            case 'buyQuantity':
+              return item.buyQuantity;
+            case 'sellQuantity':
+              return item.sellQuantity;
+            case 'positionQuantity':
+              return item.positionQuantity;
+            case 'dailyPnL':
+              return item.dailyPnL;
+            case 'tradeDate':
+            default:
+              return extractDatePart(item.tradeDate);
+          }
+        },
+        order: tTradeSortOrder,
+      },
+      { getValue: item => item.dailyPnL, order: 'desc' },
+      { getValue: item => extractDatePart(item.tradeDate), order: 'desc' },
+      { getValue: item => item.stockCode, order: 'asc' },
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(sortedTTradeDetails.length / T_TRADE_PAGE_SIZE));
+    const currentPage = Math.min(tTradePage, totalPages);
+    const pagedTTradeDetails = paginateLocalList(sortedTTradeDetails, currentPage, T_TRADE_PAGE_SIZE);
+
+    return (
+      <section id="stats-ttrade-details" className="sp-section section-jump-anchor">
+        <div className="sp-section-heading">
+          <div>
+            <p className="sp-section-title">做T明细</p>
+            <p className="sp-section-caption">按单日做T记录逐条展开，回看哪些日内动作真正改善了收益，哪些只是增加了波动。</p>
+          </div>
+        </div>
+        <div className="sp-section-toolbar">
+          <div className="sp-chip-groups">
+            <div className="sp-chip-group">
+              <span className="sp-chip-group__label">状态</span>
+              <div className="sp-chip-list">
+                {T_TRADE_STATUS_FILTERS.map((filter) => (
+                  <button
+                    key={`ttrade-status-${filter.key}`}
+                    type="button"
+                    className={`sp-chip ${tTradeStatusFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                    onClick={() => {
+                      setTTradeStatusFilter(filter.key);
+                      setTTradePage(1);
+                    }}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="sp-chip-group">
+              <span className="sp-chip-group__label">盈亏</span>
+              <div className="sp-chip-list">
+                {PNL_FILTERS.map((filter) => (
+                  <button
+                    key={`ttrade-pnl-${filter.key}`}
+                    type="button"
+                    className={`sp-chip ${tTradePnLFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                    onClick={() => {
+                      setTTradePnLFilter(filter.key);
+                      setTTradePage(1);
+                    }}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="sp-section-meta">当前 {sortedTTradeDetails.length} / {store.data.tTradeDetails.length} 条做T</div>
+        </div>
+        {sortedTTradeDetails.length === 0 ? (
+          <p className="sp-empty sp-empty--compact">当前筛选条件下没有做T记录。</p>
+        ) : (
+          <>
+        <div className="sp-table-wrap">
+          <table className="sp-table">
+            <thead>
+              <tr>
+                <SortableHeader field="tradeDate" currentField={tTradeSortField} currentOrder={tTradeSortOrder} onSort={handleTTradeSort}>
+                  日期
+                </SortableHeader>
+                <SortableHeader field="stockCode" currentField={tTradeSortField} currentOrder={tTradeSortOrder} onSort={handleTTradeSort}>
+                  代码
+                </SortableHeader>
+                <SortableHeader field="stockName" currentField={tTradeSortField} currentOrder={tTradeSortOrder} onSort={handleTTradeSort}>
+                  名称
+                </SortableHeader>
+                <SortableHeader field="board" currentField={tTradeSortField} currentOrder={tTradeSortOrder} onSort={handleTTradeSort}>
+                  板块
+                </SortableHeader>
+                <SortableHeader field="buyQuantity" currentField={tTradeSortField} currentOrder={tTradeSortOrder} onSort={handleTTradeSort}>
+                  买入
+                </SortableHeader>
+                <SortableHeader field="sellQuantity" currentField={tTradeSortField} currentOrder={tTradeSortOrder} onSort={handleTTradeSort}>
+                  卖出
+                </SortableHeader>
+                <SortableHeader field="positionQuantity" currentField={tTradeSortField} currentOrder={tTradeSortOrder} onSort={handleTTradeSort} className="sp-num">
+                  剩余持仓
+                </SortableHeader>
+                <th>状态</th>
+                <SortableHeader field="dailyPnL" currentField={tTradeSortField} currentOrder={tTradeSortOrder} onSort={handleTTradeSort} className="sp-num">
+                  当日盈亏
+                </SortableHeader>
+              </tr>
+            </thead>
+            <tbody>
+              {pagedTTradeDetails.map((item: TTradeDetailItem) => (
+                <tr key={`${item.tradeDate}-${item.stockCode}-${item.buyQuantity}-${item.sellQuantity}`}>
+                  <td data-label="日期">{extractDatePart(item.tradeDate)}</td>
+                  <td data-label="代码">
+                    <StockLink stockCode={item.stockCode} stockName={item.stockName} />
+                  </td>
+                  <td data-label="名称">
+                    <StockHistoryLink stockCode={item.stockCode} stockName={item.stockName} />
+                  </td>
+                  <td data-label="板块">
+                    <span className={`sp-board-tag sp-board-tag--${item.board}`}>{item.board}</span>
+                  </td>
+                  <td data-label="买入">{item.buyQuantity.toLocaleString()} @ {item.buyPrice.toFixed(3)}</td>
+                  <td data-label="卖出">{item.sellQuantity.toLocaleString()} @ {item.sellPrice.toFixed(3)}</td>
+                  <td data-label="剩余持仓" className="sp-num">{item.positionQuantity.toLocaleString()}</td>
+                  <td data-label="状态">
+                    <span className={`sp-status-badge ${item.isLiquidated || item.positionQuantity <= 0 ? 'sp-status-badge--closed' : 'sp-status-badge--open'}`}>
+                      {item.isLiquidated || item.positionQuantity <= 0 ? '清仓' : '持仓'}
+                    </span>
+                  </td>
+                  <td data-label="当日盈亏" className={`sp-num ${getToneClass(item.dailyPnL)}`.trim()}>
+                    {store.formatMoney(item.dailyPnL)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <TablePagination
+          page={currentPage}
+          totalPages={totalPages}
+          totalItems={sortedTTradeDetails.length}
+          onPageChange={setTTradePage}
+        />
+          </>
+        )}
+      </section>
+    );
+  };
+
+  const renderBehaviorSection = (
+    sectionId: string,
+    title: string,
+    labelHeader: string,
+    caption: string,
+    list: TradeBehaviorSummaryItem[],
+    emptyText: string,
+  ) => {
+    if (list.length === 0) {
+      return (
+        <section id={sectionId} className="sp-section section-jump-anchor">
+          <div className="sp-section-heading">
+            <div>
+              <p className="sp-section-title">{title}</p>
+              <p className="sp-section-caption">{caption}</p>
+            </div>
+          </div>
+          <p className="sp-empty">{emptyText}</p>
+        </section>
+      );
+    }
+
+    return (
+      <section id={sectionId} className="sp-section section-jump-anchor">
+        <div className="sp-section-heading">
+          <div>
+            <p className="sp-section-title">{title}</p>
+            <p className="sp-section-caption">{caption}</p>
+          </div>
+        </div>
+        <div className="sp-table-wrap">
+          <table className="sp-table">
+            <thead>
+              <tr>
+                <th>{labelHeader}</th>
+                <th className="sp-num">记录数</th>
+                <th className="sp-num">胜 / 负</th>
+                <th className="sp-num">胜率</th>
+                <th className="sp-num">总盈亏</th>
+                <th className="sp-num">平均盈亏</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((item) => (
+                <tr key={`${title}-${item.label}`}>
+                  <td data-label={labelHeader}>{item.label}</td>
+                  <td data-label="记录数" className="sp-num">{item.tradeCount}</td>
+                  <td data-label="胜 / 负" className="sp-num">{item.winCount} / {item.loseCount}</td>
+                  <td data-label="胜率" className="sp-num">{store.formatPercent(item.winRate)}</td>
+                  <td data-label="总盈亏" className={`sp-num ${getToneClass(item.totalPnL)}`.trim()}>
+                    {store.formatMoney(item.totalPnL)}
+                  </td>
+                  <td data-label="平均盈亏" className={`sp-num ${getToneClass(item.averagePnL)}`.trim()}>
+                    {store.formatMoney(item.averagePnL)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
     );
@@ -305,7 +763,7 @@ const StatisticsPage = observer(() => {
     ];
 
     return (
-      <section className="sp-section">
+      <section id="stats-day-pattern" className="sp-section section-jump-anchor">
         <div className="sp-section-heading">
           <div>
             <p className="sp-section-title">日度节奏</p>
@@ -382,7 +840,7 @@ const StatisticsPage = observer(() => {
     ];
 
     return (
-      <section className="sp-section">
+      <section id="stats-analysis" className="sp-section section-jump-anchor">
         <div className="sp-section-heading">
           <div>
             <p className="sp-section-title">胜率与回撤</p>
@@ -404,59 +862,16 @@ const StatisticsPage = observer(() => {
   };
 
   const renderHeatmapSection = () => {
-    if (!store.data || heatmapMonths.length === 0) return null;
+    if (!store.data || store.data.dailyPnLHeatmap.length === 0) return null;
 
     return (
-      <section className="sp-section">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">收益日历 / 热力图</p>
-            <p className="sp-section-caption">红色表示盈利，绿色表示亏损，颜色越深幅度越大</p>
-          </div>
-        </div>
-        <div className="sp-heatmap-months">
-          {heatmapMonths.map((month) => (
-            <article className="sp-heatmap-month" key={month.key}>
-              <div className="sp-heatmap-month__header">
-                <span>{month.label}</span>
-                <span>{month.cells.filter((cell) => cell.type === 'day' && cell.item).length} 个记录日</span>
-              </div>
-              <div className="sp-heatmap-weekdays">
-                {['一', '二', '三', '四', '五', '六', '日'].map((label) => (
-                  <span key={`${month.key}-${label}`}>{label}</span>
-                ))}
-              </div>
-              <div className="sp-heatmap-grid">
-                {month.cells.map((cell) => {
-                  if (cell.type === 'empty') {
-                    return <span key={cell.key} className="sp-heatmap-cell sp-heatmap-cell--empty" />;
-                  }
-
-                  const item = cell.item;
-                  const alpha = item ? Math.min(0.92, 0.18 + Math.abs(item.dailyPnL) / heatmapMaxAbs * 0.74) : 0.08;
-                  const toneClass = item
-                    ? item.dailyPnL > 0
-                      ? 'sp-heatmap-cell--profit'
-                      : item.dailyPnL < 0
-                        ? 'sp-heatmap-cell--loss'
-                        : 'sp-heatmap-cell--flat'
-                    : 'sp-heatmap-cell--blank';
-
-                  return (
-                    <span
-                      key={cell.key}
-                      className={`sp-heatmap-cell ${toneClass}`}
-                      style={{ ['--heatmap-alpha' as string]: alpha.toFixed(2) }}
-                      title={item ? `${extractDatePart(item.date)} ${store.formatMoney(item.dailyPnL)}` : `${month.label} ${cell.day}日无记录`}
-                    >
-                      {cell.day}
-                    </span>
-                  );
-                })}
-              </div>
-            </article>
-          ))}
-        </div>
+      <section id="stats-heatmap" className="sp-section section-jump-anchor">
+        <PnLCalendarExplorer
+          title="收益日历 / 热力图"
+          caption="支持按月、按年、按日切换，红色表示盈利，绿色表示亏损"
+          items={store.data.dailyPnLHeatmap}
+          dayPageSize={30}
+        />
       </section>
     );
   };
@@ -506,7 +921,7 @@ const StatisticsPage = observer(() => {
     if (!store.data) return null;
 
     return (
-      <section className="sp-section">
+      <section id="stats-distribution" className="sp-section section-jump-anchor">
         <div className="sp-section-heading">
           <div>
             <p className="sp-section-title">盈亏分布</p>
@@ -526,7 +941,7 @@ const StatisticsPage = observer(() => {
     if (!store.data || store.data.positions.length === 0) return null;
 
     return (
-      <section className="sp-section">
+      <section id="stats-holdings" className="sp-section section-jump-anchor">
         <div className="sp-section-heading">
           <div>
             <p className="sp-section-title">当前持仓天龄</p>
@@ -577,7 +992,7 @@ const StatisticsPage = observer(() => {
     if (!store.data || store.data.boardRotations.length === 0) return null;
 
     return (
-      <section className="sp-section">
+      <section id="stats-board-rotation" className="sp-section section-jump-anchor">
         <div className="sp-section-heading">
           <div>
             <p className="sp-section-title">板块轮动复盘</p>
@@ -626,7 +1041,7 @@ const StatisticsPage = observer(() => {
     const list = store.pagedByStock;
     if (list.length === 0) {
       return (
-        <section className="sp-section">
+        <section id="stats-by-stock" className="sp-section section-jump-anchor">
           <p className="sp-section-title">按心魔汇总</p>
           <p className="sp-empty">暂无数据</p>
         </section>
@@ -634,7 +1049,7 @@ const StatisticsPage = observer(() => {
     }
 
     return (
-      <section className="sp-section">
+      <section id="stats-by-stock" className="sp-section section-jump-anchor">
         <div className="sp-section-heading">
           <div>
             <p className="sp-section-title">按心魔汇总</p>
@@ -780,17 +1195,54 @@ const StatisticsPage = observer(() => {
           </div>
         )}
 
+        {!store.loading && !store.error && store.data && (
+          <SectionJumpNav
+            title="统计索引"
+            items={statisticsSections}
+            className="sp-index-nav"
+          />
+        )}
         {!store.loading && !store.error && store.data && renderStatCards()}
         {!store.loading && !store.error && store.data && renderCycleSection()}
+        {!store.loading && !store.error && store.data && renderCycleDetailSection()}
         {!store.loading && !store.error && store.data && renderDayPatternSection()}
         {!store.loading && !store.error && store.data && renderTTradeSection()}
+        {!store.loading && !store.error && store.data && renderTTradeDetailSection()}
+        {!store.loading && !store.error && store.data && renderBehaviorSection(
+          'stats-behavior-sell-reason',
+          '卖出原因分析',
+          '卖出原因',
+          '把所有有卖出动作且填写了卖出原因的记录聚合起来看，帮助校验你的离场逻辑',
+          store.data.bySellReason,
+          '当前区间还没有填写卖出原因的数据',
+        )}
+        {!store.loading && !store.error && store.data && renderBehaviorSection(
+          'stats-behavior-emotion',
+          '情绪标签分析',
+          '情绪标签',
+          '把记录过的情绪逐个聚合，看哪种情绪状态最容易赚钱，哪种最容易伤到账户',
+          store.data.byEmotionTag,
+          '当前区间还没有填写情绪标签的数据',
+        )}
+        {!store.loading && !store.error && store.data && renderBehaviorSection(
+          'stats-behavior-trade-tag',
+          '交易标签分析',
+          '交易标签',
+          '把每条交易打过的标签聚合起来看，方便识别哪种模式、动作或执行状态最稳定',
+          store.data.byTradeTag,
+          '当前区间还没有填写交易标签的数据',
+        )}
         {!store.loading && !store.error && store.data && renderAnalysisSection()}
         {!store.loading && !store.error && store.data && renderHeatmapSection()}
         {!store.loading && !store.error && store.data && renderDistributionSection()}
         {!store.loading && !store.error && store.data && renderHoldingSection()}
         {!store.loading && !store.error && store.data && renderBoardRotationSection()}
         {!store.loading && !store.error && store.data && renderByStockTable()}
-        {!store.loading && !store.error && <StockPnLLeaderboard />}
+        {!store.loading && !store.error && (
+          <section id="stats-leaderboard" className="section-jump-anchor">
+            <StockPnLLeaderboard />
+          </section>
+        )}
 
         {!store.loading && !store.error && !store.data && (
           <p className="sp-empty">请选择筛选条件后点击「刷新数据」</p>

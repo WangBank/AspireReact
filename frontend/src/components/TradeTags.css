@@ -4,6 +4,12 @@
   gap: 10px;
 }
 
+.choice-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .trade-tags__options,
 .trade-tags__selected {
   display: flex;
@@ -65,6 +71,31 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.trade-tags__action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--app-accent, #0969da);
+  border-radius: 10px;
+  background: var(--app-accent, #0969da);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trade-tags__action-btn:hover {
+  filter: brightness(0.96);
+}
+
+.trade-tags__action-btn--secondary {
+  background: var(--app-surface, #fff);
+  color: var(--app-text-muted, #57606a);
+  border-color: var(--app-border, #d0d7de);
 }
 
 .trade-tags__input {

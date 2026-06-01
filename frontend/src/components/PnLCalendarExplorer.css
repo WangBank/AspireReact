@@ -1,0 +1,287 @@
+.pnl-calendar {
+  width: 100%;
+}
+
+.pnl-calendar__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.pnl-calendar__title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.pnl-calendar__caption {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.pnl-calendar__controls {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pnl-calendar__tab {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  background: #fff;
+  color: #374151;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pnl-calendar__tab:hover {
+  background: #f3f4f6;
+}
+
+.pnl-calendar__tab--active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.pnl-calendar__summary {
+  margin-bottom: 14px;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.pnl-calendar__positive {
+  color: #dc2626;
+}
+
+.pnl-calendar__negative {
+  color: #16a34a;
+}
+
+.pnl-calendar__months {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.pnl-calendar__month {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f9fafb;
+  padding: 16px;
+}
+
+.pnl-calendar__month-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
+.pnl-calendar__month-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pnl-calendar__month-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.pnl-calendar__month-meta {
+  font-size: 0.76rem;
+  color: #6b7280;
+}
+
+.pnl-calendar__weekdays,
+.pnl-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.pnl-calendar__weekdays {
+  margin-bottom: 6px;
+}
+
+.pnl-calendar__weekdays span {
+  text-align: center;
+  font-size: 0.75rem;
+  color: #9ca3af;
+}
+
+.pnl-calendar__cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  min-height: 34px;
+  border-radius: 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: rgba(148, 163, 184, 0.08);
+  color: #475569;
+}
+
+.pnl-calendar__cell--profit {
+  background: rgba(220, 38, 38, var(--heatmap-alpha, 0.2));
+  color: #991b1b;
+}
+
+.pnl-calendar__cell--loss {
+  background: rgba(22, 163, 74, var(--heatmap-alpha, 0.2));
+  color: #166534;
+}
+
+.pnl-calendar__cell--flat {
+  background: rgba(148, 163, 184, 0.14);
+  color: #64748b;
+}
+
+.pnl-calendar__cell--blank,
+.pnl-calendar__cell--empty {
+  background: rgba(148, 163, 184, 0.05);
+  color: #cbd5e1;
+}
+
+.pnl-calendar__cell--empty {
+  border-style: dashed;
+}
+
+.pnl-calendar__years {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.pnl-calendar__year-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f9fafb;
+  padding: 16px;
+}
+
+.pnl-calendar__year {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #111827;
+}
+
+.pnl-calendar__year-pnl {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.pnl-calendar__year-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pnl-calendar__year-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pnl-calendar__year-label {
+  font-size: 0.74rem;
+  color: #6b7280;
+}
+
+.pnl-calendar__year-value {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.pnl-calendar__days {
+  display: grid;
+  gap: 12px;
+}
+
+.pnl-calendar__day-card {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f9fafb;
+}
+
+.pnl-calendar__day-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pnl-calendar__day-date {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #111827;
+}
+
+.pnl-calendar__day-sub {
+  font-size: 0.76rem;
+  color: #6b7280;
+}
+
+.pnl-calendar__day-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pnl-calendar__day-label {
+  font-size: 0.74rem;
+  color: #6b7280;
+}
+
+.pnl-calendar__day-value {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #111827;
+  word-break: break-word;
+}
+
+.pnl-calendar__empty {
+  padding: 18px 0;
+  color: #9ca3af;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 768px) {
+  .pnl-calendar__months,
+  .pnl-calendar__years {
+    grid-template-columns: 1fr;
+  }
+
+  .pnl-calendar__day-card {
+    grid-template-columns: 1fr;
+  }
+
+  .pnl-calendar__cell {
+    min-height: 30px;
+    font-size: 0.74rem;
+  }
+}

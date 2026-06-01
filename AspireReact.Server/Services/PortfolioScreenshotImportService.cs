@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using AspireReact.Server.Data;
 using AspireReact.Server.DTOs;
@@ -22,6 +24,10 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
     private readonly IWebHostEnvironment _environment;
     private readonly RapidOcrOptions _options;
     private readonly ILogger<PortfolioScreenshotImportService> _logger;
+    private static readonly JsonSerializerOptions AuditJsonSerializerOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     private static readonly Regex NumberRegex = new(@"[-+]?\d[\d,]*(?:\.\d+)?", RegexOptions.Compiled);
     private static readonly string[] NoiseTexts =
@@ -142,19 +148,44 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         var tempFilePath = Path.Combine(
             Path.GetTempPath(),
             $"portfolio-import-{Guid.NewGuid():N}{Path.GetExtension(request.Image.FileName)}");
+        var importDate = request.ImportDate?.Date ?? DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Unspecified);
+        var audit = new PortfolioImportAudit
+        {
+            ImportDate = importDate,
+            SourceFileName = Path.GetFileName(request.Image.FileName),
+            ContentType = string.IsNullOrWhiteSpace(request.Image.ContentType)
+                ? "application/octet-stream"
+                : request.Image.ContentType,
+            FileSize = request.Image.Length
+        };
 
         try
         {
             await SaveToTempFileAsync(request.Image, tempFilePath, cancellationToken);
+            audit.StoredImagePath = await SaveAuditImageCopyAsync(
+                tempFilePath,
+                request.Image.FileName,
+                cancellationToken);
 
             var modelPaths = await EnsureModelPathsAsync(cancellationToken);
             using var ocr = CreateOcrEngine(modelPaths);
             var ocrResult = ocr.RecognizeText(tempFilePath);
             var tokens = BuildTokens(ocrResult);
-            var importDate = request.ImportDate?.Date ?? DateTime.UtcNow.Date;
+            var recognizedText = BuildRecognizedText(tokens);
 
             if (tokens.Count == 0)
             {
+                await TryPersistParseAuditAsync(
+                    audit,
+                    recognizedText,
+                    payload: null,
+                    recognizedDate: null,
+                    parseSuccess: false,
+                    parseMessage: "图片中未识别到有效文字，请换一张更清晰的持仓截图重试",
+                    positionCount: 0,
+                    warningCount: 0,
+                    cancellationToken);
+
                 return new PortfolioScreenshotImportResult
                 {
                     Success = false,
@@ -190,23 +221,46 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
                 recognizedDate = null;
             }
 
+            var response = new PortfolioScreenshotImportResponse
+            {
+                RecognizedDate = recognizedDate,
+                Account = account,
+                BankFlow = bankFlow,
+                Positions = positions,
+                Warnings = warnings.Distinct().ToList()
+            };
+            var parseMessage = $"识别完成：账户字段 {(account == null ? 0 : 4)} 项，股票记录 {positions.Count} 条";
+            response.AuditId = await TryPersistParseAuditAsync(
+                audit,
+                recognizedText,
+                response,
+                recognizedDate,
+                parseSuccess: true,
+                parseMessage,
+                positionCount: positions.Count,
+                warningCount: response.Warnings.Count,
+                cancellationToken);
+
             return new PortfolioScreenshotImportResult
             {
                 Success = true,
-                Message = $"识别完成：账户字段 {(account == null ? 0 : 4)} 项，股票记录 {positions.Count} 条",
-                Data = new PortfolioScreenshotImportResponse
-                {
-                    RecognizedDate = recognizedDate,
-                    Account = account,
-                    BankFlow = bankFlow,
-                    Positions = positions,
-                    Warnings = warnings.Distinct().ToList()
-                }
+                Message = parseMessage,
+                Data = response
             };
         }
         catch (Exception ex) when (IsNativeRuntimeException(ex))
         {
             _logger.LogError(ex, "RapidOCR 原生依赖加载失败");
+            await TryPersistParseAuditAsync(
+                audit,
+                recognizedText: null,
+                payload: null,
+                recognizedDate: null,
+                parseSuccess: false,
+                parseMessage: "RapidOCR 本地依赖加载失败，请确认 ONNX Runtime 与 OpenCvSharp 原生运行时已正确安装",
+                positionCount: 0,
+                warningCount: 0,
+                cancellationToken);
             return new PortfolioScreenshotImportResult
             {
                 Success = false,
@@ -217,6 +271,16 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         catch (Exception ex)
         {
             _logger.LogError(ex, "解析券商持仓截图失败");
+            await TryPersistParseAuditAsync(
+                audit,
+                recognizedText: null,
+                payload: null,
+                recognizedDate: null,
+                parseSuccess: false,
+                parseMessage: $"截图识别失败：{ex.Message}",
+                positionCount: 0,
+                warningCount: 0,
+                cancellationToken);
             return new PortfolioScreenshotImportResult
             {
                 Success = false,
@@ -230,11 +294,393 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         }
     }
 
+    public async Task<PagedResult<PortfolioImportAuditListItemResponse>> GetAuditPageAsync(
+        int page,
+        int pageSize,
+        string? saveStatus,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedPage = Math.Max(1, page);
+        var normalizedPageSize = Math.Clamp(pageSize, 1, 100);
+        var normalizedStatus = saveStatus?.Trim().ToLowerInvariant();
+
+        var query = _db.PortfolioImportAudits
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(normalizedStatus) && normalizedStatus != "all")
+        {
+            query = normalizedStatus switch
+            {
+                "pending" => query.Where(item => item.ParseSuccess && !item.SaveAttempted),
+                "success" => query.Where(item => item.SaveAttempted && item.SaveStatus == "success"),
+                "partial" => query.Where(item => item.SaveAttempted && item.SaveStatus == "partial"),
+                "failed" => query.Where(item => item.SaveAttempted && item.SaveStatus == "failed"),
+                "parse-failed" => query.Where(item => !item.ParseSuccess),
+                _ => query
+            };
+        }
+
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(item => item.CreatedAt)
+            .Skip((normalizedPage - 1) * normalizedPageSize)
+            .Take(normalizedPageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<PortfolioImportAuditListItemResponse>
+        {
+            Items = items.Select(MapAuditListItem).ToList(),
+            Total = total,
+            Page = normalizedPage,
+            PageSize = normalizedPageSize
+        };
+    }
+
+    public async Task<PortfolioImportAuditDetailResponse?> GetAuditDetailAsync(
+        int id,
+        CancellationToken cancellationToken = default)
+    {
+        var audit = await _db.PortfolioImportAudits
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+
+        if (audit == null)
+        {
+            return null;
+        }
+
+        var recognizedPayload = DeserializeJson<PortfolioScreenshotImportResponse>(audit.RecognizedPayloadJson);
+        if (recognizedPayload != null)
+        {
+            recognizedPayload.AuditId = audit.Id;
+        }
+
+        return new PortfolioImportAuditDetailResponse
+        {
+            Id = audit.Id,
+            CreatedAt = audit.CreatedAt,
+            ImportDate = audit.ImportDate,
+            RecognizedDate = audit.RecognizedDate,
+            SourceFileName = audit.SourceFileName,
+            ContentType = audit.ContentType,
+            FileSize = audit.FileSize,
+            ParseSuccess = audit.ParseSuccess,
+            ParseMessage = audit.ParseMessage,
+            PositionCount = audit.PositionCount,
+            WarningCount = audit.WarningCount,
+            SaveAttempted = audit.SaveAttempted,
+            SaveStatus = audit.SaveStatus,
+            SavedAccount = audit.SavedAccount,
+            SavedBankFlow = audit.SavedBankFlow,
+            SavedTrades = audit.SavedTrades,
+            RequestedTradeCount = audit.RequestedTradeCount,
+            SavedTradeCount = audit.SavedTradeCount,
+            SaveMessage = audit.SaveMessage,
+            HasImage = HasStoredImage(audit.StoredImagePath),
+            RecognizedText = audit.RecognizedText,
+            RecognizedPayload = recognizedPayload,
+            FinalPayload = DeserializeJson<PortfolioImportAuditFinalPayload>(audit.FinalPayloadJson),
+            SaveResult = BuildSaveResult(audit)
+        };
+    }
+
+    public async Task<(byte[] Bytes, string ContentType, string FileName)?> GetAuditImageAsync(
+        int id,
+        CancellationToken cancellationToken = default)
+    {
+        var audit = await _db.PortfolioImportAudits
+            .AsNoTracking()
+            .Select(item => new
+            {
+                item.Id,
+                item.StoredImagePath,
+                item.ContentType,
+                item.SourceFileName
+            })
+            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+
+        if (audit == null || !HasStoredImage(audit.StoredImagePath))
+        {
+            return null;
+        }
+
+        var bytes = await File.ReadAllBytesAsync(audit.StoredImagePath!, cancellationToken);
+        return (
+            bytes,
+            string.IsNullOrWhiteSpace(audit.ContentType) ? "application/octet-stream" : audit.ContentType,
+            string.IsNullOrWhiteSpace(audit.SourceFileName)
+                ? Path.GetFileName(audit.StoredImagePath!)
+                : audit.SourceFileName);
+    }
+
+    public async Task<bool> FinalizeAuditAsync(
+        int id,
+        PortfolioImportAuditFinalizeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var audit = await _db.PortfolioImportAudits.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (audit == null)
+        {
+            return false;
+        }
+
+        var finalPayload = new PortfolioImportAuditFinalPayload
+        {
+            FinalAccount = request.FinalAccount,
+            FinalBankFlow = request.FinalBankFlow,
+            FinalTrades = request.FinalTrades ?? []
+        };
+        var saveErrors = (request.SaveErrors ?? [])
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct()
+            .ToList();
+
+        audit.SaveAttempted = true;
+        audit.SaveCompletedAt = DateTime.UtcNow;
+        audit.SavedAccount = request.SavedAccount;
+        audit.SavedBankFlow = request.SavedBankFlow;
+        audit.SavedTrades = request.SavedTrades;
+        audit.RequestedTradeCount = request.RequestedTradeCount > 0
+            ? request.RequestedTradeCount
+            : finalPayload.FinalTrades.Count;
+        audit.SavedTradeCount = Math.Max(0, request.SavedTradeCount);
+        audit.FinalPayloadJson = SerializeJson(finalPayload);
+        audit.SaveErrorsJson = SerializeJson(saveErrors);
+        audit.SaveStatus = ResolveSaveStatus(request, finalPayload);
+        audit.SaveMessage = string.IsNullOrWhiteSpace(request.SaveMessage)
+            ? GetDefaultSaveMessage(audit.SaveStatus)
+            : request.SaveMessage;
+
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private async Task SaveToTempFileAsync(IFormFile file, string tempFilePath, CancellationToken cancellationToken)
     {
         await using var stream = file.OpenReadStream();
         await using var output = File.Create(tempFilePath);
         await stream.CopyToAsync(output, cancellationToken);
+    }
+
+    private async Task<string?> SaveAuditImageCopyAsync(
+        string tempFilePath,
+        string sourceFileName,
+        CancellationToken cancellationToken)
+    {
+        if (!File.Exists(tempFilePath))
+        {
+            return null;
+        }
+
+        var extension = Path.GetExtension(sourceFileName);
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            extension = ".png";
+        }
+
+        var auditDirectory = Path.Combine(
+            _environment.ContentRootPath,
+            "RuntimeData",
+            "PortfolioImportAudits",
+            DateTime.Today.ToString("yyyyMMdd"));
+        Directory.CreateDirectory(auditDirectory);
+
+        var targetPath = Path.Combine(
+            auditDirectory,
+            $"{DateTime.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}{extension.ToLowerInvariant()}");
+
+        await using var sourceStream = File.OpenRead(tempFilePath);
+        await using var targetStream = File.Create(targetPath);
+        await sourceStream.CopyToAsync(targetStream, cancellationToken);
+
+        return targetPath;
+    }
+
+    private async Task<int> TryPersistParseAuditAsync(
+        PortfolioImportAudit audit,
+        string? recognizedText,
+        PortfolioScreenshotImportResponse? payload,
+        DateTime? recognizedDate,
+        bool parseSuccess,
+        string parseMessage,
+        int positionCount,
+        int warningCount,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            audit.ParseSuccess = parseSuccess;
+            audit.ParseMessage = parseMessage;
+            audit.PositionCount = positionCount;
+            audit.WarningCount = warningCount;
+            audit.RecognizedDate = recognizedDate?.Date;
+            audit.RecognizedText = string.IsNullOrWhiteSpace(recognizedText) ? null : recognizedText;
+            audit.RecognizedPayloadJson = payload == null ? null : SerializeJson(payload);
+
+            _db.PortfolioImportAudits.Add(audit);
+            await _db.SaveChangesAsync(cancellationToken);
+            return audit.Id;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "写入图片识别审计记录失败");
+            return 0;
+        }
+    }
+
+    private static string BuildRecognizedText(IReadOnlyCollection<OcrToken> tokens)
+    {
+        if (tokens.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var orderedTokens = tokens
+            .OrderBy(item => item.CenterY)
+            .ThenBy(item => item.XMin)
+            .ToList();
+        var averageHeight = orderedTokens.Average(item => Math.Max(1f, item.YMax - item.YMin));
+        var tolerance = Math.Max(8f, averageHeight * 0.8f);
+        var lines = GroupLines(orderedTokens, tolerance);
+
+        return string.Join(
+            Environment.NewLine,
+            lines.Select(line => string.Join(" ", line.Select(item => item.Text)).Trim())
+                .Where(line => !string.IsNullOrWhiteSpace(line)));
+    }
+
+    private static PortfolioImportAuditListItemResponse MapAuditListItem(PortfolioImportAudit audit) =>
+        new()
+        {
+            Id = audit.Id,
+            CreatedAt = audit.CreatedAt,
+            ImportDate = audit.ImportDate,
+            RecognizedDate = audit.RecognizedDate,
+            SourceFileName = audit.SourceFileName,
+            ContentType = audit.ContentType,
+            FileSize = audit.FileSize,
+            ParseSuccess = audit.ParseSuccess,
+            ParseMessage = audit.ParseMessage,
+            PositionCount = audit.PositionCount,
+            WarningCount = audit.WarningCount,
+            SaveAttempted = audit.SaveAttempted,
+            SaveStatus = audit.SaveStatus,
+            SavedAccount = audit.SavedAccount,
+            SavedBankFlow = audit.SavedBankFlow,
+            SavedTrades = audit.SavedTrades,
+            RequestedTradeCount = audit.RequestedTradeCount,
+            SavedTradeCount = audit.SavedTradeCount,
+            SaveMessage = audit.SaveMessage
+        };
+
+    private static PortfolioImportAuditSaveResult? BuildSaveResult(PortfolioImportAudit audit)
+    {
+        if (!audit.SaveAttempted
+            && string.IsNullOrWhiteSpace(audit.SaveStatus)
+            && string.IsNullOrWhiteSpace(audit.SaveMessage)
+            && string.IsNullOrWhiteSpace(audit.SaveErrorsJson))
+        {
+            return null;
+        }
+
+        return new PortfolioImportAuditSaveResult
+        {
+            SaveSucceeded = string.Equals(audit.SaveStatus, "success", StringComparison.OrdinalIgnoreCase),
+            SavedAccount = audit.SavedAccount,
+            SavedBankFlow = audit.SavedBankFlow,
+            SavedTrades = audit.SavedTrades,
+            RequestedTradeCount = audit.RequestedTradeCount,
+            SavedTradeCount = audit.SavedTradeCount,
+            SaveStatus = audit.SaveStatus,
+            SaveMessage = audit.SaveMessage,
+            SaveErrors = DeserializeJson<List<string>>(audit.SaveErrorsJson) ?? [],
+            SaveCompletedAt = audit.SaveCompletedAt
+        };
+    }
+
+    private static string ResolveSaveStatus(
+        PortfolioImportAuditFinalizeRequest request,
+        PortfolioImportAuditFinalPayload finalPayload)
+    {
+        if (request.SaveSucceeded)
+        {
+            return "success";
+        }
+
+        var expectedSections = 0;
+        var savedSections = 0;
+
+        if (finalPayload.FinalAccount != null)
+        {
+            expectedSections++;
+            if (request.SavedAccount)
+            {
+                savedSections++;
+            }
+        }
+
+        if (finalPayload.FinalBankFlow != null)
+        {
+            expectedSections++;
+            if (request.SavedBankFlow)
+            {
+                savedSections++;
+            }
+        }
+
+        if (finalPayload.FinalTrades.Count > 0 || request.RequestedTradeCount > 0)
+        {
+            expectedSections++;
+            if (request.SavedTrades || request.SavedTradeCount > 0)
+            {
+                savedSections++;
+            }
+        }
+
+        if (savedSections > 0 || request.SavedTradeCount > 0)
+        {
+            return "partial";
+        }
+
+        return "failed";
+    }
+
+    private static string GetDefaultSaveMessage(string? saveStatus) => saveStatus switch
+    {
+        "success" => "识别结果已完整入库",
+        "partial" => "识别结果仅部分入库，请结合错误信息复核",
+        _ => "识别结果未成功入库"
+    };
+
+    private static bool HasStoredImage(string? storedImagePath) =>
+        !string.IsNullOrWhiteSpace(storedImagePath) && File.Exists(storedImagePath);
+
+    private static string? SerializeJson<T>(T value)
+    {
+        if (value == null)
+        {
+            return null;
+        }
+
+        return JsonSerializer.Serialize(value, AuditJsonSerializerOptions);
+    }
+
+    private static T? DeserializeJson<T>(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return default;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json, AuditJsonSerializerOptions);
+        }
+        catch
+        {
+            return default;
+        }
     }
 
     private async Task<(string DetectorPath, string RecognizerPath, string ClassifierPath)> EnsureModelPathsAsync(CancellationToken cancellationToken)
