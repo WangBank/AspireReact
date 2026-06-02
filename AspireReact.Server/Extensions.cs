@@ -137,13 +137,12 @@ public static class Extensions
         return services.AddHostedService<MigrationService<TContext>>();
     }
 
-    public static IHealthChecksBuilder AddRedisHealthCheck(this IHealthChecksBuilder builder)
+    public static IHealthChecksBuilder AddRedisHealthCheck(this IHealthChecksBuilder builder, string connectionString)
     {
         return builder.AddCheck("Redis", () =>
         {
             try
             {
-                var connectionString = Environment.GetEnvironmentVariable("REDIS_CONNECTION_STRING") ?? "localhost:6379";
                 using var connection = ConnectionMultiplexer.Connect(connectionString);
                 connection.GetDatabase().Ping();
                 return HealthCheckResult.Healthy("Redis connection is healthy");

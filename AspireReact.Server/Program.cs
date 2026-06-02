@@ -63,10 +63,12 @@ try
     // 添加数据库迁移服务
     builder.Services.AddMigrationService<AppDbContext>();
 
+    var redisConnectionString = RedisConfig.GetConnectionString(builder.Configuration);
+
     // 添加Redis缓存
     builder.Services.AddStackExchangeRedisCache(options =>
     {
-        options.Configuration = RedisConfig.GetConnectionString(builder.Configuration);
+        options.Configuration = redisConnectionString;
         options.InstanceName = "StockSystem";
     });
 
@@ -106,7 +108,7 @@ try
 
     // 添加健康检查
     builder.Services.AddHealthChecks()
-        .AddRedisHealthCheck()
+        .AddRedisHealthCheck(redisConnectionString)
         .AddDbContextCheck<AppDbContext>();
 
     var app = builder.Build();

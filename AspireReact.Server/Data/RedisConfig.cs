@@ -2,7 +2,7 @@ namespace AspireReact.Server.Data;
 
 public static class RedisConfig
 {
-    public const string DefaultConnection = "localhost:6379";
+    public const string DefaultConnection = "127.0.0.1:6379";
     public const int DefaultDatabase = 0;
     public static TimeSpan DefaultExpiry = TimeSpan.FromDays(30); // 心魔数据30天过期
     
