@@ -10,11 +10,13 @@ public class JwtMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<JwtMiddleware> _logger;
 
-    public JwtMiddleware(RequestDelegate next, IConfiguration configuration)
+    public JwtMiddleware(RequestDelegate next, IConfiguration configuration, ILogger<JwtMiddleware> logger)
     {
         _next = next;
         _configuration = configuration;
+        _logger = logger;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -85,9 +87,14 @@ public class JwtMiddleware
                     context.Items["Username"] = usernameClaim.Value;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Token 验证失败，不附加用户信息，继续管道
+            _logger.LogWarning(
+                ex,
+                "JWT 验证失败: {Method} {Path}, TraceId={TraceId}",
+                context.Request.Method,
+                $"{context.Request.PathBase}{context.Request.Path}",
+                context.TraceIdentifier);
         }
     }
 }
