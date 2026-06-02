@@ -44,6 +44,8 @@ try
                 outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff} {Level:u3}] [{TraceId}] {Message:lj}{NewLine}{Exception}");
     });
 
+    var logDirectoryPath = Path.Combine(builder.Environment.ContentRootPath, "Logs");
+
     // Add service defaults & Aspire client integrations.
     builder.AddServiceDefaults();
 
@@ -108,6 +110,19 @@ try
         .AddDbContextCheck<AppDbContext>();
 
     var app = builder.Build();
+
+    app.Lifetime.ApplicationStarted.Register(() =>
+        Log.Information(
+            "AspireReact.Server 已启动，环境={EnvironmentName}，内容根目录={ContentRootPath}，日志目录={LogDirectory}",
+            app.Environment.EnvironmentName,
+            app.Environment.ContentRootPath,
+            logDirectoryPath));
+
+    app.Lifetime.ApplicationStopping.Register(() =>
+        Log.Information("AspireReact.Server 正在停止"));
+
+    app.Lifetime.ApplicationStopped.Register(() =>
+        Log.Information("AspireReact.Server 已停止"));
 
     // Configure the HTTP request pipeline.
     app.UseExceptionHandler();

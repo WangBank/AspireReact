@@ -111,9 +111,12 @@ public static class Extensions
 
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
-        // Adding health checks endpoints to applications in non-development environments has security implications.
-        // See https://aka.ms/aspire/healthchecks for details before enabling these endpoints in non-development environments.
-        if (app.Environment.IsDevelopment())
+        var isManagedByAspire = !string.IsNullOrWhiteSpace(app.Configuration["ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL"])
+            || !string.IsNullOrWhiteSpace(app.Configuration["ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL"]);
+
+        // 本地开发和被 Aspire AppHost 编排时都需要健康检查端点，
+        // 否则 AppHost 可能因为拿不到 /health 而将服务判定为未启动。
+        if (app.Environment.IsDevelopment() || isManagedByAspire)
         {
             // All health checks must pass for app to be considered ready to accept traffic after starting
             app.MapHealthChecks(HealthEndpointPath);
