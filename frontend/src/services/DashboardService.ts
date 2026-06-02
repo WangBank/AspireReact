@@ -54,6 +54,23 @@ export interface DashboardData {
   recentBankFlows: BankFlowResponse[];
   recentTrades: StockTradeResponse[];
   dailyPnLHeatmap: DailyPnLHeatmapItem[];
+  periodSummaries: DashboardPeriodSummary[];
+}
+
+export interface DashboardBenchmarkSummary {
+  key: string;
+  name: string;
+  returnRate: number | null;
+}
+
+export interface DashboardPeriodSummary {
+  key: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  pnl: number;
+  returnRate: number | null;
+  benchmarks: DashboardBenchmarkSummary[];
 }
 
 export interface DashboardResponse {
@@ -85,6 +102,11 @@ export class DashboardService {
     return {
       ...json.data,
       dailyPnLHeatmap: json.data.dailyPnLHeatmap ?? [],
+      periodSummaries: (json.data.periodSummaries ?? []).map((item: DashboardPeriodSummary & { pnL?: number }) => ({
+        ...item,
+        pnl: item.pnl ?? item.pnL ?? 0,
+        benchmarks: item.benchmarks ?? [],
+      })),
     };
   }
 }

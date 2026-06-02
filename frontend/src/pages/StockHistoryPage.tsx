@@ -465,7 +465,7 @@ const StockHistoryPage = () => {
               <span className="shp-section__meta">共 {cyclesDescending.length} 个周期</span>
             </div>
             <div className="shp-table-wrap">
-              <table className="shp-table">
+              <table className="shp-table shp-table--cycles">
                 <thead>
                   <tr>
                     <th>周期</th>

@@ -10,6 +10,7 @@ import { clampPage, getTotalPages, nextSortState, paginateItems, sortItemsBy, ty
 export type UnifiedItemType = 'account' | 'bankflow' | 'trade';
 
 export type UnifiedActiveType = UnifiedItemType | 'all';
+export type UnifiedTradeStatusFilter = 'all' | 'holding' | 'liquidated';
 
 export interface UnifiedListItem {
   id: number;
@@ -74,6 +75,7 @@ export class UnifiedListStore {
   page = 1;
   pageSize = 20;
   activeType: UnifiedActiveType = 'account'; // 当前选中的列表类型
+  tradeStatusFilter: UnifiedTradeStatusFilter = 'all';
 
   constructor() {
     makeAutoObservable(this);
@@ -328,6 +330,17 @@ export class UnifiedListStore {
       });
     }
 
+    if (this.activeType === 'trade' && this.tradeStatusFilter !== 'all') {
+      filtered = filtered.filter(item => {
+        const isLiquidated = item.isLiquidated || (item.positionQuantity ?? 0) <= 0;
+        if (this.tradeStatusFilter === 'holding') {
+          return !isLiquidated;
+        }
+
+        return isLiquidated;
+      });
+    }
+
     return filtered;
   }
 
@@ -393,6 +406,11 @@ export class UnifiedListStore {
 
   setKeyword = (kw: string) => {
     this.keyword = kw;
+    this.page = 1;
+  };
+
+  setTradeStatusFilter = (filter: UnifiedTradeStatusFilter) => {
+    this.tradeStatusFilter = filter;
     this.page = 1;
   };
 

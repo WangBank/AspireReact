@@ -56,4 +56,27 @@ public class DashboardResponse
     /// 日度盈亏日历数据
     /// </summary>
     public List<DailyPnLHeatmapItem> DailyPnLHeatmap { get; set; } = new();
+
+    /// <summary>
+    /// 首页区间概览卡片
+    /// </summary>
+    public List<DashboardPeriodSummary> PeriodSummaries { get; set; } = new();
+}
+
+public class DashboardPeriodSummary
+{
+    public string Key { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
+    public decimal Pnl { get; set; }
+    public decimal? ReturnRate { get; set; }
+    public List<DashboardBenchmarkSummary> Benchmarks { get; set; } = new();
+}
+
+public class DashboardBenchmarkSummary
+{
+    public string Key { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public decimal? ReturnRate { get; set; }
 }

@@ -248,6 +248,11 @@
   min-width: 1360px;
 }
 
+.shp-table--cycles {
+  min-width: 980px;
+  table-layout: fixed;
+}
+
 .shp-table th {
   padding: 10px 12px;
   text-align: left;
@@ -259,6 +264,10 @@
   border-bottom: 1px solid var(--app-border-muted);
   background: var(--app-surface-muted);
   white-space: nowrap;
+}
+
+.shp-table th.shp-num {
+  text-align: right;
 }
 
 .shp-table td {
@@ -395,6 +404,10 @@
 
   .shp-table {
     min-width: 920px;
+  }
+
+  .shp-table--cycles {
+    min-width: 840px;
   }
 
   .shp-note-card__header {

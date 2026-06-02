@@ -30,6 +30,11 @@ interface CalendarMonthView {
   cells: CalendarMonthCell[];
 }
 
+interface CalendarYearMonthSummary {
+  label: string;
+  totalPnL: number | null;
+}
+
 interface CalendarYearView {
   key: string;
   label: string;
@@ -42,6 +47,7 @@ interface CalendarYearView {
   bestMonthPnL: number | null;
   worstMonthLabel: string | null;
   worstMonthPnL: number | null;
+  months: CalendarYearMonthSummary[];
 }
 
 const VIEW_MODES: Array<{ key: CalendarViewMode; label: string }> = [
@@ -66,6 +72,24 @@ const formatPercent = (value: number | null | undefined) => {
   }
 
   return `${(value * 100).toFixed(2)}%`;
+};
+
+const formatCompactMoney = (value: number | null | undefined) => {
+  if (value == null || Number.isNaN(value)) {
+    return '--';
+  }
+
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+  const absValue = Math.abs(value);
+  if (absValue >= 10000) {
+    return `${sign}${(absValue / 10000).toFixed(absValue >= 100000 ? 0 : 1)}万`;
+  }
+
+  if (absValue >= 1000) {
+    return `${sign}${(absValue / 1000).toFixed(absValue >= 10000 ? 0 : 1)}k`;
+  }
+
+  return `${sign}${absValue.toFixed(absValue >= 100 ? 0 : 1)}`;
 };
 
 const getToneClass = (value: number) => (value >= 0 ? 'pnl-calendar__positive' : 'pnl-calendar__negative');
@@ -153,6 +177,7 @@ const buildYearViews = (items: PnLCalendarItem[]): CalendarYearView[] => {
       const worstMonth = monthlyGroups.length > 0
         ? [...monthlyGroups].sort((left, right) => left.totalPnL - right.totalPnL)[0]
         : null;
+      const monthlyMap = new Map(monthlyGroups.map((item) => [item.label, item.totalPnL]));
 
       return {
         key: year,
@@ -166,6 +191,13 @@ const buildYearViews = (items: PnLCalendarItem[]): CalendarYearView[] => {
         bestMonthPnL: bestMonth?.totalPnL ?? null,
         worstMonthLabel: worstMonth?.label ?? null,
         worstMonthPnL: worstMonth?.totalPnL ?? null,
+        months: Array.from({ length: 12 }, (_, index) => {
+          const label = `${index + 1}月`;
+          return {
+            label,
+            totalPnL: monthlyMap.get(label) ?? null,
+          };
+        }),
       };
     });
 };
@@ -292,7 +324,10 @@ const PnLCalendarExplorer = ({
                           style={{ ['--heatmap-alpha' as string]: alpha.toFixed(2) }}
                           title={item ? `${extractDatePart(item.date)} ${formatMoney(item.dailyPnL)}` : `${month.label} ${cell.day}日无记录`}
                         >
-                          {cell.day}
+                          <span className="pnl-calendar__cell-day">{cell.day}</span>
+                          <span className={`pnl-calendar__cell-value ${item ? getToneClass(item.dailyPnL) : 'pnl-calendar__cell-value--muted'}`.trim()}>
+                            {item ? formatCompactMoney(item.dailyPnL) : '--'}
+                          </span>
                         </span>
                       );
                     })}
@@ -331,6 +366,16 @@ const PnLCalendarExplorer = ({
                         {year.worstMonthLabel ? `${year.worstMonthLabel} ${formatMoney(year.worstMonthPnL ?? 0)}` : '--'}
                       </span>
                     </div>
+                  </div>
+                  <div className="pnl-calendar__year-months">
+                    {year.months.map((month) => (
+                      <div className="pnl-calendar__year-month" key={`${year.key}-${month.label}`}>
+                        <span className="pnl-calendar__year-month-label">{month.label}</span>
+                        <span className={`pnl-calendar__year-month-value ${month.totalPnL != null ? getToneClass(month.totalPnL) : ''}`.trim()}>
+                          {month.totalPnL == null ? '--' : formatCompactMoney(month.totalPnL)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </article>
               ))}

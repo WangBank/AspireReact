@@ -536,17 +536,17 @@ public class StockTradeService : IStockTradeService
             .OrderByDescending(x => x.TotalCumulativePnL)
             .ToList();
 
-        var totalPnL = stockAggregates.Sum(item => item.TotalCumulativePnL);
-        if (totalPnL != 0)
+        var tradeTotalPnL = stockAggregates.Sum(item => item.TotalCumulativePnL);
+        if (tradeTotalPnL != 0)
         {
             foreach (var item in byStock)
             {
-                item.ContributionRate = decimal.Round(item.TotalCumulativePnL / totalPnL, 4, MidpointRounding.AwayFromZero);
+                item.ContributionRate = decimal.Round(item.TotalCumulativePnL / tradeTotalPnL, 4, MidpointRounding.AwayFromZero);
             }
 
             foreach (var item in byBoard)
             {
-                item.ContributionRate = decimal.Round(item.TotalCumulativePnL / totalPnL, 4, MidpointRounding.AwayFromZero);
+                item.ContributionRate = decimal.Round(item.TotalCumulativePnL / tradeTotalPnL, 4, MidpointRounding.AwayFromZero);
             }
         }
 
@@ -588,14 +588,22 @@ public class StockTradeService : IStockTradeService
             .OrderByDescending(p => p.PositionPnL)
             .ToList();
 
+        var dailyPnLHeatmap = BuildDailyPnLHeatmap(accountRecords, rangeRecords, bankFlowByDate);
+        var usePortfolioDailyPnL = string.IsNullOrWhiteSpace(request.StockCode)
+            && string.IsNullOrWhiteSpace(request.Board)
+            && dailyPnLHeatmap.Count > 0;
+        var totalPnL = usePortfolioDailyPnL
+            ? dailyPnLHeatmap.Sum(item => item.DailyPnL)
+            : tradeTotalPnL;
         var totalPositionValue = positionOnlyRecords.Sum(p => p.CurrentPrice * p.PositionQuantity);
         var totalPositionPnL = positionOnlyRecords.Sum(p => p.PositionPnL);
         var realizedPnL = totalPnL - totalPositionPnL;
-        var totalDailyPnL = latestRecordsByStock.Sum(p => p.Trade.DailyPnL);
+        var totalDailyPnL = usePortfolioDailyPnL
+            ? dailyPnLHeatmap[^1].DailyPnL
+            : latestRecordsByStock.Sum(p => p.Trade.DailyPnL);
         var cycleRecords = BuildTradeCycles(correctedRecords, start, end);
         var cycleAnalysis = BuildCycleAnalysisSummary(cycleRecords);
         var cycleDetails = BuildCycleDetails(cycleRecords);
-        var dailyPnLHeatmap = BuildDailyPnLHeatmap(accountRecords, rangeRecords, bankFlowByDate);
         var dayOutcomes = BuildDayOutcomeSummary(dailyPnLHeatmap);
         var streakAnalysis = BuildStreakAnalysis(dailyPnLHeatmap);
         var dailyWinRates = BuildDailyWinRates(rangeRecords);

@@ -39,6 +39,11 @@ builder.Services.AddHttpClient("RapidOcrModels", client =>
 {
     client.Timeout = TimeSpan.FromMinutes(5);
 });
+builder.Services.AddHttpClient("MarketIndex", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+    client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 AspireReact/1.0");
+});
 
 builder.Services.Configure<RapidOcrOptions>(builder.Configuration.GetSection("RapidOcr"));
 
@@ -53,6 +58,7 @@ builder.Services.AddScoped<IStockTradeService, StockTradeService>();
 builder.Services.AddScoped<ITradeNoteService, TradeNoteService>();
 builder.Services.AddScoped<IPortfolioScreenshotImportService, PortfolioScreenshotImportService>();
 builder.Services.AddScoped<IDataHealthService, DataHealthService>();
+builder.Services.AddScoped<IMarketIndexService, MarketIndexService>();
 
 // 添加控制器支持
 builder.Services.AddControllers();

@@ -76,7 +76,7 @@
   border: 1px solid #e5e7eb;
   border-radius: 14px;
   background: #f9fafb;
-  padding: 16px;
+  padding: 18px;
 }
 
 .pnl-calendar__month-header {
@@ -110,7 +110,7 @@
 .pnl-calendar__grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .pnl-calendar__weekdays {
@@ -124,17 +124,20 @@
 }
 
 .pnl-calendar__cell {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 1;
-  min-height: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  aspect-ratio: 1 / 1.02;
+  min-height: 58px;
   border-radius: 10px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
   border: 1px solid rgba(148, 163, 184, 0.12);
   background: rgba(148, 163, 184, 0.08);
   color: #475569;
+  padding: 6px;
+  overflow: hidden;
 }
 
 .pnl-calendar__cell--profit {
@@ -160,6 +163,24 @@
 
 .pnl-calendar__cell--empty {
   border-style: dashed;
+}
+
+.pnl-calendar__cell-day {
+  font-size: 0.76rem;
+  line-height: 1;
+}
+
+.pnl-calendar__cell-value {
+  width: 100%;
+  font-size: 0.67rem;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: left;
+  word-break: break-word;
+}
+
+.pnl-calendar__cell-value--muted {
+  color: #94a3b8;
 }
 
 .pnl-calendar__years {
@@ -209,6 +230,34 @@
 .pnl-calendar__year-value {
   font-size: 0.9rem;
   font-weight: 700;
+  color: #111827;
+}
+
+.pnl-calendar__year-months {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pnl-calendar__year-month {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+}
+
+.pnl-calendar__year-month-label {
+  font-size: 0.72rem;
+  color: #6b7280;
+}
+
+.pnl-calendar__year-month-value {
+  font-size: 0.78rem;
+  font-weight: 800;
   color: #111827;
 }
 
@@ -280,8 +329,17 @@
     grid-template-columns: 1fr;
   }
 
+  .pnl-calendar__year-months {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .pnl-calendar__cell {
-    min-height: 30px;
-    font-size: 0.74rem;
+    min-height: 54px;
+    font-size: 0.72rem;
+    padding: 5px;
+  }
+
+  .pnl-calendar__cell-value {
+    font-size: 0.62rem;
   }
 }

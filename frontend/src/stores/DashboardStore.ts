@@ -58,8 +58,23 @@ export class DashboardStore {
     return `${sign}${value.toFixed(2)}`;
   }
 
+  formatPercent(value: number | null | undefined): string {
+    if (value == null || Number.isNaN(value)) {
+      return '--';
+    }
+
+    const sign = value > 0 ? '+' : value < 0 ? '-' : '';
+    return `${sign}${Math.abs(value * 100).toFixed(2)}%`;
+  }
+
   formatRecordDate(value: string | null | undefined): string {
     return value ? value.split('T')[0] : '暂无';
+  }
+
+  formatDateRange(start: string | null | undefined, end: string | null | undefined): string {
+    const startText = this.formatRecordDate(start);
+    const endText = this.formatRecordDate(end);
+    return startText === endText ? startText : `${startText} ~ ${endText}`;
   }
 
   isPnLPositive(value: number): boolean {

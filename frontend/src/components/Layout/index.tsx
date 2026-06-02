@@ -23,11 +23,15 @@ const NAV_ITEMS: NavLinkItem[] = [
   { label: '设置', path: '/config', type: 'link' },
 ];
 
+const QUICK_ENTRY_PATH = '/entry/unified';
+
 const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const { authStore } = useStore();
   const location = useLocation();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isEntryRoute = location.pathname.startsWith('/entry');
+  const showFloatingEntry = !isEntryRoute;
 
   const handleLogout = useCallback(() => {
     authStore.logout();
@@ -83,6 +87,19 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
         </div>
 
         <div className="navbar-actions">
+          <NavLink
+            to={QUICK_ENTRY_PATH}
+            className={`navbar-entry-cta${isEntryRoute ? ' navbar-entry-cta--active' : ''}`}
+          >
+            <span className="navbar-entry-cta__icon" aria-hidden="true">
+              +
+            </span>
+            <span className="navbar-entry-cta__body">
+              <span className="navbar-entry-cta__title">快捷录入</span>
+              <span className="navbar-entry-cta__meta">OCR / 手动一体</span>
+            </span>
+          </NavLink>
+
           <div className="navbar-user">
             <button
               className="navbar-user__trigger"
@@ -160,6 +177,20 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
         </div>
 
         <div className="navbar-mobile-drawer__content">
+          <NavLink
+            to={QUICK_ENTRY_PATH}
+            className={`navbar-mobile-entry${isEntryRoute ? ' navbar-mobile-entry--active' : ''}`}
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            <span className="navbar-mobile-entry__icon" aria-hidden="true">
+              +
+            </span>
+            <span className="navbar-mobile-entry__body">
+              <span className="navbar-mobile-entry__title">快捷录入</span>
+              <span className="navbar-mobile-entry__meta">直接进入统一录入页</span>
+            </span>
+          </NavLink>
+
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.path}
@@ -198,6 +229,15 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
       <main className="layout-content">
         {children}
       </main>
+
+      {showFloatingEntry && (
+        <NavLink to={QUICK_ENTRY_PATH} className="floating-entry-button" aria-label="进入快捷录入页面">
+          <span className="floating-entry-button__icon" aria-hidden="true">
+            +
+          </span>
+          <span className="floating-entry-button__text">快捷录入</span>
+        </NavLink>
+      )}
     </div>
   );
 });

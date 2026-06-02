@@ -1,5 +1,6 @@
 using AspireReact.Server.Data;
 using AspireReact.Server.DTOs;
+using AspireReact.Server.Entities;
 using AspireReact.Server.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
@@ -13,18 +14,21 @@ public class DashboardController : ControllerBase
     private readonly IAccountService _accountService;
     private readonly IBankFlowService _bankFlowService;
     private readonly IStockTradeService _tradeService;
+    private readonly IMarketIndexService _marketIndexService;
     private readonly AppDbContext _db;
 
     public DashboardController(
         AppDbContext db,
         IAccountService accountService,
         IBankFlowService bankFlowService,
-        IStockTradeService tradeService)
+        IStockTradeService tradeService,
+        IMarketIndexService marketIndexService)
     {
         _db = db;
         _accountService = accountService;
         _bankFlowService = bankFlowService;
         _tradeService = tradeService;
+        _marketIndexService = marketIndexService;
     }
 
     /// <summary>
@@ -33,25 +37,37 @@ public class DashboardController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Get()
     {
-        // 数据库存的是按 UTC 零点落库的日期，这里统一按 UTC 日期取范围，避免本地时区导致当天记录被漏掉。
-        var today = DateTime.UtcNow.Date;
         var latestAccount = await _accountService.GetLatestAsync();
+        var latestTradeDate = await GetLatestTradeDateAsync();
+        var referenceDate = (latestTradeDate ?? latestAccount?.Date ?? DateTime.UtcNow.Date).Date;
+        var latestRecordDate = latestTradeDate ?? latestAccount?.Date;
+        var latestRecordDailyPnL = await GetLatestRecordDailyPnLAsync(latestRecordDate, latestAccount);
+        var accountHistory = await _accountService.GetByDateRangeAsync(null, referenceDate);
+        var todayPnL = accountHistory
+            .Where(record => record.Date.Date == referenceDate)
+            .Sum(record => record.DailyPnL);
 
-        // 今日/本周/本月优先使用账户日表中的当日盈亏，避免连续持仓快照重复影响区间统计。
-        var todayPnL = await CalculateAccountDailyPnL(today, today);
+        var weekStart = GetWeekStart(referenceDate);
+        var weekPnL = accountHistory
+            .Where(record => record.Date.Date >= weekStart && record.Date.Date <= referenceDate)
+            .Sum(record => record.DailyPnL);
 
-        var weekStart = today.AddDays(-(int)today.DayOfWeek + (today.DayOfWeek == DayOfWeek.Sunday ? -6 : 1));
-        var weekPnL = await CalculateAccountDailyPnL(weekStart, today);
-
-        var monthStart = new DateTime(today.Year, today.Month, 1);
-        var monthPnL = await CalculateAccountDailyPnL(monthStart, today);
+        var monthStart = new DateTime(referenceDate.Year, referenceDate.Month, 1);
+        var monthPnL = accountHistory
+            .Where(record => record.Date.Date >= monthStart && record.Date.Date <= referenceDate)
+            .Sum(record => record.DailyPnL);
 
         var summary = await _tradeService.GetSummaryAsync(new TradeSummaryRequest());
         var cumulativePnL = summary.TotalPnL;
-        var latestRecordDate = await GetLatestTradeDateAsync() ?? latestAccount?.Date;
-        var latestRecordDailyPnL = await GetLatestRecordDailyPnLAsync(latestRecordDate, latestAccount);
-
         var recentBankFlows = await _bankFlowService.GetRecentAsync();
+        var periodDefinitions = BuildPeriodDefinitions(referenceDate, accountHistory, todayPnL, weekPnL, monthPnL, cumulativePnL);
+        var bankFlows = await _db.BankFlows
+            .AsNoTracking()
+            .Where(item => item.Date <= referenceDate)
+            .ToListAsync();
+        var marketIndexSeries = await _marketIndexService.GetDailySeriesAsync(
+            periodDefinitions.Min(item => item.StartDate).AddDays(-60),
+            referenceDate);
 
         // 获取最近交易记录（最近5条，按交易日期倒序）
         var tradeQuery = new TradeQueryRequest
@@ -72,7 +88,8 @@ public class DashboardController : ControllerBase
             LatestAccount = latestAccount,
             RecentBankFlows = recentBankFlows,
             RecentTrades = recentTradesResult.Items,
-            DailyPnLHeatmap = summary.DailyPnLHeatmap
+            DailyPnLHeatmap = summary.DailyPnLHeatmap,
+            PeriodSummaries = BuildPeriodSummaries(periodDefinitions, accountHistory, bankFlows, marketIndexSeries)
         };
 
         return Ok(new
@@ -81,15 +98,6 @@ public class DashboardController : ControllerBase
             data = dashboardData,
             message = "获取首页概览成功"
         });
-    }
-
-    /// <summary>
-    /// 按日期范围汇总账户当日盈亏
-    /// </summary>
-    private async Task<decimal> CalculateAccountDailyPnL(DateTime? startDate, DateTime? endDate)
-    {
-        var accountRecords = await _accountService.GetByDateRangeAsync(startDate, endDate);
-        return accountRecords.Sum(record => record.DailyPnL);
     }
 
     /// <summary>
@@ -139,4 +147,169 @@ public class DashboardController : ControllerBase
 
         return matchedTradePnL ?? 0;
     }
+
+    private static DateTime GetWeekStart(DateTime date)
+    {
+        return date.AddDays(-(int)date.DayOfWeek + (date.DayOfWeek == DayOfWeek.Sunday ? -6 : 1)).Date;
+    }
+
+    private static List<DashboardPeriodDefinition> BuildPeriodDefinitions(
+        DateTime referenceDate,
+        IReadOnlyList<AccountDailyResponse> accountHistory,
+        decimal todayPnL,
+        decimal weekPnL,
+        decimal monthPnL,
+        decimal cumulativePnL)
+    {
+        var cumulativeStart = accountHistory.Count > 0
+            ? accountHistory[0].Date.Date
+            : referenceDate.Date;
+
+        return
+        [
+            new DashboardPeriodDefinition("today", "今日盈亏", referenceDate.Date, referenceDate.Date, todayPnL),
+            new DashboardPeriodDefinition("week", "本周盈亏", GetWeekStart(referenceDate), referenceDate.Date, weekPnL),
+            new DashboardPeriodDefinition("month", "本月盈亏", new DateTime(referenceDate.Year, referenceDate.Month, 1), referenceDate.Date, monthPnL),
+            new DashboardPeriodDefinition("cumulative", "累计盈亏", cumulativeStart, referenceDate.Date, cumulativePnL)
+        ];
+    }
+
+    private static List<DashboardPeriodSummary> BuildPeriodSummaries(
+        IReadOnlyList<DashboardPeriodDefinition> periodDefinitions,
+        IReadOnlyList<AccountDailyResponse> accountHistory,
+        IReadOnlyCollection<BankFlow> bankFlows,
+        IReadOnlyList<MarketIndexSeries> marketIndexSeries)
+    {
+        return periodDefinitions
+            .Select(period => new DashboardPeriodSummary
+            {
+                Key = period.Key,
+                Label = period.Label,
+                StartDate = period.StartDate,
+                EndDate = period.EndDate,
+                Pnl = decimal.Round(period.PnL, 2, MidpointRounding.AwayFromZero),
+                ReturnRate = ComputeAccountReturnRate(accountHistory, bankFlows, period.StartDate, period.EndDate),
+                Benchmarks = marketIndexSeries
+                    .Select(index => new DashboardBenchmarkSummary
+                    {
+                        Key = index.Key,
+                        Name = index.Name,
+                        ReturnRate = ComputeMarketIndexReturn(index.Bars, period.StartDate, period.EndDate)
+                    })
+                    .ToList()
+            })
+            .ToList();
+    }
+
+    private static decimal? ComputeAccountReturnRate(
+        IReadOnlyList<AccountDailyResponse> accountHistory,
+        IReadOnlyCollection<BankFlow> bankFlows,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        if (accountHistory.Count == 0)
+        {
+            return null;
+        }
+
+        var flowByDate = bankFlows
+            .GroupBy(item => item.Date.Date)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Sum(item => string.Equals(item.FlowType, "转入", StringComparison.Ordinal)
+                    ? item.Amount
+                    : -item.Amount));
+
+        var factor = 1m;
+        var hasValue = false;
+
+        for (var index = 0; index < accountHistory.Count; index++)
+        {
+            var record = accountHistory[index];
+            var recordDate = record.Date.Date;
+            if (recordDate < startDate.Date || recordDate > endDate.Date)
+            {
+                continue;
+            }
+
+            decimal baseAssets;
+            if (index > 0)
+            {
+                baseAssets = accountHistory[index - 1].TotalAssets;
+            }
+            else
+            {
+                flowByDate.TryGetValue(recordDate, out var sameDayFlow);
+                baseAssets = record.TotalAssets - record.DailyPnL - sameDayFlow;
+            }
+
+            if (baseAssets <= 0)
+            {
+                continue;
+            }
+
+            factor *= 1 + (record.DailyPnL / baseAssets);
+            hasValue = true;
+        }
+
+        return hasValue
+            ? decimal.Round(factor - 1, 4, MidpointRounding.AwayFromZero)
+            : null;
+    }
+
+    private static decimal? ComputeMarketIndexReturn(
+        IReadOnlyList<MarketIndexDailyBar> bars,
+        DateTime startDate,
+        DateTime endDate)
+    {
+        if (bars.Count == 0)
+        {
+            return null;
+        }
+
+        var firstInRangeIndex = -1;
+        var endIndex = -1;
+        for (var index = 0; index < bars.Count; index++)
+        {
+            var barDate = bars[index].Date.Date;
+            if (firstInRangeIndex < 0 && barDate >= startDate.Date && barDate <= endDate.Date)
+            {
+                firstInRangeIndex = index;
+            }
+
+            if (barDate <= endDate.Date)
+            {
+                endIndex = index;
+            }
+        }
+
+        if (firstInRangeIndex < 0 || endIndex < firstInRangeIndex)
+        {
+            return null;
+        }
+
+        var endBar = bars[endIndex];
+        if (endBar.Date.Date < endDate.Date.AddDays(-7))
+        {
+            return null;
+        }
+
+        var basePrice = firstInRangeIndex > 0
+            ? bars[firstInRangeIndex - 1].Close
+            : (bars[firstInRangeIndex].Open > 0 ? bars[firstInRangeIndex].Open : bars[firstInRangeIndex].Close);
+
+        if (basePrice <= 0)
+        {
+            return null;
+        }
+
+        return decimal.Round((endBar.Close - basePrice) / basePrice, 4, MidpointRounding.AwayFromZero);
+    }
+
+    private sealed record DashboardPeriodDefinition(
+        string Key,
+        string Label,
+        DateTime StartDate,
+        DateTime EndDate,
+        decimal PnL);
 }

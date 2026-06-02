@@ -144,6 +144,70 @@
   flex-shrink: 0;
 }
 
+.navbar-entry-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px 7px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 143, 68, 0.26);
+  background:
+    linear-gradient(135deg, rgba(255, 179, 71, 0.2), rgba(255, 111, 97, 0.18)),
+    #fff;
+  color: #9a3412;
+  text-decoration: none;
+  box-shadow: 0 14px 28px rgba(249, 115, 22, 0.16);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.navbar-entry-cta:hover {
+  transform: translateY(-1px);
+  border-color: rgba(249, 115, 22, 0.4);
+  box-shadow: 0 18px 34px rgba(249, 115, 22, 0.22);
+}
+
+.navbar-entry-cta--active {
+  border-color: rgba(249, 115, 22, 0.46);
+  background:
+    linear-gradient(135deg, rgba(255, 196, 107, 0.28), rgba(255, 128, 104, 0.22)),
+    #fff;
+}
+
+.navbar-entry-cta__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #fb8f44 0%, #ff6f61 100%);
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 10px 18px rgba(255, 111, 97, 0.28);
+}
+
+.navbar-entry-cta__body {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.navbar-entry-cta__title {
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #7c2d12;
+}
+
+.navbar-entry-cta__meta {
+  margin-top: 2px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(124, 45, 18, 0.78);
+}
+
 .navbar-user {
   position: relative;
 }
@@ -353,6 +417,57 @@
   gap: 8px;
 }
 
+.navbar-mobile-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(249, 115, 22, 0.24);
+  background: linear-gradient(135deg, rgba(255, 196, 107, 0.22), rgba(255, 128, 104, 0.18));
+  color: #7c2d12;
+  text-decoration: none;
+  box-shadow: 0 14px 24px rgba(249, 115, 22, 0.16);
+}
+
+.navbar-mobile-entry--active {
+  border-color: rgba(249, 115, 22, 0.4);
+}
+
+.navbar-mobile-entry__icon {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #fb8f44 0%, #ff6f61 100%);
+  color: #fff;
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.navbar-mobile-entry__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.navbar-mobile-entry__title {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #7c2d12;
+}
+
+.navbar-mobile-entry__meta {
+  margin-top: 3px;
+  font-size: 0.78rem;
+  color: rgba(124, 45, 18, 0.8);
+}
+
 .navbar-mobile-group {
   display: flex;
   flex-direction: column;
@@ -428,12 +543,52 @@
   padding-top: calc(var(--app-navbar-height) + 8px);
 }
 
+.floating-entry-button {
+  position: fixed;
+  right: 18px;
+  bottom: max(18px, calc(env(safe-area-inset-bottom) + 12px));
+  z-index: 115;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 12px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(249, 115, 22, 0.26);
+  background: linear-gradient(135deg, #fb8f44 0%, #ff6f61 100%);
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 18px 34px rgba(255, 111, 97, 0.34);
+}
+
+.floating-entry-button__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.floating-entry-button__text {
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
 @media (max-width: 960px) {
   .navbar {
     padding: 0 16px;
   }
 
   .navbar-links {
+    display: none;
+  }
+
+  .navbar-entry-cta {
     display: none;
   }
 
@@ -448,6 +603,10 @@
 
   .navbar-user__trigger {
     padding-right: 5px;
+  }
+
+  .floating-entry-button {
+    display: inline-flex;
   }
 }
 
@@ -471,5 +630,21 @@
 
   .navbar-actions {
     gap: 8px;
+  }
+
+  .floating-entry-button {
+    right: 14px;
+    bottom: max(14px, calc(env(safe-area-inset-bottom) + 10px));
+    padding: 11px 14px 11px 11px;
+  }
+
+  .floating-entry-button__text {
+    font-size: 0.84rem;
+  }
+}
+
+@media (max-width: 1180px) {
+  .navbar-entry-cta__meta {
+    display: none;
   }
 }

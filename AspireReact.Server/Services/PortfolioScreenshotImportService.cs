@@ -111,7 +111,10 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
     private static readonly Regex[] DatePatterns =
     [
         new Regex(@"(?<!\d)(?<year>(?:19|20)\d{2})\D+(?<month>1[0-2]|0?[1-9])\D+(?<day>3[01]|[12]\d|0?[1-9])(?!\d)", RegexOptions.Compiled),
-        new Regex(@"(?<!\d)(?<year>(?:19|20)\d{2})(?<month>1[0-2]|0[1-9])(?<day>3[01]|[12]\d|0[1-9])(?!\d)", RegexOptions.Compiled)
+        new Regex(@"(?<!\d)(?<year>(?:19|20)\d{2})(?<month>1[0-2]|0[1-9])(?<day>3[01]|[12]\d|0[1-9])(?!\d)", RegexOptions.Compiled),
+        // 兼容 OCR 把日期和右侧数字连在一起的情况，例如 2026-06-017%
+        new Regex(@"(?<!\d)(?<year>(?:19|20)\d{2})\D+(?<month>1[0-2]|0?[1-9])\D+(?<day>3[01]|[12]\d|0?[1-9])", RegexOptions.Compiled),
+        new Regex(@"(?<!\d)(?<year>(?:19|20)\d{2})(?<month>1[0-2]|0[1-9])(?<day>3[01]|[12]\d|0[1-9])", RegexOptions.Compiled)
     ];
     private static readonly Regex ThreeDecimalPriceRegex = new(@"\d+\.\d{2,3}", RegexOptions.Compiled);
 
