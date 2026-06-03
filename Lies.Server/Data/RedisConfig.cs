@@ -8,7 +8,10 @@ public static class RedisConfig
     
     public static string GetConnectionString(IConfiguration configuration)
     {
-        return configuration["Redis:ConnectionString"] ?? DefaultConnection;
+        return configuration["Redis:ConnectionString"]
+            ?? configuration.GetConnectionString("Redis")
+            ?? configuration.GetConnectionString("redis")
+            ?? DefaultConnection;
     }
     
     public static class CacheKeys

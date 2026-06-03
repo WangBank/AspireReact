@@ -3,8 +3,21 @@ using Lies.Server.Middlewares;
 using Lies.Server.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using OpenTelemetry;
 using Serilog;
 using Serilog.Events;
+using Serilog.Sinks.OpenTelemetry;
+
+static OtlpProtocol ResolveOtlpProtocol(string? value)
+{
+    if (string.Equals(value, "http/protobuf", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(value, "httpprotobuf", StringComparison.OrdinalIgnoreCase))
+    {
+        return OtlpProtocol.HttpProtobuf;
+    }
+
+    return OtlpProtocol.Grpc;
+}
 
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
@@ -21,8 +34,10 @@ try
     {
         var logDirectory = Path.Combine(context.HostingEnvironment.ContentRootPath, "Logs");
         Directory.CreateDirectory(logDirectory);
+        var otlpEndpoint = context.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
+        var otlpProtocol = context.Configuration["OTEL_EXPORTER_OTLP_PROTOCOL"];
 
-        configuration
+        var loggerConfiguration = configuration
             .ReadFrom.Configuration(context.Configuration)
             .ReadFrom.Services(services)
             .Enrich.FromLogContext()
@@ -42,6 +57,21 @@ try
                 shared: true,
                 flushToDiskInterval: TimeSpan.FromSeconds(1),
                 outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff} {Level:u3}] [{TraceId}] {Message:lj}{NewLine}{Exception}");
+
+        if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+        {
+            loggerConfiguration.WriteTo.OpenTelemetry(options =>
+            {
+                options.Endpoint = otlpEndpoint;
+                options.Protocol = ResolveOtlpProtocol(otlpProtocol);
+                options.OnBeginSuppressInstrumentation = SuppressInstrumentationScope.Begin;
+                options.ResourceAttributes = new Dictionary<string, object>
+                {
+                    ["service.name"] = context.HostingEnvironment.ApplicationName,
+                    ["deployment.environment"] = context.HostingEnvironment.EnvironmentName
+                };
+            });
+        }
     });
 
     var logDirectoryPath = Path.Combine(builder.Environment.ContentRootPath, "Logs");

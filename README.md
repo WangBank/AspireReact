@@ -164,6 +164,33 @@ powershell -ExecutionPolicy Bypass -File .\scripts\docker-up.ps1
 http://localhost:5516
 ```
 
+手写 `docker-compose.yml` 这条链路还会额外启动一个仅本机可访问的 Aspire Dashboard：
+
+```text
+http://localhost:18888/login?t=lies-dashboard-local
+```
+
+默认端口和 token 可在 `.env.docker` 中调整：
+
+```env
+ASPIRE_DASHBOARD_BIND_HOST=127.0.0.1
+ASPIRE_DASHBOARD_PORT=18888
+ASPIRE_DASHBOARD_FRONTEND_TOKEN=lies-dashboard-local
+```
+
+当前这套 Dashboard 主要用于查看 `Lies.Server` 的 OTLP 日志、Trace 和指标。
+
+如果你想在本地开发时看完整资源视图（`postgres`、`redis`、`server`、`webfrontend` 的依赖与状态），请运行：
+
+```bash
+dotnet run --project Lies.AppHost
+```
+
+说明：
+
+- `Lies.AppHost` 现在已经建模了 PostgreSQL、Redis、Server 和前端资源
+- 手写 `docker-compose.yml` 里的 standalone dashboard 仍然更偏向遥测面板
+
 `.env.docker` 里可以单独指定 PostgreSQL 镜像，例如：
 
 ```env
@@ -190,7 +217,56 @@ POSTGRES_IMAGE=postgres:latest
 
 ```bash
 docker compose --env-file .env.docker logs -f app
+docker compose --env-file .env.docker logs -f dashboard
 docker compose --env-file .env.docker down
+```
+
+如果你想把 Docker 方案再往前推进成“Docker + AppHost 参与资源服务”的结构，现在也已经支持一套官方的 AppHost 驱动链路。
+
+首次使用先安装 Aspire CLI：
+
+```bash
+dotnet tool install --global Aspire.Cli --prerelease
+```
+
+准备环境文件：
+
+```bash
+cp .env.aspire-docker.example .env.aspire-docker
+```
+
+然后启动：
+
+- macOS / Linux
+
+```bash
+bash scripts/aspire-docker-up.sh
+```
+
+- Windows PowerShell
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\aspire-docker-up.ps1
+```
+
+这条链路的特点：
+
+- 由 `Lies.AppHost` 生成 Docker Compose 产物，而不是手写维护资源关系
+- 发布态资源统一为 `dashboard`、`postgres`、`redis`、`app`
+- `postgres`、`redis`、`dashboard` 默认都只绑定到 `127.0.0.1`
+- `app` 继续保持对外端口 `5516`
+- PostgreSQL `latest` 已按 18+ 规则改成 `/var/lib/postgresql` 数据卷挂载
+
+相关配置文件：
+
+- `.env.aspire-docker`：AppHost 驱动 Docker 部署使用
+- `.env.docker`：手写 `docker-compose.yml` 使用
+
+常用命令：
+
+```bash
+bash scripts/aspire-docker-down.sh
+aspire publish --non-interactive --nologo --output-path ./.aspire-output/docker-compose
 ```
 
 ## 日常使用流程

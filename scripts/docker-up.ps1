@@ -27,13 +27,22 @@ catch {
 }
 
 $AppPort = "5516"
+$DashboardPort = "18888"
+$DashboardToken = "lies-dashboard-local"
 Get-Content $EnvFile | ForEach-Object {
     if ($_ -match '^APP_PORT=(.+)$') {
         $AppPort = $Matches[1]
+    }
+    if ($_ -match '^ASPIRE_DASHBOARD_PORT=(.+)$') {
+        $DashboardPort = $Matches[1]
+    }
+    if ($_ -match '^ASPIRE_DASHBOARD_FRONTEND_TOKEN=(.+)$') {
+        $DashboardToken = $Matches[1]
     }
 }
 
 Write-Host ""
 Write-Host "Docker services are up."
 Write-Host "App URL: http://localhost:$AppPort"
+Write-Host "Aspire Dashboard: http://localhost:$DashboardPort/login?t=$DashboardToken"
 Write-Host "Logs: docker compose --env-file '$EnvFile' -f '$ComposeFile' logs -f app"

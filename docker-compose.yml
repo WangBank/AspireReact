@@ -1,4 +1,16 @@
 services:
+  dashboard:
+    image: ${ASPIRE_DASHBOARD_IMAGE:-mcr.microsoft.com/dotnet/aspire-dashboard:latest}
+    container_name: Lies-dashboard
+    restart: unless-stopped
+    environment:
+      DASHBOARD__FRONTEND__AUTHMODE: BrowserToken
+      DASHBOARD__FRONTEND__BROWSERTOKEN: ${ASPIRE_DASHBOARD_FRONTEND_TOKEN:-lies-dashboard-local}
+      DASHBOARD__OTLP__AUTHMODE: Unsecured
+      DASHBOARD__OTLP__SUPPRESSUNSECUREDMESSAGE: "true"
+    ports:
+      - "${ASPIRE_DASHBOARD_BIND_HOST:-127.0.0.1}:${ASPIRE_DASHBOARD_PORT:-18888}:18888"
+
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:latest}
     container_name: Lies-postgres
@@ -38,6 +50,8 @@ services:
     container_name: Lies-app
     restart: unless-stopped
     depends_on:
+      dashboard:
+        condition: service_started
       postgres:
         condition: service_healthy
       redis:
@@ -50,6 +64,8 @@ services:
       Jwt__Secret: ${JWT_SECRET:-8Zk9pQ2sX7gR5tU4jB6vN2mD8aF1cH3kL0zP5qW7eS2dF9gH4jK6lA8}
       Jwt__Issuer: ${JWT_ISSUER:-Lies.Server}
       Jwt__Audience: ${JWT_AUDIENCE:-Lies.Client}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://dashboard:18889
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       RapidOcr__ModelsDirectory: /app/RuntimeData/RapidOcr
       RapidOcr__AutoDownloadModels: ${RAPIDOCR_AUTO_DOWNLOAD_MODELS:-true}
     ports:

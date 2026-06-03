@@ -32,6 +32,9 @@ Properties/launchSettings.json
 # Docker
 docker-compose.override.yml
 .env.docker
+.env.aspire-docker
+.aspire-output/
+aspire-output/
 
 # 前端 (React/Vue)
 node_modules/
