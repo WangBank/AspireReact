@@ -26,12 +26,15 @@ RUN set -eux; \
     installed=''; \
     for attempt in 1 2 3; do \
       if apt-get update \
-        && apt-get install -y --no-install-recommends -o Acquire::Retries=5 fonts-noto-cjk; then \
+        && apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
+          fontconfig \
+          libfontconfig1 \
+          fonts-noto-cjk; then \
         installed=1; \
         break; \
       fi; \
       rm -rf /var/lib/apt/lists/*; \
-      echo "Retrying fonts-noto-cjk install (attempt ${attempt}/3)..." >&2; \
+      echo "Retrying font package install (attempt ${attempt}/3)..." >&2; \
       sleep 5; \
     done; \
     test -n "$installed"; \

@@ -221,6 +221,44 @@ docker compose --env-file .env.docker logs -f dashboard
 docker compose --env-file .env.docker down
 ```
 
+### 数据库备份恢复
+
+如果你已经有导出的 PostgreSQL 备份文件，可以直接恢复到当前运行中的 Docker Postgres。
+
+项目提供两个恢复脚本：
+
+- `scripts/db-restore.ps1`
+- `scripts/db-restore.sh`
+
+支持格式：
+
+- `.sql`
+- `.dump`
+- `.backup`
+- `.tar`
+
+Windows PowerShell：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\db-restore.ps1 C:\Users\12243\Downloads\lies.dump lies
+```
+
+macOS / Linux：
+
+```bash
+bash scripts/db-restore.sh /path/to/lies.dump lies
+```
+
+说明：
+
+- 恢复前先启动 Docker 栈，`docker-up` 和 `aspire-docker-up` 两条链路都可以
+- 脚本会自动寻找当前运行中的 `postgres` 容器，复制备份文件，断开活动连接，重建目标库，然后执行恢复
+- 目标库会被重建，原有数据会被覆盖
+- 第二个参数不传时，默认恢复到 `.env.docker` 中的 `POSTGRES_DB`，默认值是 `lies`
+- 恢复凭据读取 `.env.docker` 中的 `POSTGRES_USER` 和 `POSTGRES_PASSWORD`
+- 如果你使用的是 AppHost Docker 链路，建议把 `.env.docker` 和 `.env.aspire-docker` 里的 PostgreSQL 用户名和密码保持一致
+- 如果本机同时运行了多套 PostgreSQL 容器，先停掉旧栈，避免恢复到错误容器
+
 如果你想把 Docker 方案再往前推进成“Docker + AppHost 参与资源服务”的结构，现在也已经支持一套官方的 AppHost 驱动链路。
 
 首次使用先安装 Aspire CLI：
