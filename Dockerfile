@@ -24,9 +24,9 @@ ENV DOTNET_ENVIRONMENT=Production
 
 RUN set -eux; \
     installed=''; \
-    for attempt in 1 2 3; do \
-      if apt-get update \
-        && apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
+    for attempt in 1 2 3 4 5; do \
+      if apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update \
+        && apt-get install -y --no-install-recommends -o Acquire::Retries=5 -o Acquire::http::Timeout=30 \
           fontconfig \
           libfontconfig1 \
           fonts-noto-cjk; then \
@@ -34,7 +34,7 @@ RUN set -eux; \
         break; \
       fi; \
       rm -rf /var/lib/apt/lists/*; \
-      echo "Retrying font package install (attempt ${attempt}/3)..." >&2; \
+      echo "Retrying font package install (attempt ${attempt}/5)..." >&2; \
       sleep 5; \
     done; \
     test -n "$installed"; \
