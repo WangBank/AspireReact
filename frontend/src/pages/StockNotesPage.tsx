@@ -1,7 +1,8 @@
 import { observer } from 'mobx-react-lite';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import { STOCK_NOTE_TEMPLATES, mergeTemplateContent } from '../constants/noteTemplates';
+import type { NoteResponse } from '../services/NoteService';
 import { formatLocalDate } from '../utils/date';
 import './StockNotesPage.css';
 
@@ -10,10 +11,6 @@ const StockNotesPage = observer(() => {
   const [stockCode, setStockCode] = useState('');
   const [inputStockCode, setInputStockCode] = useState('');
   const [searchExpanded, setSearchExpanded] = useState(false);
-
-  useEffect(() => {
-    // 不自动加载，等用户输入心魔代码
-  }, [store]);
 
   const handleLoad = () => {
     const code = inputStockCode.trim();
@@ -56,7 +53,7 @@ const StockNotesPage = observer(() => {
     if (e.key === 'Enter') handleLoad();
   };
 
-  const renderNoteItem = (note: any) => (
+  const renderNoteItem = (note: NoteResponse) => (
     <div key={note.id} className="snp-note-card">
       <div className="snp-note-header">
         <span className="snp-note-date">{formatDate(note.date)}</span>

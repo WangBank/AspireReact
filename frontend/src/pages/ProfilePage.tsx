@@ -22,18 +22,13 @@ const ProfilePage = observer(() => {
   // 加载个人信息
   useEffect(() => {
     authStore.fetchProfile();
-  }, []);
+  }, [authStore]);
 
   // 回填表单
   useEffect(() => {
     if (authStore.profile) {
-      // 如果用户还没开始编辑，用 store 中的值进行回填
-      if (username === '' && authStore.profile.username) {
-        setUsername(authStore.profile.username);
-      }
-      if (email === '' && authStore.profile.email) {
-        setEmail(authStore.profile.email);
-      }
+      setUsername((current) => current || authStore.profile?.username || '');
+      setEmail((current) => current || authStore.profile?.email || '');
     }
   }, [authStore.profile]);
 

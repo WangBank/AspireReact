@@ -1,40 +1,95 @@
 # 心魔录
 
-心魔录是一个面向个人投资复盘的全栈 Web 应用，用来记录每日账户资金、银证转账、持仓/清仓明细，并提供统计、笔记和图片识别导入能力。
+心魔录是一个围绕“每日交易复盘”设计的全栈应用，用来统一管理三类核心数据：
 
-项目当前基于以下栈实现：
+- 账户日资金：总资产、持仓市值、可用资金、当日盈亏
+- 银证转账：转入、转出、金额、备注
+- 股票交易：建仓、加仓、减仓、做 T、清仓、持仓快照
+
+在此基础上，项目已经集成：
+
+- 手机券商截图 OCR 识别与回填
+- OCR 识别审计与原图回查
+- 统一录入页与统一列表页
+- 股票历史流水页与周期统计
+- 数据体检与异常提醒
+- 复盘笔记、心魔笔记、吾日三省吾身
+
+## 技术栈
 
 - 前端：React 19 + TypeScript + Vite + MobX
-- 后端：.NET 10 Web API + EF Core + Aspire
+- 后端：.NET 10 + ASP.NET Core Web API + EF Core
 - 数据：PostgreSQL + Redis
 - OCR：RapidOCRSharpOnnx
+- 编排：Aspire AppHost
+- 部署：Docker / Docker Compose
 
-## 主要功能
+## 推荐入口
 
-- 账户资金录入：记录日期、总资产、持仓市值、可用资金、当日盈亏。
-- 银证流水录入：记录转入/转出、金额、备注。
-- 交易持仓录入：支持单日多只心魔批量录入，区分持仓和清仓。
-- 图片识别导入：识别券商截图，自动回填账户、银证流水和心魔明细。
-- 统一数据列表：按账户、流水、交易三类查看，支持筛选、批量删除、编辑。
-- 统计汇总：支持今日/本周/本月/本年/全部/自定义区间统计。
-- 复盘笔记：支持全局笔记和按心魔管理笔记。
-- 用户系统：注册、登录、验证码、个人信息、修改密码。
-- 配置管理：支持修改同花顺心魔详情链接前缀。
+日常使用优先走这几个页面：
 
-## 快速开始
+- `/dashboard`：首页概览、收益日历、盈亏榜、快捷录入
+- `/entry/unified`：统一录入页，支持手工录入和截图识别回填
+- `/list/unified`：统一列表页，按账户 / 流水 / 交易切换查看
+- `/statistics`：统计分析页
+- `/stocks/:stockCode/history`：单票历史流水、周期、盈亏比
 
-### 1. 环境要求
+补充页面：
+
+- `/health`：数据体检
+- `/audits/imports`：图片识别审计
+- `/notes/global`：全局笔记
+- `/notes/stock`：心魔笔记
+- `/notes/reflection`：吾日三省吾身
+- `/config`：系统配置
+- `/profile`：个人资料
+
+兼容入口仍保留：
+
+- `/entry/account`
+- `/entry/bankflow`
+- `/entry/trade`
+- `/list/account`
+- `/list/bankflow`
+- `/list/trade`
+
+## 项目结构
+
+```text
+AspireReact/
+├── AspireReact.AppHost/         Aspire 编排入口
+├── AspireReact.Server/          后端 API、OCR、数据体检、审计
+├── frontend/                    React 前端
+├── scripts/                     Docker 启停脚本
+├── docker-compose.yml           Docker 编排
+├── Dockerfile                   生产镜像构建
+├── README.md                    快速开始
+└── 心魔录-项目文档.md             详细说明
+```
+
+几个重要的运行时目录：
+
+- `AspireReact.Server/Logs/`：Serilog 日志
+- `AspireReact.Server/RuntimeData/RapidOcr/`：OCR 模型
+- `AspireReact.Server/RuntimeData/PortfolioImportAudits/`：识别审计原图与数据
+
+这些目录属于运行时产物，不应该提交到仓库。
+
+## 环境要求
 
 - .NET SDK 10
 - Node.js 20.19+ 或 22.12+
 - PostgreSQL
 - Redis
+- Docker Desktop 或 Docker Engine（如果走容器部署）
 
-### 2. 基础配置
+## 配置说明
 
-后端配置文件在 [AspireReact.Server/appsettings.json](AspireReact.Server/appsettings.json)。
+后端主配置文件：
 
-至少需要确认以下配置：
+- [AspireReact.Server/appsettings.json](/Users/wangzhen/codes/Aspire/AspireReact/AspireReact.Server/appsettings.json)
+
+至少需要关注：
 
 - `ConnectionStrings:PostgreSQL`
 - `Redis:ConnectionString`
@@ -42,28 +97,29 @@
 - `RapidOcr`
 - `Tonghuashun:LinkPrefix`
 
-说明：
+补充说明：
 
-- `RapidOcr.AutoDownloadModels=true` 时，首次识别截图会自动下载 OCR 模型到 `AspireReact.Server/RuntimeData/RapidOcr`。
-- 如果你修改了数据库或 Redis 地址，前后端都不需要额外改代码，只要改配置即可。
+- `RapidOcr.AutoDownloadModels=true` 时，首次 OCR 会自动下载模型
+- Docker 场景下优先改 `.env.docker`
+- 默认前端对外端口统一使用 `5516`
 
-### 3. 启动方式
+## 启动方式
 
-#### 方式 A：通过 Aspire AppHost 启动
+### 1. Aspire 开发启动
 
 ```bash
 dotnet run --project AspireReact.AppHost
 ```
 
-默认前端入口为：
+访问：
 
 ```text
 http://localhost:5516
 ```
 
-适合日常开发，前端会自动通过服务发现代理到后端。
+适合本地开发联调。
 
-#### 方式 B：前后端分开启动
+### 2. 前后端分开启动
 
 先启动后端：
 
@@ -79,15 +135,7 @@ npm install
 SERVER_HTTP=http://127.0.0.1:6202 npm run dev
 ```
 
-Vite 会把 `/api` 请求代理到 `SERVER_HTTP`。
-
-#### 方式 C：通过 Docker 一键启动
-
-项目现在提供了完整的 Docker 部署文件，默认会一起启动：
-
-- `app`：后端 API + 已构建前端静态站点
-- `postgres`：PostgreSQL
-- `redis`：Redis
+### 3. Docker 一键启动
 
 首次使用：
 
@@ -96,7 +144,7 @@ cp .env.docker.example .env.docker
 docker compose --env-file .env.docker up -d --build
 ```
 
-如果想更省事，也可以直接用脚本：
+或使用脚本：
 
 - macOS / Linux
 
@@ -110,18 +158,11 @@ bash scripts/docker-up.sh
 powershell -ExecutionPolicy Bypass -File .\scripts\docker-up.ps1
 ```
 
-启动后默认访问：
+默认访问：
 
 ```text
 http://localhost:5516
 ```
-
-补充说明：
-
-- Docker 方式不依赖 `AspireReact.AppHost`
-- `.env.docker` 里可以修改端口、数据库密码、JWT 密钥
-- Docker 版会把前端构建产物打进后端容器，由后端统一对外提供页面和 `/api`
-- 日志、OCR 模型、数据库和 Redis 数据都通过 Docker volume 持久化
 
 常用命令：
 
@@ -130,102 +171,60 @@ docker compose --env-file .env.docker logs -f app
 docker compose --env-file .env.docker down
 ```
 
-## 使用流程
+## 日常使用流程
 
-### 首次使用
+1. 打开 `/entry/unified`
+2. 手工填写，或上传截图执行“识别并回填”
+3. 对照原图检查账户、流水、交易是否完整
+4. 点击“一键保存识别结果”或分别保存
+5. 到 `/list/unified` 复核持仓 / 清仓状态
+6. 到 `/statistics` 看区间表现
+7. 到笔记页面补充复盘
 
-1. 打开登录页。
-2. 切换到注册模式。
-3. 获取验证码，填写邮箱、用户名、密码后完成注册。
-4. 登录进入首页。
+## OCR 能力概览
 
-### 日常录入
+当前重点支持：
 
-推荐使用当前主入口：
+- 同花顺手机端整屏持仓截图
+- 含当日买入 / 当日卖出 / 均价 / 收盘价的流水截图
+- 左侧账户汇总 + 右侧当日流水的组合截图
 
-- 录入页：`/entry/unified`
-- 数据列表：`/list/unified`
+OCR 结果会先回填表单，不会直接入库。系统同时支持：
 
-常见流程：
+- 识别提醒
+- 原图预览
+- 一键保存
+- 清空识别回填
+- 审计页回查识别结果
 
-1. 在统一录入页手动填写账户资金、银证流水、交易持仓。
-2. 或上传券商截图，先识别回填。
-3. 检查识别结果。
-4. 点击“一键保存识别结果”或分别保存表单。
-5. 到数据列表或统计页复核结果。
+## 统计与分析
 
-## 图片识别导入
+统计页当前不只是区间汇总，还包括：
 
-统一录入页支持图片识别导入，当前支持：
+- 按日 / 月 / 年切换的收益日历
+- 单票累计盈亏排行
+- 周期统计：从建仓到清仓
+- 净入金修正收益率
+- 胜率、连赢连亏、最大回撤与恢复
+- 做 T 专项分析
+- 按周 / 月 / 季度的盈亏分布
+- 盈利最多 / 亏损最多股票排行
 
-- 同花顺手机端持仓页整屏截图
-- 包含“当日买入 / 当日卖出 / 买入均价 / 卖出均价 / 收盘价”的流水表截图
-- 左侧为账户历史汇总、右侧为当日流水明细的组合截图
+## 仓库维护约定
 
-识别流程：
+已经清理掉历史模板残留和调试产物，后续建议继续遵守：
 
-1. 选择图片。
-2. 指定导入日期。
-3. 点击“识别并回填”。
-4. 页面会显示识别原图，便于对照。
-5. 识别结果不会直接入库，而是先回填到表单。
-6. 确认无误后点击“一键保存识别结果”。
+- 不提交 `Logs/`、`RuntimeData/`、`.codex-artifacts/`
+- OCR 原图只保存在审计目录，不放仓库
+- 开发说明放 `README.md`
+- 更完整的功能说明放 [心魔录-项目文档.md](/Users/wangzhen/codes/Aspire/AspireReact/心魔录-项目文档.md)
 
-当前识别会尝试回填：
+## 相关文件
 
-- 交易日期
-- 账户总资产、持仓市值、可用资金、当日盈亏
-- 银证转入/转出金额
-- 心魔代码、名称、板块
-- 买入/卖出数量与价格
-- 持仓数量、当日盈亏、累计盈亏
-- 清仓状态
-
-## 主要页面
-
-- `/dashboard`：首页概览，展示最近交易日期、当日盈亏、区间统计和最近记录。
-- `/entry/unified`：统一录入页，包含手工录入和图片识别导入。
-- `/list/unified`：统一列表页，查看账户、流水、交易三类数据。
-- `/statistics`：统计汇总页。
-- `/notes/global`：全局复盘笔记。
-- `/notes/stock`：按心魔查看笔记。
-- `/config`：系统配置。
-- `/profile`：个人资料与密码管理。
-
-兼容页面仍保留：
-
-- `/entry/account`
-- `/entry/bankflow`
-- `/entry/trade`
-- `/list/account`
-- `/list/bankflow`
-- `/list/trade`
-
-## 后端接口概览
-
-主要控制器如下：
-
-- `api/auth`：注册、登录、验证码、个人信息、修改密码
-- `api/account`：账户资金 CRUD、最新记录
-- `api/bankflow`：银证流水 CRUD、最近记录
-- `api/stocktrade`：交易记录 CRUD、批量新增/修改、统计汇总
-- `api/stock`：心魔搜索、详情、缓存统计、缓存刷新
-- `api/note`：全局/个股笔记 CRUD
-- `api/dashboard`：首页概览数据
-- `api/config`：系统配置
-- `api/portfolio-import/screenshot`：券商截图识别导入
-
-## 目录说明
-
-```text
-AspireReact.AppHost/     Aspire 编排入口
-AspireReact.Server/      .NET 10 后端 API
-frontend/                React 前端
-心魔录-项目文档.md         详细中文使用文档
-```
-
-## 详细文档
-
-更完整的页面说明、接口说明、数据结构和图片识别说明见：
-
-[心魔录-项目文档.md](心魔录-项目文档.md)
+- 前端路由：[frontend/src/App.tsx](/Users/wangzhen/codes/Aspire/AspireReact/frontend/src/App.tsx)
+- 统一录入页：[frontend/src/pages/UnifiedEntryPage.tsx](/Users/wangzhen/codes/Aspire/AspireReact/frontend/src/pages/UnifiedEntryPage.tsx)
+- 统一列表页：[frontend/src/pages/UnifiedListPage.tsx](/Users/wangzhen/codes/Aspire/AspireReact/frontend/src/pages/UnifiedListPage.tsx)
+- 统计页：[frontend/src/pages/StatisticsPage.tsx](/Users/wangzhen/codes/Aspire/AspireReact/frontend/src/pages/StatisticsPage.tsx)
+- 股票历史页：[frontend/src/pages/StockHistoryPage.tsx](/Users/wangzhen/codes/Aspire/AspireReact/frontend/src/pages/StockHistoryPage.tsx)
+- OCR 服务：[AspireReact.Server/Services/PortfolioScreenshotImportService.cs](/Users/wangzhen/codes/Aspire/AspireReact/AspireReact.Server/Services/PortfolioScreenshotImportService.cs)
+- 数据体检服务：[AspireReact.Server/Services/DataHealthService.cs](/Users/wangzhen/codes/Aspire/AspireReact/AspireReact.Server/Services/DataHealthService.cs)

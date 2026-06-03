@@ -18,7 +18,7 @@ const LoginPage = observer(() => {
     return () => {
       authStore.clearError();
     };
-  }, []);
+  }, [authStore]);
 
   const toggleMode = () => {
     setIsRegister((prev) => !prev);

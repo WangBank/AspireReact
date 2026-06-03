@@ -2,6 +2,7 @@ import { observer } from 'mobx-react-lite';
 import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import { GLOBAL_NOTE_TEMPLATES, mergeTemplateContent } from '../constants/noteTemplates';
+import type { NoteResponse } from '../services/NoteService';
 import './GlobalNotesPage.css';
 
 const GlobalNotesPage = observer(() => {
@@ -36,7 +37,7 @@ const GlobalNotesPage = observer(() => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
-  const renderNoteItem = (note: any) => (
+  const renderNoteItem = (note: NoteResponse) => (
     <div key={note.id} className="gnp-note-card">
       <div className="gnp-note-header">
         <span className="gnp-note-date">{formatDate(note.date)}</span>

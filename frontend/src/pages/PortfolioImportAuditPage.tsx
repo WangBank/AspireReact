@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import TablePagination from '../components/Table/TablePagination';
 import StockHistoryLink from '../components/StockHistoryLink';
 import {
@@ -66,8 +66,16 @@ const PortfolioImportAuditPage = () => {
   const [detailError, setDetailError] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [detailRefreshNonce, setDetailRefreshNonce] = useState(0);
+  const imageUrlRef = useRef('');
 
-  const loadList = async () => {
+  const revokeImageUrl = useCallback(() => {
+    if (imageUrlRef.current) {
+      URL.revokeObjectURL(imageUrlRef.current);
+      imageUrlRef.current = '';
+    }
+  }, []);
+
+  const loadList = useCallback(async () => {
     setLoading(true);
     setError('');
 
@@ -90,11 +98,11 @@ const PortfolioImportAuditPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, pageSize, saveStatus, selectedAuditId]);
 
   useEffect(() => {
     void loadList();
-  }, [page, pageSize, saveStatus]);
+  }, [loadList]);
 
   useEffect(() => {
     let active = true;
@@ -117,10 +125,8 @@ const PortfolioImportAuditPage = () => {
 
         setDetail(nextDetail);
 
-        if (imageUrl) {
-          URL.revokeObjectURL(imageUrl);
-          setImageUrl('');
-        }
+        revokeImageUrl();
+        setImageUrl('');
 
         if (nextDetail.hasImage) {
           const blob = await portfolioImportAuditService.getAuditImageBlob(selectedAuditId);
@@ -128,7 +134,9 @@ const PortfolioImportAuditPage = () => {
             return;
           }
 
-          setImageUrl(URL.createObjectURL(blob));
+          const nextImageUrl = URL.createObjectURL(blob);
+          imageUrlRef.current = nextImageUrl;
+          setImageUrl(nextImageUrl);
         }
       } catch (err) {
         if (active) {
@@ -147,13 +155,11 @@ const PortfolioImportAuditPage = () => {
     return () => {
       active = false;
     };
-  }, [selectedAuditId, detailRefreshNonce]);
+  }, [detailRefreshNonce, revokeImageUrl, selectedAuditId]);
 
   useEffect(() => () => {
-    if (imageUrl) {
-      URL.revokeObjectURL(imageUrl);
-    }
-  }, [imageUrl]);
+    revokeImageUrl();
+  }, [revokeImageUrl]);
 
   return (
     <div className="pia-container">
