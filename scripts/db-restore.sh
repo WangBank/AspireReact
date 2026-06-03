@@ -32,9 +32,67 @@ get_first_existing_path() {
   return 1
 }
 
+get_compose_postgres_container_id() {
+  local env_file="$1"
+  local compose_file="$2"
+
+  if [[ ! -f "$env_file" || ! -f "$compose_file" ]]; then
+    return 1
+  fi
+
+  docker compose --env-file "$env_file" -f "$compose_file" ps -q postgres 2>/dev/null | awk 'NF { print; exit }'
+}
+
+get_running_containers() {
+  docker ps --format '{{.ID}}'"$'\t'"'{{.Image}}'"$'\t'"'{{.Names}}'"$'\t'"'{{.Ports}}' "$@" 2>/dev/null || true
+}
+
+select_preferred_postgres_container() {
+  local candidates="$1"
+
+  if [[ -z "$candidates" ]]; then
+    return 1
+  fi
+
+  local filtered="$candidates"
+  local port_matches
+  port_matches="$(printf '%s\n' "$filtered" | awk -F '\t' 'index($4, "5432->5432") > 0')"
+  if [[ -n "$port_matches" ]]; then
+    filtered="$port_matches"
+  fi
+
+  local exact_name_match
+  exact_name_match="$(printf '%s\n' "$filtered" | awk -F '\t' '$3 == "postgres-1" { print; exit }')"
+  if [[ -n "$exact_name_match" ]]; then
+    printf '%s\n' "$exact_name_match" | cut -f1
+    return 0
+  fi
+
+  local canonical_name_match
+  canonical_name_match="$(printf '%s\n' "$filtered" | awk -F '\t' '$3 ~ /(^|[-_])postgres(-1)?$/ { print; exit }')"
+  if [[ -n "$canonical_name_match" ]]; then
+    printf '%s\n' "$canonical_name_match" | cut -f1
+    return 0
+  fi
+
+  local match_count
+  match_count="$(printf '%s\n' "$filtered" | awk 'NF' | wc -l | tr -d ' ')"
+  if [[ "$match_count" == "1" ]]; then
+    printf '%s\n' "$filtered" | awk -F '\t' 'NF { print $1; exit }'
+    return 0
+  fi
+
+  {
+    echo "Multiple running postgres containers were found. Stop the old stack, or restore into one container explicitly:"
+    printf '%s\n' "$filtered" | awk -F '\t' 'NF { printf " - %s [%s] image=%s ports=%s\n", $3, $1, $2, $4 }'
+  } >&2
+
+  return 1
+}
+
 get_postgres_container_id() {
   local container_id=""
-  container_id="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" ps -q postgres || true)"
+  container_id="$(get_compose_postgres_container_id "$ENV_FILE" "$COMPOSE_FILE" || true)"
   if [[ -n "$container_id" ]]; then
     echo "$container_id"
     return 0
@@ -46,11 +104,23 @@ get_postgres_container_id() {
   local apphost_env_file="$apphost_output_dir/.env.Production"
 
   if [[ -n "$apphost_compose_file" ]]; then
-    container_id="$(docker compose --env-file "$apphost_env_file" -f "$apphost_compose_file" ps -q postgres || true)"
+    container_id="$(get_compose_postgres_container_id "$apphost_env_file" "$apphost_compose_file" || true)"
     if [[ -n "$container_id" ]]; then
       echo "$container_id"
       return 0
     fi
+  fi
+
+  local container_candidates=""
+  container_candidates="$(get_running_containers --filter label=com.docker.compose.service=postgres)"
+  if [[ -z "$container_candidates" ]]; then
+    container_candidates="$(get_running_containers | awk -F '\t' 'tolower($2) ~ /postgres/ && tolower($3) ~ /postgres/')"
+  fi
+
+  container_id="$(select_preferred_postgres_container "$container_candidates" || true)"
+  if [[ -n "$container_id" ]]; then
+    echo "$container_id"
+    return 0
   fi
 
   return 1

@@ -68,6 +68,93 @@ function Get-FirstExistingPath {
     return $Paths | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 
+function Get-ComposePostgresContainerId {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$EnvFile,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ComposeFile
+    )
+
+    if (-not (Test-Path $EnvFile) -or -not (Test-Path $ComposeFile)) {
+        return ""
+    }
+
+    $containerIds = & docker compose --env-file $EnvFile -f $ComposeFile ps -q postgres 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return ""
+    }
+
+    return $containerIds | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
+}
+
+function Get-RunningContainers {
+    param(
+        [string[]]$Filters = @()
+    )
+
+    $format = "{{.ID}}`t{{.Image}}`t{{.Names}}`t{{.Ports}}"
+    $rows = & docker ps --format $format @Filters 2>$null
+
+    if ($LASTEXITCODE -ne 0) {
+        return @()
+    }
+
+    return @(
+        $rows |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object {
+                $parts = $_ -split "`t", 4
+                [PSCustomObject]@{
+                    Id = $parts[0]
+                    Image = if ($parts.Count -ge 2) { $parts[1] } else { "" }
+                    Name = if ($parts.Count -ge 3) { $parts[2] } else { "" }
+                    Ports = if ($parts.Count -ge 4) { $parts[3] } else { "" }
+                }
+            }
+    )
+}
+
+function Select-PreferredPostgresContainer {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Candidates
+    )
+
+    if ($Candidates.Count -eq 0) {
+        return $null
+    }
+
+    $portMatches = @($Candidates | Where-Object { $_.Ports -match "5432->5432" })
+    if ($portMatches.Count -eq 1) {
+        return $portMatches[0]
+    }
+    if ($portMatches.Count -gt 1) {
+        $Candidates = $portMatches
+    }
+
+    $exactNameMatches = @($Candidates | Where-Object { $_.Name -eq "postgres-1" })
+    if ($exactNameMatches.Count -eq 1) {
+        return $exactNameMatches[0]
+    }
+
+    $canonicalNameMatches = @($Candidates | Where-Object { $_.Name -match "(^|[-_])postgres(-1)?$" })
+    if ($canonicalNameMatches.Count -eq 1) {
+        return $canonicalNameMatches[0]
+    }
+
+    if ($Candidates.Count -eq 1) {
+        return $Candidates[0]
+    }
+
+    $candidateList = $Candidates | ForEach-Object {
+        " - $($_.Name) [$($_.Id)] image=$($_.Image) ports=$($_.Ports)"
+    }
+
+    throw "Multiple running postgres containers were found. Stop the old stack, or restore into one container explicitly:`n$($candidateList -join "`n")"
+}
+
 function Get-PostgresContainerId {
     param(
         [Parameter(Mandatory = $true)]
@@ -80,7 +167,7 @@ function Get-PostgresContainerId {
         [string]$ComposeFile
     )
 
-    $containerId = docker compose --env-file $EnvFile -f $ComposeFile ps -q postgres
+    $containerId = Get-ComposePostgresContainerId -EnvFile $EnvFile -ComposeFile $ComposeFile
     if (-not [string]::IsNullOrWhiteSpace($containerId)) {
         return $containerId
     }
@@ -93,10 +180,26 @@ function Get-PostgresContainerId {
     $AppHostEnvFile = Join-Path $AppHostOutputDir ".env.Production"
 
     if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
-        $containerId = docker compose --env-file $AppHostEnvFile -f $AppHostComposeFile ps -q postgres
+        $containerId = Get-ComposePostgresContainerId -EnvFile $AppHostEnvFile -ComposeFile $AppHostComposeFile
         if (-not [string]::IsNullOrWhiteSpace($containerId)) {
             return $containerId
         }
+    }
+
+    $containerCandidates = Get-RunningContainers -Filters @("--filter", "label=com.docker.compose.service=postgres")
+    if ($containerCandidates.Count -eq 0) {
+        $containerCandidates = @(
+            Get-RunningContainers |
+                Where-Object {
+                    $_.Image -match "postgres" -and
+                    $_.Name -match "postgres"
+                }
+        )
+    }
+
+    $selectedContainer = Select-PreferredPostgresContainer -Candidates $containerCandidates
+    if ($null -ne $selectedContainer) {
+        return $selectedContainer.Id
     }
 
     return ""
