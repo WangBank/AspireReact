@@ -130,6 +130,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         .WaitFor(redis)
         .WithEnvironment("ASPNETCORE_URLS", "http://+:8080")
         .WithEnvironment("DOTNET_ENVIRONMENT", "Production")
+        .WithEnvironment("RapidOcr__FontPath", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
         .WithEnvironment("RapidOcr__AutoDownloadModels", rapidOcrAutoDownloadModels)
         .WithEndpoint(targetPort: 8080, port: appPort, scheme: "http", name: "http", isExternal: true)
         .WithHttpHealthCheck("/health")

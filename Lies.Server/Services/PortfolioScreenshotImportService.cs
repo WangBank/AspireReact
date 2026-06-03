@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -66,6 +67,15 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         "收盘价"
     ];
 
+    private static readonly string[] MobileHoldingsHeaderHints =
+    [
+        "市值",
+        "盈亏",
+        "持仓/可用",
+        "成本/现价",
+        "当日盈亏"
+    ];
+
     private static readonly string[] AccountHistoryHeaderHints =
     [
         "日期",
@@ -100,6 +110,9 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         ["买入均价"] = ["买入均价", "买均价"],
         ["卖出均价"] = ["卖出均价", "卖均价"],
         ["收盘价"] = ["收盘价", "收盘"],
+        ["盈亏"] = ["盈亏"],
+        ["持仓/可用"] = ["持仓/可用", "持仓可用"],
+        ["成本/现价"] = ["成本/现价", "成本现价"],
         ["日期"] = ["日期"],
         ["费用合计"] = ["费用合计", "费用"],
         ["市值"] = ["市值"],
@@ -165,6 +178,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         try
         {
             await SaveToTempFileAsync(request.Image, tempFilePath, cancellationToken);
+            var imageMetadata = TryReadImageMetadata(tempFilePath);
             audit.StoredImagePath = await SaveAuditImageCopyAsync(
                 tempFilePath,
                 request.Image.FileName,
@@ -214,13 +228,28 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             else
             {
                 var isDailyFlowScreenshot = IsDailyFlowScreenshot(tokens);
+                var isMobileHoldingsScreenshot = IsMobileHoldingsScreenshot(tokens, imageMetadata);
                 account = isDailyFlowScreenshot
                     ? null
                     : ParseAccount(tokens, warnings, warnIfMissing: true);
                 bankFlow = null;
-                positions = isDailyFlowScreenshot
-                    ? await ParseDailyFlowPositionsAsync(tokens, importDate, warnings, cancellationToken)
-                    : await ParsePositionsAsync(tokens, warnings, cancellationToken);
+                if (isDailyFlowScreenshot)
+                {
+                    positions = await ParseDailyFlowPositionsAsync(tokens, importDate, warnings, cancellationToken);
+                }
+                else if (isMobileHoldingsScreenshot)
+                {
+                    positions = await ParseMobileHoldingsPositionsAsync(tokens, warnings, cancellationToken, warnIfEmpty: false);
+                    if (positions.Count == 0)
+                    {
+                        positions = await ParsePositionsAsync(tokens, warnings, cancellationToken);
+                    }
+                }
+                else
+                {
+                    positions = await ParsePositionsAsync(tokens, warnings, cancellationToken);
+                }
+
                 recognizedDate = null;
             }
 
@@ -269,6 +298,26 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
                 Success = false,
                 StatusCode = StatusCodes.Status503ServiceUnavailable,
                 Message = "RapidOCR 本地依赖加载失败，请确认 ONNX Runtime 与 OpenCvSharp 原生运行时已正确安装"
+            };
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("RapidOCR 缺少可用字体文件", StringComparison.Ordinal))
+        {
+            _logger.LogError(ex, "RapidOCR 字体初始化失败");
+            await TryPersistParseAuditAsync(
+                audit,
+                recognizedText: null,
+                payload: null,
+                recognizedDate: null,
+                parseSuccess: false,
+                parseMessage: ex.Message,
+                positionCount: 0,
+                warningCount: 0,
+                cancellationToken);
+            return new PortfolioScreenshotImportResult
+            {
+                Success = false,
+                StatusCode = StatusCodes.Status503ServiceUnavailable,
+                Message = ex.Message
             };
         }
         catch (Exception ex)
@@ -764,9 +813,18 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
     private RapidOCRSharp CreateOcrEngine((string DetectorPath, string RecognizerPath, string ClassifierPath) modelPaths)
     {
         var fontPath = ResolveFontPath();
-        var config = !string.IsNullOrWhiteSpace(fontPath)
-            ? new OcrConfig(modelPaths.DetectorPath, modelPaths.RecognizerPath, fontPath, OCRVersion.PPOCRV5, modelPaths.ClassifierPath)
-            : new OcrConfig(modelPaths.DetectorPath, modelPaths.RecognizerPath, LangRec.CH, OCRVersion.PPOCRV5, modelPaths.ClassifierPath);
+        if (string.IsNullOrWhiteSpace(fontPath))
+        {
+            throw new InvalidOperationException(
+                "RapidOCR 缺少可用字体文件。请在运行环境中安装中文字体，或通过 RapidOcr:FontPath 指定一个可读的 .ttf/.ttc 字体文件。Docker 镜像建议安装 fonts-noto-cjk。");
+        }
+
+        var config = new OcrConfig(
+            modelPaths.DetectorPath,
+            modelPaths.RecognizerPath,
+            fontPath,
+            OCRVersion.PPOCRV5,
+            modelPaths.ClassifierPath);
 
         return new RapidOCRSharp(new ExecutionProviderCPU(config));
     }
@@ -795,15 +853,25 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         }
     }
 
-    private static string? ResolveFontPath()
+    private string? ResolveFontPath()
     {
+        var configuredFontPath = ResolveConfiguredPath(_options.FontPath);
+        if (!string.IsNullOrWhiteSpace(configuredFontPath) && File.Exists(configuredFontPath))
+        {
+            return configuredFontPath;
+        }
+
         var candidates = new[]
         {
             "/System/Library/Fonts/Hiragino Sans GB.ttc",
             "/System/Library/Fonts/STHeiti Medium.ttc",
             @"C:\Windows\Fonts\msyh.ttc",
+            @"C:\Windows\Fonts\msyh.ttf",
+            @"C:\Windows\Fonts\simhei.ttf",
+            @"C:\Windows\Fonts\simsun.ttc",
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc"
         };
 
         return candidates.FirstOrDefault(File.Exists);
@@ -867,10 +935,231 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         };
     }
 
+    private static ImageSnapshotMetadata? TryReadImageMetadata(string filePath)
+    {
+        try
+        {
+            using var stream = File.OpenRead(filePath);
+            Span<byte> header = stackalloc byte[64];
+            var bytesRead = stream.Read(header);
+            if (bytesRead <= 0)
+            {
+                return null;
+            }
+
+            var headerSpan = header[..bytesRead];
+            if (TryReadPngMetadata(headerSpan, out var pngMetadata))
+            {
+                return pngMetadata;
+            }
+
+            if (TryReadWebpMetadata(headerSpan, out var webpMetadata))
+            {
+                return webpMetadata;
+            }
+
+            stream.Position = 0;
+            return TryReadJpegMetadata(stream, out var jpegMetadata)
+                ? jpegMetadata
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool TryReadPngMetadata(ReadOnlySpan<byte> header, out ImageSnapshotMetadata metadata)
+    {
+        metadata = default!;
+        ReadOnlySpan<byte> pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
+        if (header.Length < 24 || !header[..8].SequenceEqual(pngSignature))
+        {
+            return false;
+        }
+
+        var width = (int)BinaryPrimitives.ReadUInt32BigEndian(header.Slice(16, 4));
+        var height = (int)BinaryPrimitives.ReadUInt32BigEndian(header.Slice(20, 4));
+        return TryCreateImageSnapshotMetadata(width, height, out metadata);
+    }
+
+    private static bool TryReadWebpMetadata(ReadOnlySpan<byte> header, out ImageSnapshotMetadata metadata)
+    {
+        metadata = default!;
+        ReadOnlySpan<byte> riffHeader = "RIFF"u8;
+        ReadOnlySpan<byte> webpHeader = "WEBP"u8;
+        if (header.Length < 30
+            || !header[..4].SequenceEqual(riffHeader)
+            || !header.Slice(8, 4).SequenceEqual(webpHeader))
+        {
+            return false;
+        }
+
+        var chunkType = header.Slice(12, 4);
+        int width;
+        int height;
+
+        if (chunkType.SequenceEqual("VP8X"u8))
+        {
+            width = 1 + header[24] + (header[25] << 8) + (header[26] << 16);
+            height = 1 + header[27] + (header[28] << 8) + (header[29] << 16);
+            return TryCreateImageSnapshotMetadata(width, height, out metadata);
+        }
+
+        if (chunkType.SequenceEqual("VP8L"u8) && header.Length >= 25 && header[20] == 0x2F)
+        {
+            width = 1 + (((header[22] & 0x3F) << 8) | header[21]);
+            height = 1 + (((header[24] & 0x0F) << 10) | (header[23] << 2) | ((header[22] & 0xC0) >> 6));
+            return TryCreateImageSnapshotMetadata(width, height, out metadata);
+        }
+
+        if (chunkType.SequenceEqual("VP8 "u8)
+            && header.Length >= 30
+            && header[23] == 0x9D
+            && header[24] == 0x01
+            && header[25] == 0x2A)
+        {
+            width = BinaryPrimitives.ReadUInt16LittleEndian(header.Slice(26, 2)) & 0x3FFF;
+            height = BinaryPrimitives.ReadUInt16LittleEndian(header.Slice(28, 2)) & 0x3FFF;
+            return TryCreateImageSnapshotMetadata(width, height, out metadata);
+        }
+
+        return false;
+    }
+
+    private static bool TryReadJpegMetadata(Stream stream, out ImageSnapshotMetadata metadata)
+    {
+        metadata = default!;
+        Span<byte> markerBuffer = stackalloc byte[2];
+        if (stream.Read(markerBuffer) != 2 || markerBuffer[0] != 0xFF || markerBuffer[1] != 0xD8)
+        {
+            return false;
+        }
+
+        while (TryReadNextJpegMarker(stream, out var marker))
+        {
+            if (marker == 0xD9 || marker == 0xDA)
+            {
+                break;
+            }
+
+            if (marker is >= 0xD0 and <= 0xD7 or 0x01)
+            {
+                continue;
+            }
+
+            if (!TryReadBigEndianUInt16(stream, out var segmentLength) || segmentLength < 2)
+            {
+                return false;
+            }
+
+            if (IsJpegStartOfFrameMarker(marker))
+            {
+                Span<byte> sofHeader = stackalloc byte[5];
+                if (stream.Read(sofHeader) != sofHeader.Length)
+                {
+                    return false;
+                }
+
+                var height = BinaryPrimitives.ReadUInt16BigEndian(sofHeader.Slice(1, 2));
+                var width = BinaryPrimitives.ReadUInt16BigEndian(sofHeader.Slice(3, 2));
+                return TryCreateImageSnapshotMetadata(width, height, out metadata);
+            }
+
+            stream.Seek(segmentLength - 2, SeekOrigin.Current);
+        }
+
+        return false;
+    }
+
+    private static bool TryReadNextJpegMarker(Stream stream, out byte marker)
+    {
+        marker = 0;
+        int currentByte;
+
+        do
+        {
+            currentByte = stream.ReadByte();
+        } while (currentByte != -1 && currentByte != 0xFF);
+
+        if (currentByte == -1)
+        {
+            return false;
+        }
+
+        do
+        {
+            currentByte = stream.ReadByte();
+        } while (currentByte == 0xFF);
+
+        if (currentByte <= 0)
+        {
+            return false;
+        }
+
+        marker = (byte)currentByte;
+        return true;
+    }
+
+    private static bool TryReadBigEndianUInt16(Stream stream, out ushort value)
+    {
+        value = 0;
+        Span<byte> buffer = stackalloc byte[2];
+        if (stream.Read(buffer) != buffer.Length)
+        {
+            return false;
+        }
+
+        value = BinaryPrimitives.ReadUInt16BigEndian(buffer);
+        return true;
+    }
+
+    private static bool IsJpegStartOfFrameMarker(byte marker)
+    {
+        return marker is 0xC0 or 0xC1 or 0xC2 or 0xC3 or 0xC5 or 0xC6 or 0xC7 or 0xC9 or 0xCA or 0xCB or 0xCD or 0xCE or 0xCF;
+    }
+
+    private static bool TryCreateImageSnapshotMetadata(int width, int height, out ImageSnapshotMetadata metadata)
+    {
+        metadata = default!;
+        if (width <= 0 || height <= 0)
+        {
+            return false;
+        }
+
+        metadata = new ImageSnapshotMetadata
+        {
+            Width = width,
+            Height = height
+        };
+        return true;
+    }
+
     private static bool IsDailyFlowScreenshot(List<OcrToken> tokens)
     {
         var joined = NormalizeFlowHeaderText(string.Concat(tokens.Select(token => token.Text)));
         return DailyFlowHeaderHints.Count(header => joined.Contains(NormalizeFlowHeaderText(header), StringComparison.OrdinalIgnoreCase)) >= 4;
+    }
+
+    private static bool IsMobileHoldingsScreenshot(List<OcrToken> tokens, ImageSnapshotMetadata? metadata)
+    {
+        if (tokens.Count == 0 || metadata == null)
+        {
+            return false;
+        }
+
+        if (metadata.AspectRatio <= 0
+            || metadata.AspectRatio > 0.62f
+            || metadata.Height < metadata.Width * 1.55f)
+        {
+            return false;
+        }
+
+        var joined = NormalizeFlowHeaderText(string.Concat(tokens.Select(token => token.Text)));
+        var hitCount = MobileHoldingsHeaderHints.Count(header =>
+            joined.Contains(NormalizeFlowHeaderText(header), StringComparison.OrdinalIgnoreCase));
+
+        return hitCount >= 4;
     }
 
     private static decimal? FindValueBelow(List<OcrToken> tokens, string[] labels)
@@ -1314,6 +1603,90 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         return positions;
     }
 
+    private async Task<List<PortfolioPositionImportResponse>> ParseMobileHoldingsPositionsAsync(
+        List<OcrToken> tokens,
+        List<string> warnings,
+        CancellationToken cancellationToken,
+        bool warnIfEmpty)
+    {
+        var lines = GroupLines(tokens, 26f);
+        var headerIndex = lines.FindIndex(IsMobileHoldingsHeaderLine);
+        if (headerIndex < 0)
+        {
+            if (warnIfEmpty)
+            {
+                warnings.Add("未识别到手机持仓列表表头，请确认截图中包含“市值 / 盈亏 / 持仓可用 / 成本现价 / 当日盈亏”等列。");
+            }
+
+            return [];
+        }
+
+        if (!TryBuildMobileHoldingsColumnLayout(lines[headerIndex], out var layout))
+        {
+            if (warnIfEmpty)
+            {
+                warnings.Add("手机持仓列表列位置识别失败，请尽量上传完整整屏截图。");
+            }
+
+            return [];
+        }
+
+        var positions = new List<PortfolioPositionImportResponse>();
+        for (var i = headerIndex + 1; i < lines.Count; i++)
+        {
+            var topLine = lines[i];
+            if (IsHeaderOrSeparatorLine(topLine) || !TryGetMobileHoldingIdentity(topLine, layout, out var stockName))
+            {
+                continue;
+            }
+
+            var nextLineIndex = FindNextMobileHoldingDetailLineIndex(lines, i + 1);
+            if (nextLineIndex < 0)
+            {
+                warnings.Add($"持仓 {stockName} 缺少下一行详情，已跳过。");
+                continue;
+            }
+
+            var topTexts = BuildMobileHoldingTopRowTexts(topLine, layout);
+            var bottomTexts = BuildMobileHoldingBottomRowTexts(lines[nextLineIndex], layout);
+            var candidate = new PositionCandidate
+            {
+                StockName = stockName,
+                PositionPnL = ExtractLastNonPercentNumber(topTexts.PositionPnLText),
+                PositionQuantity = ParseIntOrZero(topTexts.PositionQuantityText),
+                CostPrice = ExtractLastNonPercentNumber(topTexts.CostPriceText),
+                DailyPnL = ExtractLastNonPercentNumber(topTexts.DailyPnLText),
+                MarketValue = ExtractLastNonPercentNumber(bottomTexts.MarketValueText),
+                CurrentPrice = ExtractLastNonPercentNumber(bottomTexts.CurrentPriceText)
+            };
+
+            if (candidate.PositionQuantity == 0
+                && candidate.CostPrice == 0
+                && candidate.CurrentPrice == 0
+                && candidate.PositionPnL == 0
+                && candidate.DailyPnL == 0
+                && candidate.MarketValue == 0)
+            {
+                continue;
+            }
+
+            var normalized = await NormalizePositionAsync(candidate, warnings, cancellationToken);
+            if (normalized != null)
+            {
+                positions.Add(normalized);
+            }
+
+            i = nextLineIndex;
+        }
+
+        if (positions.Count == 0 && warnIfEmpty)
+        {
+            warnings.Add("未识别到有效的手机持仓明细，请尽量保留完整股票列表与列标题。");
+        }
+
+        return positions;
+    }
+
     private static bool TryGetIdentity(
         List<OcrToken> line,
         out string stockCode,
@@ -1680,6 +2053,12 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         return AccountHistoryHeaderHints.Count(header => joined.Contains(NormalizeFlowHeaderText(header), StringComparison.OrdinalIgnoreCase)) >= 3;
     }
 
+    private static bool IsMobileHoldingsHeaderLine(List<OcrToken> line)
+    {
+        var joined = NormalizeFlowHeaderText(string.Concat(line.Select(token => token.Text)));
+        return MobileHoldingsHeaderHints.Count(header => joined.Contains(NormalizeFlowHeaderText(header), StringComparison.OrdinalIgnoreCase)) >= 4;
+    }
+
     private static bool TryBuildFlowColumnLayout(List<OcrToken> headerLine, out FlowColumnLayout layout)
     {
         layout = new FlowColumnLayout();
@@ -1752,6 +2131,35 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         layout.DateRightBoundary = feeCenter != null
             ? GetMidPoint(dateCenter.Value, feeCenter.Value)
             : GetMidPoint(dateCenter.Value, positionValueCenter.Value);
+
+        return true;
+    }
+
+    private static bool TryBuildMobileHoldingsColumnLayout(List<OcrToken> headerLine, out MobileHoldingsColumnLayout layout)
+    {
+        layout = new MobileHoldingsColumnLayout();
+
+        var marketValueCenter = FindHeaderCenter(headerLine, "市值");
+        var positionPnLCenter = FindHeaderCenter(headerLine, "盈亏");
+        var positionQuantityCenter = FindHeaderCenter(headerLine, "持仓/可用");
+        var costPriceCenter = FindHeaderCenter(headerLine, "成本/现价");
+        var dailyPnLCenter = FindHeaderCenter(headerLine, "当日盈亏");
+
+        if (marketValueCenter == null
+            || positionPnLCenter == null
+            || positionQuantityCenter == null
+            || costPriceCenter == null
+            || dailyPnLCenter == null)
+        {
+            return false;
+        }
+
+        layout.TopNameRightBoundary = GetMidPoint(marketValueCenter.Value, positionPnLCenter.Value);
+        layout.MarketValueCenter = marketValueCenter.Value;
+        layout.PositionPnLCenter = positionPnLCenter.Value;
+        layout.PositionQuantityCenter = positionQuantityCenter.Value;
+        layout.CostPriceCenter = costPriceCenter.Value;
+        layout.DailyPnLCenter = dailyPnLCenter.Value;
 
         return true;
     }
@@ -2525,6 +2933,132 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             .Select(token => token.Text));
     }
 
+    private static bool TryGetMobileHoldingIdentity(
+        List<OcrToken> line,
+        MobileHoldingsColumnLayout layout,
+        out string stockName)
+    {
+        var nameTokens = line
+            .Where(token => token.CenterX < layout.TopNameRightBoundary && LooksLikeStockName(token.Text))
+            .OrderBy(token => token.XMin)
+            .ToList();
+
+        stockName = string.Concat(nameTokens.Select(token => token.Text)).Trim();
+        return !string.IsNullOrWhiteSpace(stockName)
+            && !stockName.Contains("隐藏", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int FindNextMobileHoldingDetailLineIndex(List<List<OcrToken>> lines, int startIndex)
+    {
+        for (var i = startIndex; i < lines.Count; i++)
+        {
+            if (lines[i].Count == 0 || IsMobileHoldingsHeaderLine(lines[i]))
+            {
+                continue;
+            }
+
+            if (IsHeaderOrSeparatorLine(lines[i]))
+            {
+                return -1;
+            }
+
+            if (lines[i].Any(token => IsNumericLike(token.Text)))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static MobileHoldingTopRowText BuildMobileHoldingTopRowTexts(
+        List<OcrToken> line,
+        MobileHoldingsColumnLayout layout)
+    {
+        var texts = new MobileHoldingTopRowText();
+        var buckets = new Dictionary<string, List<OcrToken>>
+        {
+            ["positionPnL"] = [],
+            ["positionQuantity"] = [],
+            ["costPrice"] = [],
+            ["dailyPnL"] = []
+        };
+
+        foreach (var token in line
+                     .Where(token => token.CenterX >= layout.TopNameRightBoundary && IsNumericLike(token.Text))
+                     .OrderBy(token => token.XMin))
+        {
+            var key = GetNearestMobileHoldingTopColumnKey(token.CenterX, layout);
+            buckets[key].Add(token);
+        }
+
+        texts.PositionPnLText = string.Concat(buckets["positionPnL"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.PositionQuantityText = string.Concat(buckets["positionQuantity"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.CostPriceText = string.Concat(buckets["costPrice"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.DailyPnLText = string.Concat(buckets["dailyPnL"].OrderBy(token => token.XMin).Select(token => token.Text));
+        return texts;
+    }
+
+    private static MobileHoldingBottomRowText BuildMobileHoldingBottomRowTexts(
+        List<OcrToken> line,
+        MobileHoldingsColumnLayout layout)
+    {
+        var texts = new MobileHoldingBottomRowText();
+        var buckets = new Dictionary<string, List<OcrToken>>
+        {
+            ["marketValue"] = [],
+            ["positionPnL"] = [],
+            ["positionQuantity"] = [],
+            ["costPrice"] = [],
+            ["dailyPnL"] = []
+        };
+
+        foreach (var token in line
+                     .Where(token => IsNumericLike(token.Text))
+                     .OrderBy(token => token.XMin))
+        {
+            var key = GetNearestMobileHoldingBottomColumnKey(token.CenterX, layout);
+            buckets[key].Add(token);
+        }
+
+        texts.MarketValueText = string.Concat(buckets["marketValue"].OrderBy(token => token.XMin).Select(token => token.Text));
+        texts.CurrentPriceText = string.Concat(buckets["costPrice"].OrderBy(token => token.XMin).Select(token => token.Text));
+        return texts;
+    }
+
+    private static string GetNearestMobileHoldingTopColumnKey(float centerX, MobileHoldingsColumnLayout layout)
+    {
+        var centers = new Dictionary<string, float>
+        {
+            ["positionPnL"] = layout.PositionPnLCenter,
+            ["positionQuantity"] = layout.PositionQuantityCenter,
+            ["costPrice"] = layout.CostPriceCenter,
+            ["dailyPnL"] = layout.DailyPnLCenter
+        };
+
+        return centers
+            .OrderBy(pair => Math.Abs(pair.Value - centerX))
+            .First()
+            .Key;
+    }
+
+    private static string GetNearestMobileHoldingBottomColumnKey(float centerX, MobileHoldingsColumnLayout layout)
+    {
+        var centers = new Dictionary<string, float>
+        {
+            ["marketValue"] = layout.MarketValueCenter,
+            ["positionPnL"] = layout.PositionPnLCenter,
+            ["positionQuantity"] = layout.PositionQuantityCenter,
+            ["costPrice"] = layout.CostPriceCenter,
+            ["dailyPnL"] = layout.DailyPnLCenter
+        };
+
+        return centers
+            .OrderBy(pair => Math.Abs(pair.Value - centerX))
+            .First()
+            .Key;
+    }
+
     private static float GetMidPoint(float left, float right)
     {
         return (left + right) / 2f;
@@ -2532,9 +3066,29 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
 
     private static decimal ExtractFirstNonPercentNumber(string text)
     {
-        var matches = Regex.Matches(text, @"[-+]?\d[\d,]*(?:\.\d+)?%?");
+        var matches = Regex.Matches(NormalizeNumericText(text), @"[-+]?\d[\d,]*(?:\.\d+)?%?");
         foreach (Match match in matches)
         {
+            if (match.Value.EndsWith('%'))
+            {
+                continue;
+            }
+
+            if (TryParseNumber(match.Value, out var value))
+            {
+                return value;
+            }
+        }
+
+        return 0;
+    }
+
+    private static decimal ExtractLastNonPercentNumber(string text)
+    {
+        var matches = Regex.Matches(NormalizeNumericText(text), @"[-+]?\d[\d,]*(?:\.\d+)?%?");
+        for (var index = matches.Count - 1; index >= 0; index--)
+        {
+            var match = matches[index];
             if (match.Value.EndsWith('%'))
             {
                 continue;
@@ -2593,13 +3147,13 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
 
     private static bool IsNumericLike(string text)
     {
-        return NumberRegex.IsMatch(text);
+        return NumberRegex.IsMatch(NormalizeNumericText(text));
     }
 
     private static bool TryParseNumber(string text, out decimal value)
     {
         value = 0;
-        var match = NumberRegex.Match(text);
+        var match = NumberRegex.Match(NormalizeNumericText(text));
         if (!match.Success)
         {
             return false;
@@ -2622,6 +3176,25 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         }
 
         return (int)Math.Round(value, MidpointRounding.AwayFromZero);
+    }
+
+    private static string NormalizeNumericText(string? text)
+    {
+        return (text ?? string.Empty)
+            .Trim()
+            .ToUpperInvariant()
+            .Replace('O', '0')
+            .Replace('Q', '0')
+            .Replace('D', '0')
+            .Replace('I', '1')
+            .Replace('L', '1')
+            .Replace('|', '1')
+            .Replace('S', '5')
+            .Replace('B', '8')
+            .Replace('—', '-')
+            .Replace('–', '-')
+            .Replace('−', '-')
+            .Replace('﹣', '-');
     }
 
     private static bool IsChinese(char value)
@@ -2727,6 +3300,16 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         public float SellPriceRightBoundary { get; set; }
     }
 
+    private sealed class MobileHoldingsColumnLayout
+    {
+        public float TopNameRightBoundary { get; set; }
+        public float MarketValueCenter { get; set; }
+        public float PositionPnLCenter { get; set; }
+        public float PositionQuantityCenter { get; set; }
+        public float CostPriceCenter { get; set; }
+        public float DailyPnLCenter { get; set; }
+    }
+
     private sealed class FlowRowText
     {
         public string DailyPnLText { get; set; } = string.Empty;
@@ -2739,12 +3322,33 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         public string ClosePriceText { get; set; } = string.Empty;
     }
 
+    private sealed class MobileHoldingTopRowText
+    {
+        public string PositionPnLText { get; set; } = string.Empty;
+        public string PositionQuantityText { get; set; } = string.Empty;
+        public string CostPriceText { get; set; } = string.Empty;
+        public string DailyPnLText { get; set; } = string.Empty;
+    }
+
+    private sealed class MobileHoldingBottomRowText
+    {
+        public string MarketValueText { get; set; } = string.Empty;
+        public string CurrentPriceText { get; set; } = string.Empty;
+    }
+
     private sealed class DetailDateCandidate
     {
         public string RawText { get; set; } = string.Empty;
         public DateTime? Date { get; set; }
         public int Score { get; set; }
         public float Top { get; set; }
+    }
+
+    private sealed class ImageSnapshotMetadata
+    {
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public float AspectRatio => Height <= 0 ? 0 : (float)Width / Height;
     }
 
     private readonly record struct HeaderMatchCandidate

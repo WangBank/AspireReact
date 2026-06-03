@@ -24,14 +24,23 @@ const NAV_ITEMS: NavLinkItem[] = [
 ];
 
 const QUICK_ENTRY_PATH = '/entry/unified';
+const isStandaloneDisplayMode = () =>
+  window.matchMedia('(display-mode: standalone)').matches
+  || ((window.navigator as Navigator & { standalone?: boolean }).standalone ?? false);
+const isIosDevice = () => /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 
 const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const { authStore } = useStore();
   const location = useLocation();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installHint, setInstallHint] = useState('');
+  const [isStandaloneApp, setIsStandaloneApp] = useState(() => isStandaloneDisplayMode());
+  const [isIosInstallTarget] = useState(() => isIosDevice());
   const isEntryRoute = location.pathname.startsWith('/entry');
   const showFloatingEntry = !isEntryRoute;
+  const showInstallAction = !isStandaloneApp;
 
   const handleLogout = useCallback(() => {
     authStore.logout();
@@ -58,6 +67,63 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
     setUserMenuOpen(false);
     setMobileMenuOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      const promptEvent = event as BeforeInstallPromptEvent;
+      promptEvent.preventDefault();
+      setInstallPromptEvent(promptEvent);
+      setInstallHint('');
+    };
+
+    const handleAppInstalled = () => {
+      setInstallPromptEvent(null);
+      setInstallHint('应用已经安装到桌面，可以像原生应用一样直接打开。');
+      setIsStandaloneApp(true);
+    };
+
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    const handleDisplayModeChange = () => {
+      setIsStandaloneApp(isStandaloneDisplayMode());
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+    mediaQuery.addEventListener('change', handleDisplayModeChange);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+      mediaQuery.removeEventListener('change', handleDisplayModeChange);
+    };
+  }, []);
+
+  const handleInstallApp = useCallback(async () => {
+    if (isStandaloneApp) {
+      setInstallHint('应用已经安装好了。');
+      return;
+    }
+
+    if (installPromptEvent) {
+      await installPromptEvent.prompt();
+      const choice = await installPromptEvent.userChoice;
+      if (choice.outcome === 'accepted') {
+        setInstallHint('安装请求已提交，系统完成后就能从桌面直接打开。');
+      } else {
+        setInstallHint('这次先取消了，后面也可以随时再安装。');
+      }
+
+      setInstallPromptEvent(null);
+      return;
+    }
+
+    if (isIosInstallTarget) {
+      setInstallHint('iPhone 或 iPad 请点浏览器分享按钮，再选择“添加到主屏幕”。');
+      return;
+    }
+
+    setInstallHint('当前环境还没触发安装提示，请尽量用 HTTPS 域名或构建后的站点访问。');
+  }, [installPromptEvent, isIosInstallTarget, isStandaloneApp]);
 
   const avatarLetter = (authStore.username ?? '?').charAt(0).toUpperCase();
 
@@ -99,6 +165,23 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
               <span className="navbar-entry-cta__meta">OCR / 手动一体</span>
             </span>
           </NavLink>
+
+          {showInstallAction && (
+            <button
+              type="button"
+              className="navbar-install-cta"
+              onClick={handleInstallApp}
+              title="安装心魔录到桌面"
+            >
+              <span className="navbar-install-cta__icon" aria-hidden="true">
+                ↓
+              </span>
+              <span className="navbar-install-cta__body">
+                <span className="navbar-install-cta__title">安装应用</span>
+                <span className="navbar-install-cta__meta">桌面直达 / 离线可开</span>
+              </span>
+            </button>
+          )}
 
           <div className="navbar-user">
             <button
@@ -191,6 +274,22 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
             </span>
           </NavLink>
 
+          {showInstallAction && (
+            <button
+              type="button"
+              className="navbar-mobile-install"
+              onClick={handleInstallApp}
+            >
+              <span className="navbar-mobile-install__icon" aria-hidden="true">
+                ↓
+              </span>
+              <span className="navbar-mobile-install__body">
+                <span className="navbar-mobile-install__title">安装应用</span>
+                <span className="navbar-mobile-install__meta">把心魔录添加到桌面</span>
+              </span>
+            </button>
+          )}
+
           {NAV_ITEMS.map((item) => (
             <NavLink
               key={item.path}
@@ -206,6 +305,7 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
         </div>
 
         <div className="navbar-mobile-drawer__footer">
+          {installHint && <div className="navbar-install-hint navbar-install-hint--mobile">{installHint}</div>}
           <button
             className="navbar-mobile-action"
             onClick={() => {
@@ -225,6 +325,8 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
           </button>
         </div>
       </aside>
+
+      {installHint && <div className="navbar-install-hint">{installHint}</div>}
 
       <main className="layout-content">
         {children}

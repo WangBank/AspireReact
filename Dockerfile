@@ -22,6 +22,10 @@ WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080
 ENV DOTNET_ENVIRONMENT=Production
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /src/frontend/dist ./wwwroot
 

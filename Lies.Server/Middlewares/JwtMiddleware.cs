@@ -1,6 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 using Lies.Server.Services;
 using Microsoft.IdentityModel.Tokens;
 
@@ -45,8 +44,7 @@ public class JwtMiddleware
     {
         try
         {
-            var secret = AuthConfig.GetJwtSecret(_configuration);
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+            var key = AuthConfig.CreateJwtSecurityKey(_configuration);
 
             var tokenHandler = new JwtSecurityTokenHandler();
             var validationResult = await tokenHandler.ValidateTokenAsync(token, new TokenValidationParameters

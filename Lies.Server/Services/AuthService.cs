@@ -1,6 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using System.Text;
 using Lies.Server.Data;
 using Lies.Server.DTOs;
 using Lies.Server.Entities;
@@ -122,12 +121,11 @@ public class AuthService : IAuthService
 
     private string GenerateJwtToken(User user)
     {
-        var secret = AuthConfig.GetJwtSecret(_configuration);
         var issuer = AuthConfig.GetJwtIssuer(_configuration);
         var audience = AuthConfig.GetJwtAudience(_configuration);
         var expiryMinutes = AuthConfig.GetJwtExpiryMinutes(_configuration);
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
+        var key = AuthConfig.CreateJwtSecurityKey(_configuration);
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new[]

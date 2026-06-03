@@ -30,6 +30,8 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
+    AuthConfig.ValidateJwtConfiguration(builder.Configuration);
+
     builder.Host.UseSerilog((context, services, configuration) =>
     {
         var logDirectory = Path.Combine(context.HostingEnvironment.ContentRootPath, "Logs");

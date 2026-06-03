@@ -63,6 +63,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://dashboard:18889
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       RapidOcr__ModelsDirectory: /app/RuntimeData/RapidOcr
+      RapidOcr__FontPath: /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
       RapidOcr__AutoDownloadModels: ${RAPIDOCR_AUTO_DOWNLOAD_MODELS:-true}
     ports:
       - "${APP_PORT:-5516}:8080"
