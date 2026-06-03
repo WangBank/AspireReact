@@ -1,7 +1,7 @@
 services:
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:latest}
-    container_name: aspire-postgres
+    container_name: Lies-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-lies}
@@ -10,7 +10,7 @@ services:
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-lies}"]
       interval: 10s
@@ -19,7 +19,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: aspire-redis
+    container_name: Lies-redis
     restart: unless-stopped
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
@@ -35,7 +35,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: aspire-app
+    container_name: Lies-app
     restart: unless-stopped
     depends_on:
       postgres:
@@ -48,8 +48,8 @@ services:
       ConnectionStrings__PostgreSQL: Host=postgres;Port=5432;Database=${POSTGRES_DB:-lies};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres123}
       Redis__ConnectionString: redis:6379
       Jwt__Secret: ${JWT_SECRET:-8Zk9pQ2sX7gR5tU4jB6vN2mD8aF1cH3kL0zP5qW7eS2dF9gH4jK6lA8}
-      Jwt__Issuer: ${JWT_ISSUER:-AspireReact.Server}
-      Jwt__Audience: ${JWT_AUDIENCE:-AspireReact.Client}
+      Jwt__Issuer: ${JWT_ISSUER:-Lies.Server}
+      Jwt__Audience: ${JWT_AUDIENCE:-Lies.Client}
       RapidOcr__ModelsDirectory: /app/RuntimeData/RapidOcr
       RapidOcr__AutoDownloadModels: ${RAPIDOCR_AUTO_DOWNLOAD_MODELS:-true}
     ports:

@@ -10,7 +10,21 @@ if (-not (Test-Path $EnvFile)) {
     Write-Host "Created $EnvFile. Update passwords and ports if needed."
 }
 
-docker compose --env-file $EnvFile -f $ComposeFile up -d --build
+try {
+    docker compose --env-file $EnvFile -f $ComposeFile up -d --build
+}
+catch {
+    Write-Host ""
+    Write-Host "docker compose up failed."
+    Write-Host "Trying to show postgres logs for diagnosis..."
+    Write-Host ""
+    docker compose --env-file $EnvFile -f $ComposeFile logs postgres
+    Write-Host ""
+    Write-Host "Common cause: an existing postgres data volume was created by another major version."
+    Write-Host "If you need the old data, set POSTGRES_IMAGE in .env.docker to the old major version first."
+    Write-Host "If you do not need the old data, run: docker compose --env-file $EnvFile -f $ComposeFile down -v"
+    throw
+}
 
 $AppPort = "5516"
 Get-Content $EnvFile | ForEach-Object {

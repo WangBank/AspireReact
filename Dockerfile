@@ -10,11 +10,11 @@ RUN npm run build
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend-build
 WORKDIR /src
 
-COPY AspireReact.Server/AspireReact.Server.csproj AspireReact.Server/
-RUN dotnet restore AspireReact.Server/AspireReact.Server.csproj
+COPY Lies.Server/Lies.Server.csproj Lies.Server/
+RUN dotnet restore Lies.Server/Lies.Server.csproj
 
-COPY AspireReact.Server/ AspireReact.Server/
-RUN dotnet publish AspireReact.Server/AspireReact.Server.csproj -c Release -o /app/publish /p:UseAppHost=false
+COPY Lies.Server/ Lies.Server/
+RUN dotnet publish Lies.Server/Lies.Server.csproj -c Release -o /app/publish /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
@@ -29,4 +29,4 @@ RUN mkdir -p /app/Logs /app/RuntimeData/RapidOcr
 
 EXPOSE 8080
 
-ENTRYPOINT ["dotnet", "AspireReact.Server.dll"]
+ENTRYPOINT ["dotnet", "Lies.Server.dll"]

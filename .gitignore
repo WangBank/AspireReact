@@ -57,9 +57,9 @@ Thumbs.db
 Logs/
 **/Logs/
 
-# Aspire 自动生成
+# Lies 自动生成
 *.dcp
 *.dcp.json
-aspire-runtime/
+Lies-runtime/
 RuntimeData/
 **/RuntimeData/

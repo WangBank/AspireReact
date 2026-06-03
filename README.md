@@ -21,7 +21,7 @@
 - 后端：.NET 10 + ASP.NET Core Web API + EF Core
 - 数据：PostgreSQL + Redis
 - OCR：RapidOCRSharpOnnx
-- 编排：Aspire AppHost
+- 编排：Lies AppHost
 - 部署：Docker / Docker Compose
 
 ## 推荐入口
@@ -56,9 +56,9 @@
 ## 项目结构
 
 ```text
-AspireReact/
-├── AspireReact.AppHost/         Aspire 编排入口
-├── AspireReact.Server/          后端 API、OCR、数据体检、审计
+Lies/
+├── Lies.AppHost/         Lies 编排入口
+├── Lies.Server/          后端 API、OCR、数据体检、审计
 ├── frontend/                    React 前端
 ├── scripts/                     Docker 启停脚本
 ├── docker-compose.yml           Docker 编排
@@ -69,9 +69,9 @@ AspireReact/
 
 几个重要的运行时目录：
 
-- `AspireReact.Server/Logs/`：Serilog 日志
-- `AspireReact.Server/RuntimeData/RapidOcr/`：OCR 模型
-- `AspireReact.Server/RuntimeData/PortfolioImportAudits/`：识别审计原图与数据
+- `Lies.Server/Logs/`：Serilog 日志
+- `Lies.Server/RuntimeData/RapidOcr/`：OCR 模型
+- `Lies.Server/RuntimeData/PortfolioImportAudits/`：识别审计原图与数据
 
 这些目录属于运行时产物，不应该提交到仓库。
 
@@ -87,7 +87,7 @@ AspireReact/
 
 后端主配置文件：
 
-- [AspireReact.Server/appsettings.json](/Users/wangzhen/codes/Aspire/AspireReact/AspireReact.Server/appsettings.json)
+- [Lies.Server/appsettings.json](/Users/wangzhen/codes/Lies/Lies/Lies.Server/appsettings.json)
 
 至少需要关注：
 
@@ -105,10 +105,10 @@ AspireReact/
 
 ## 启动方式
 
-### 1. Aspire 开发启动
+### 1. Lies 开发启动
 
 ```bash
-dotnet run --project AspireReact.AppHost
+dotnet run --project Lies.AppHost
 ```
 
 访问：
@@ -124,7 +124,7 @@ http://localhost:5516
 先启动后端：
 
 ```bash
-dotnet run --project AspireReact.Server/AspireReact.Server.csproj --urls http://127.0.0.1:6202
+dotnet run --project Lies.Server/Lies.Server.csproj --urls http://127.0.0.1:6202
 ```
 
 再启动前端：
@@ -170,7 +170,21 @@ http://localhost:5516
 POSTGRES_IMAGE=postgres:latest
 ```
 
-如果你已经有旧的 PostgreSQL 数据卷，直接从一个大版本切到更新的大版本可能会导致容器启动失败。已有数据建议先备份，再做数据库升级或迁移。
+项目现在已经按 PostgreSQL 18+ 的官方建议，把数据卷挂载到 `/var/lib/postgresql`，以适配 `latest`。
+
+如果你已经有旧的 PostgreSQL 数据卷，直接从一个大版本切到更新的大版本仍然可能导致容器启动失败。已有数据建议先备份，再做数据库升级或迁移。
+
+如果启动时报 `dependency postgres failed to start`，优先怀疑这一点。最常见处理方式：
+
+- 还需要旧数据：把 `.env.docker` 里的 `POSTGRES_IMAGE` 先改回旧大版本，例如你之前一直用的 `postgres:17-alpine`
+- 不需要旧数据：执行 `docker compose --env-file .env.docker down -v` 后再重新 `up -d --build`
+
+如果要正式升级到 `18/latest`，推荐流程是：
+
+1. 用旧版本镜像把旧数据启动起来并导出
+2. 清理旧卷
+3. 用新 compose 启动 `postgres:latest`
+4. 再把导出的数据导回去
 
 常用命令：
 
@@ -225,14 +239,14 @@ OCR 结果会先回填表单，不会直接入库。系统同时支持：
 - 不提交 `Logs/`、`RuntimeData/`、`.codex-artifacts/`
 - OCR 原图只保存在审计目录，不放仓库
 - 开发说明放 `README.md`
-- 更完整的功能说明放 [心魔录-项目文档.md](/Users/wangzhen/codes/Aspire/AspireReact/心魔录-项目文档.md)
+- 更完整的功能说明放 [心魔录-项目文档.md](/Users/wangzhen/codes/Lies/Lies/心魔录-项目文档.md)
 
 ## 相关文件
 
-- 前端路由：[frontend/src/App.tsx](/Users/wangzhen/codes/Aspire/AspireReact/frontend/src/App.tsx)
-- 统一录入页：[frontend/src/pages/UnifiedEntryPage.tsx](/Users/wangzhen/codes/Aspire/AspireReact/frontend/src/pages/UnifiedEntryPage.tsx)
-- 统一列表页：[frontend/src/pages/UnifiedListPage.tsx](/Users/wangzhen/codes/Aspire/AspireReact/frontend/src/pages/UnifiedListPage.tsx)
-- 统计页：[frontend/src/pages/StatisticsPage.tsx](/Users/wangzhen/codes/Aspire/AspireReact/frontend/src/pages/StatisticsPage.tsx)
-- 股票历史页：[frontend/src/pages/StockHistoryPage.tsx](/Users/wangzhen/codes/Aspire/AspireReact/frontend/src/pages/StockHistoryPage.tsx)
-- OCR 服务：[AspireReact.Server/Services/PortfolioScreenshotImportService.cs](/Users/wangzhen/codes/Aspire/AspireReact/AspireReact.Server/Services/PortfolioScreenshotImportService.cs)
-- 数据体检服务：[AspireReact.Server/Services/DataHealthService.cs](/Users/wangzhen/codes/Aspire/AspireReact/AspireReact.Server/Services/DataHealthService.cs)
+- 前端路由：[frontend/src/App.tsx](/Users/wangzhen/codes/Lies/Lies/frontend/src/App.tsx)
+- 统一录入页：[frontend/src/pages/UnifiedEntryPage.tsx](/Users/wangzhen/codes/Lies/Lies/frontend/src/pages/UnifiedEntryPage.tsx)
+- 统一列表页：[frontend/src/pages/UnifiedListPage.tsx](/Users/wangzhen/codes/Lies/Lies/frontend/src/pages/UnifiedListPage.tsx)
+- 统计页：[frontend/src/pages/StatisticsPage.tsx](/Users/wangzhen/codes/Lies/Lies/frontend/src/pages/StatisticsPage.tsx)
+- 股票历史页：[frontend/src/pages/StockHistoryPage.tsx](/Users/wangzhen/codes/Lies/Lies/frontend/src/pages/StockHistoryPage.tsx)
+- OCR 服务：[Lies.Server/Services/PortfolioScreenshotImportService.cs](/Users/wangzhen/codes/Lies/Lies/Lies.Server/Services/PortfolioScreenshotImportService.cs)
+- 数据体检服务：[Lies.Server/Services/DataHealthService.cs](/Users/wangzhen/codes/Lies/Lies/Lies.Server/Services/DataHealthService.cs)

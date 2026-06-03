@@ -21,8 +21,8 @@ interface ReflectionStoredState {
   savedAt: string;
 }
 
-const STORAGE_KEY = 'aspire-reflection-notes-v2';
-const LEGACY_STORAGE_KEY = 'aspire-reflection-notes-v1';
+const STORAGE_KEY = 'Lies-reflection-notes-v2';
+const LEGACY_STORAGE_KEY = 'Lies-reflection-notes-v1';
 const DATE_LINE_PATTERN = /^\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?$/;
 const SENTENCE_PATTERN = /[^。！？；!?;]+[。！？；!?;]?/g;
 
