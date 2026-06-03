@@ -11,7 +11,7 @@ if ! command -v aspire >/dev/null 2>&1; then
   exit 1
 fi
 
-aspire destroy --apphost "$APPHOST_PROJECT" --output-path "$OUTPUT_DIR" --non-interactive
+aspire destroy --apphost "$APPHOST_PROJECT" --output-path "$OUTPUT_DIR" --non-interactive --yes
 
 echo
 echo "Aspire Docker deployment is down."

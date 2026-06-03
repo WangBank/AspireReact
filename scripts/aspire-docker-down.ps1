@@ -27,7 +27,7 @@ if (-not (Get-Command aspire -ErrorAction SilentlyContinue)) {
 }
 
 Invoke-NativeCommand {
-    aspire destroy --apphost $AppHostProject --output-path $OutputDir --non-interactive
+    aspire destroy --apphost $AppHostProject --output-path $OutputDir --non-interactive --yes
 } "Aspire Docker shutdown failed."
 
 Write-Host ""
