@@ -31,6 +31,7 @@ Properties/launchSettings.json
 
 # Docker
 docker-compose.override.yml
+.env.docker
 
 # 前端 (React/Vue)
 node_modules/
@@ -50,8 +51,11 @@ yarn-error.log*
 *.log
 *.tmp
 *.temp
+.codex-artifacts/
 .DS_Store
 Thumbs.db
+Logs/
+**/Logs/
 
 # Aspire 自动生成
 *.dcp

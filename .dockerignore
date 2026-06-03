@@ -1,0 +1,16 @@
+.git
+.gitignore
+.DS_Store
+.vscode
+.codex-artifacts
+
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/Logs
+**/RuntimeData
+
+AspireReact.AppHost
+frontend/.vite
+frontend/coverage

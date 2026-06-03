@@ -1,4 +1,3 @@
-import { weatherStore } from './WeatherStore';
 import { authStore } from './AuthStore';
 import { dashboardStore } from './DashboardStore';
 import { accountEntryStore } from './AccountEntryStore';
@@ -15,7 +14,6 @@ import { configStore } from './ConfigStore';
 import { stockLeaderboardStore } from './StockLeaderboardStore';
 
 export class RootStore {
-  weatherStore = weatherStore;
   authStore = authStore;
   dashboardStore = dashboardStore;
   accountEntryStore = accountEntryStore;

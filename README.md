@@ -81,6 +81,55 @@ SERVER_HTTP=http://127.0.0.1:6202 npm run dev
 
 Vite 会把 `/api` 请求代理到 `SERVER_HTTP`。
 
+#### 方式 C：通过 Docker 一键启动
+
+项目现在提供了完整的 Docker 部署文件，默认会一起启动：
+
+- `app`：后端 API + 已构建前端静态站点
+- `postgres`：PostgreSQL
+- `redis`：Redis
+
+首次使用：
+
+```bash
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker up -d --build
+```
+
+如果想更省事，也可以直接用脚本：
+
+- macOS / Linux
+
+```bash
+bash scripts/docker-up.sh
+```
+
+- Windows PowerShell
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\docker-up.ps1
+```
+
+启动后默认访问：
+
+```text
+http://localhost:5516
+```
+
+补充说明：
+
+- Docker 方式不依赖 `AspireReact.AppHost`
+- `.env.docker` 里可以修改端口、数据库密码、JWT 密钥
+- Docker 版会把前端构建产物打进后端容器，由后端统一对外提供页面和 `/api`
+- 日志、OCR 模型、数据库和 Redis 数据都通过 Docker volume 持久化
+
+常用命令：
+
+```bash
+docker compose --env-file .env.docker logs -f app
+docker compose --env-file .env.docker down
+```
+
 ## 使用流程
 
 ### 首次使用

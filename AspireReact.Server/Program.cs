@@ -168,6 +168,7 @@ try
     app.MapDefaultEndpoints();
 
     app.UseFileServer();
+    app.MapFallbackToFile("index.html");
 
     await app.RunAsync();
 }
