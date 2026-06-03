@@ -6,6 +6,20 @@ APPHOST_PROJECT="$ROOT_DIR/Lies.AppHost/Lies.AppHost.csproj"
 ENV_FILE="$ROOT_DIR/.env.aspire-docker"
 EXAMPLE_FILE="$ROOT_DIR/.env.aspire-docker.example"
 OUTPUT_DIR="$ROOT_DIR/.aspire-output/docker-compose"
+LEGACY_ENV_FILE=""
+if [[ -f "$ROOT_DIR/.env.docker" ]]; then
+  LEGACY_ENV_FILE="$ROOT_DIR/.env.docker"
+elif [[ -f "$ROOT_DIR/.env.docker.example" ]]; then
+  LEGACY_ENV_FILE="$ROOT_DIR/.env.docker.example"
+fi
+LEGACY_COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
+APPHOST_COMPOSE_FILE=""
+if [[ -f "$OUTPUT_DIR/docker-compose.yaml" ]]; then
+  APPHOST_COMPOSE_FILE="$OUTPUT_DIR/docker-compose.yaml"
+elif [[ -f "$OUTPUT_DIR/docker-compose.yml" ]]; then
+  APPHOST_COMPOSE_FILE="$OUTPUT_DIR/docker-compose.yml"
+fi
+APPHOST_COMPOSE_ENV_FILE="$OUTPUT_DIR/.env.Production"
 
 if ! command -v aspire >/dev/null 2>&1; then
   echo "The aspire CLI is required."
@@ -24,6 +38,30 @@ source "$ENV_FILE"
 set +a
 
 mkdir -p "$OUTPUT_DIR"
+
+stop_compose_stack_if_present() {
+  local description="$1"
+  local compose_file="$2"
+  local env_file="${3:-}"
+
+  [[ -f "$compose_file" ]] || return 0
+
+  echo "Stopping existing $description stack..."
+
+  if [[ -n "$env_file" && -f "$env_file" ]]; then
+    docker compose --env-file "$env_file" -f "$compose_file" down --remove-orphans || \
+      echo "Skipping cleanup issue: docker compose down for $description"
+    return 0
+  fi
+
+  docker compose -f "$compose_file" down --remove-orphans || \
+    echo "Skipping cleanup issue: docker compose down for $description"
+}
+
+stop_compose_stack_if_present "legacy compose" "$LEGACY_COMPOSE_FILE" "$LEGACY_ENV_FILE"
+if [[ -n "$APPHOST_COMPOSE_FILE" ]]; then
+  stop_compose_stack_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE"
+fi
 
 aspire deploy --apphost "$APPHOST_PROJECT" --output-path "$OUTPUT_DIR" --non-interactive
 

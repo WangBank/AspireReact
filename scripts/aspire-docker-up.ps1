@@ -16,11 +16,76 @@ function Invoke-NativeCommand {
     }
 }
 
+function Invoke-BestEffortNativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Command,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ActionDescription
+    )
+
+    & $Command
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Skipping cleanup issue: $ActionDescription (exit code: $LASTEXITCODE)"
+        $global:LASTEXITCODE = 0
+    }
+}
+
+function Get-FirstExistingPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Paths
+    )
+
+    return $Paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+
+function Stop-ComposeStackIfPresent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Description,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ComposeFile,
+
+        [string]$EnvFile
+    )
+
+    if (-not (Test-Path $ComposeFile)) {
+        return
+    }
+
+    Write-Host "Stopping existing $Description stack..."
+
+    if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
+        Invoke-BestEffortNativeCommand {
+            docker compose --env-file $EnvFile -f $ComposeFile down --remove-orphans
+        } "docker compose down for $Description"
+        return
+    }
+
+    Invoke-BestEffortNativeCommand {
+        docker compose -f $ComposeFile down --remove-orphans
+    } "docker compose down for $Description"
+}
+
 $RootDir = Split-Path -Parent $PSScriptRoot
 $AppHostProject = Join-Path $RootDir "Lies.AppHost/Lies.AppHost.csproj"
 $EnvFile = Join-Path $RootDir ".env.aspire-docker"
 $ExampleFile = Join-Path $RootDir ".env.aspire-docker.example"
 $OutputDir = Join-Path $RootDir ".aspire-output/docker-compose"
+$LegacyEnvFile = Get-FirstExistingPath @(
+    (Join-Path $RootDir ".env.docker"),
+    (Join-Path $RootDir ".env.docker.example")
+)
+$LegacyComposeFile = Join-Path $RootDir "docker-compose.yml"
+$AppHostComposeFile = Get-FirstExistingPath @(
+    (Join-Path $OutputDir "docker-compose.yaml"),
+    (Join-Path $OutputDir "docker-compose.yml")
+)
+$AppHostComposeEnvFile = Join-Path $OutputDir ".env.Production"
 
 if (-not (Get-Command aspire -ErrorAction SilentlyContinue)) {
     Write-Host "The aspire CLI is required."
@@ -46,6 +111,11 @@ Get-Content $EnvFile | ForEach-Object {
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+
+Stop-ComposeStackIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile
+if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
+    Stop-ComposeStackIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile
+}
 
 try {
     Invoke-NativeCommand {
