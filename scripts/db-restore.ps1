@@ -242,10 +242,16 @@ Invoke-NativeCommand {
     docker cp $DumpFile.Path "${ContainerId}:${ContainerDumpPath}"
 } "Failed to copy dump into postgres container."
 
+Write-Host "Disconnecting active sessions from '$TargetDatabase'..."
+Invoke-Postgres -ContainerId $ContainerId -Arguments @(
+    "sh", "-lc",
+    "export PGPASSWORD='$QuotedPassword'; psql -v ON_ERROR_STOP=1 -U '$QuotedUser' -d postgres -c `"UPDATE pg_database SET datallowconn = false WHERE datname = '$QuotedDb'; SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$QuotedDb' AND pid <> pg_backend_pid();`""
+) -FailureMessage "Failed to disconnect active database sessions."
+
 Write-Host "Recreating database '$TargetDatabase'..."
 Invoke-Postgres -ContainerId $ContainerId -Arguments @(
     "sh", "-lc",
-    "export PGPASSWORD='$QuotedPassword'; dropdb --if-exists -U '$QuotedUser' '$QuotedDb'; createdb -U '$QuotedUser' '$QuotedDb'"
+    "export PGPASSWORD='$QuotedPassword'; if ! dropdb --if-exists -U '$QuotedUser' '$QuotedDb'; then psql -v ON_ERROR_STOP=1 -U '$QuotedUser' -d postgres -c `"UPDATE pg_database SET datallowconn = true WHERE datname = '$QuotedDb';`" >/dev/null 2>&1 || true; exit 1; fi; createdb -U '$QuotedUser' '$QuotedDb'"
 ) -FailureMessage "Failed to recreate database."
 
 if ($DumpExtension -eq ".sql") {

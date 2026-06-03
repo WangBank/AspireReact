@@ -149,9 +149,13 @@ CONTAINER_DUMP_PATH="/tmp/restore-input.${DUMP_EXTENSION}"
 echo "Copying dump into postgres container..."
 docker cp "$DUMP_FILE" "${CONTAINER_ID}:${CONTAINER_DUMP_PATH}"
 
+echo "Disconnecting active sessions from '$TARGET_DATABASE'..."
+docker exec "$CONTAINER_ID" sh -lc \
+  "export PGPASSWORD='$POSTGRES_PASSWORD'; psql -v ON_ERROR_STOP=1 -U '$POSTGRES_USER' -d postgres -c \"UPDATE pg_database SET datallowconn = false WHERE datname = '$TARGET_DATABASE'; SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$TARGET_DATABASE' AND pid <> pg_backend_pid();\""
+
 echo "Recreating database '$TARGET_DATABASE'..."
 docker exec "$CONTAINER_ID" sh -lc \
-  "export PGPASSWORD='$POSTGRES_PASSWORD'; dropdb --if-exists -U '$POSTGRES_USER' '$TARGET_DATABASE'; createdb -U '$POSTGRES_USER' '$TARGET_DATABASE'"
+  "export PGPASSWORD='$POSTGRES_PASSWORD'; if ! dropdb --if-exists -U '$POSTGRES_USER' '$TARGET_DATABASE'; then psql -v ON_ERROR_STOP=1 -U '$POSTGRES_USER' -d postgres -c \"UPDATE pg_database SET datallowconn = true WHERE datname = '$TARGET_DATABASE';\" >/dev/null 2>&1 || true; exit 1; fi; createdb -U '$POSTGRES_USER' '$TARGET_DATABASE'"
 
 if [[ "${DUMP_FILE,,}" == *.sql ]]; then
   echo "Restoring SQL dump..."
