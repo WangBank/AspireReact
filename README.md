@@ -164,6 +164,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\docker-up.ps1
 http://localhost:5516
 ```
 
+`.env.docker` 里可以单独指定 PostgreSQL 镜像，例如：
+
+```env
+POSTGRES_IMAGE=postgres:latest
+```
+
+如果你已经有旧的 PostgreSQL 数据卷，直接从一个大版本切到更新的大版本可能会导致容器启动失败。已有数据建议先备份，再做数据库升级或迁移。
+
 常用命令：
 
 ```bash
