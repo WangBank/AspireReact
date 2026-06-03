@@ -59,6 +59,38 @@ function Invoke-Postgres {
     } $FailureMessage
 }
 
+function Invoke-PostgresSql {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Database,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PostgresUser,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PostgresPassword,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Sql,
+
+        [Parameter(Mandatory = $true)]
+        [string]$FailureMessage
+    )
+
+    $QuotedPassword = $PostgresPassword.Replace("'", "''")
+    $QuotedUser = $PostgresUser.Replace("'", "''")
+    $QuotedDatabase = $Database.Replace("'", "''")
+
+    $Sql | & docker exec -i $ContainerId sh -lc "export PGPASSWORD='$QuotedPassword'; psql -v ON_ERROR_STOP=1 -U '$QuotedUser' -d '$QuotedDatabase'"
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FailureMessage Exit code: $LASTEXITCODE"
+    }
+}
+
 function Get-FirstExistingPath {
     param(
         [Parameter(Mandatory = $true)]
@@ -242,17 +274,59 @@ Invoke-NativeCommand {
     docker cp $DumpFile.Path "${ContainerId}:${ContainerDumpPath}"
 } "Failed to copy dump into postgres container."
 
+${DisconnectSql} = @"
+UPDATE pg_database
+SET datallowconn = false
+WHERE datname = '$QuotedDb';
+
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = '$QuotedDb'
+  AND pid <> pg_backend_pid();
+"@
+
 Write-Host "Disconnecting active sessions from '$TargetDatabase'..."
-Invoke-Postgres -ContainerId $ContainerId -Arguments @(
-    "sh", "-lc",
-    "export PGPASSWORD='$QuotedPassword'; psql -v ON_ERROR_STOP=1 -U '$QuotedUser' -d postgres -c `"UPDATE pg_database SET datallowconn = false WHERE datname = '$QuotedDb'; SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$QuotedDb' AND pid <> pg_backend_pid();`""
-) -FailureMessage "Failed to disconnect active database sessions."
+Invoke-PostgresSql `
+    -ContainerId $ContainerId `
+    -Database "postgres" `
+    -PostgresUser $PostgresUser `
+    -PostgresPassword $PostgresPassword `
+    -Sql $DisconnectSql `
+    -FailureMessage "Failed to disconnect active database sessions."
 
 Write-Host "Recreating database '$TargetDatabase'..."
+try {
+    Invoke-Postgres -ContainerId $ContainerId -Arguments @(
+        "sh", "-lc",
+        "export PGPASSWORD='$QuotedPassword'; dropdb --if-exists -U '$QuotedUser' '$QuotedDb'"
+    ) -FailureMessage "Failed to drop existing database."
+}
+catch {
+    $ReconnectSql = @"
+UPDATE pg_database
+SET datallowconn = true
+WHERE datname = '$QuotedDb';
+"@
+
+    try {
+        Invoke-PostgresSql `
+            -ContainerId $ContainerId `
+            -Database "postgres" `
+            -PostgresUser $PostgresUser `
+            -PostgresPassword $PostgresPassword `
+            -Sql $ReconnectSql `
+            -FailureMessage "Failed to re-enable connections after restore failure."
+    }
+    catch {
+    }
+
+    throw
+}
+
 Invoke-Postgres -ContainerId $ContainerId -Arguments @(
     "sh", "-lc",
-    "export PGPASSWORD='$QuotedPassword'; if ! dropdb --if-exists -U '$QuotedUser' '$QuotedDb'; then psql -v ON_ERROR_STOP=1 -U '$QuotedUser' -d postgres -c `"UPDATE pg_database SET datallowconn = true WHERE datname = '$QuotedDb';`" >/dev/null 2>&1 || true; exit 1; fi; createdb -U '$QuotedUser' '$QuotedDb'"
-) -FailureMessage "Failed to recreate database."
+    "export PGPASSWORD='$QuotedPassword'; createdb -U '$QuotedUser' '$QuotedDb'"
+) -FailureMessage "Failed to create target database."
 
 if ($DumpExtension -eq ".sql") {
     Write-Host "Restoring SQL dump..."
