@@ -2,7 +2,7 @@ FROM node:22-alpine AS frontend-build
 WORKDIR /src/frontend
 
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm install
 
 COPY frontend/ ./
 RUN npm run build
@@ -22,9 +22,20 @@ WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080
 ENV DOTNET_ENVIRONMENT=Production
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends fonts-noto-cjk \
-    && rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    installed=''; \
+    for attempt in 1 2 3; do \
+      if apt-get update \
+        && apt-get install -y --no-install-recommends -o Acquire::Retries=5 fonts-noto-cjk; then \
+        installed=1; \
+        break; \
+      fi; \
+      rm -rf /var/lib/apt/lists/*; \
+      echo "Retrying fonts-noto-cjk install (attempt ${attempt}/3)..." >&2; \
+      sleep 5; \
+    done; \
+    test -n "$installed"; \
+    rm -rf /var/lib/apt/lists/*
 
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /src/frontend/dist ./wwwroot
