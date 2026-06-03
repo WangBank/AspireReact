@@ -15,11 +15,13 @@ public class CaptchaService : ICaptchaService
 {
     private readonly IRedisService _redis;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<CaptchaService> _logger;
 
-    public CaptchaService(IRedisService redis, IConfiguration configuration)
+    public CaptchaService(IRedisService redis, IConfiguration configuration, ILogger<CaptchaService> logger)
     {
         _redis = redis;
         _configuration = configuration;
+        _logger = logger;
     }
 
     public async Task<Captcha> GenerateCaptchaAsync()
@@ -33,7 +35,20 @@ public class CaptchaService : ICaptchaService
 
         var key = string.Format(RedisConfig.CacheKeys.Captcha, captcha.Id);
         var expiry = TimeSpan.FromMinutes(AuthConfig.GetCaptchaExpiryMinutes(_configuration));
-        await _redis.SetAsync(key, captcha, expiry);
+
+        try
+        {
+            await _redis.SetAsync(key, captcha, expiry);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "验证码写入 Redis 失败: Key={CaptchaKey}, ExpiryMinutes={ExpiryMinutes}",
+                key,
+                expiry.TotalMinutes);
+            throw;
+        }
 
         return captcha;
     }

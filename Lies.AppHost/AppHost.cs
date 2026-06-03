@@ -1,6 +1,7 @@
 using Aspire.Hosting;
 using Aspire.Hosting.Docker;
 using Aspire.Hosting.Docker.Resources.ComposeNodes;
+using Aspire.Hosting.ApplicationModel;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
@@ -130,6 +131,10 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         .WaitFor(redis)
         .WithEnvironment("ASPNETCORE_URLS", "http://+:8080")
         .WithEnvironment("DOTNET_ENVIRONMENT", "Production")
+        .WithEnvironment("OTEL_EXPORTER_OTLP_ENDPOINT", "http://dashboard:18889")
+        .WithEnvironment("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
+        .WithEnvironment("Redis__ConnectionString", ReferenceExpression.Create($"redis:6379,password={redisPassword}"))
+        .WithEnvironment("ConnectionStrings__Redis", ReferenceExpression.Create($"redis:6379,password={redisPassword}"))
         .WithEnvironment("RapidOcr__FontPath", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc")
         .WithEnvironment("RapidOcr__AutoDownloadModels", rapidOcrAutoDownloadModels)
         .WithEndpoint(targetPort: 8080, port: appPort, scheme: "http", name: "http", isExternal: true)
