@@ -16,6 +16,26 @@ function Invoke-NativeCommand {
     }
 }
 
+function Show-ComposeDiagnostics {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$EnvFile,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ComposeFile
+    )
+
+    Write-Host ""
+    Write-Host "Current compose status:"
+    docker compose --env-file $EnvFile -f $ComposeFile ps -a
+
+    foreach ($service in @("app", "dashboard", "postgres")) {
+        Write-Host ""
+        Write-Host "Recent logs for ${service}:"
+        docker compose --env-file $EnvFile -f $ComposeFile logs --tail 80 $service
+    }
+}
+
 $RootDir = Split-Path -Parent $PSScriptRoot
 $EnvFile = Join-Path $RootDir ".env.docker"
 $ExampleFile = Join-Path $RootDir ".env.docker.example"
@@ -34,13 +54,12 @@ try {
 catch {
     Write-Host ""
     Write-Host "docker compose up failed."
-    Write-Host "Trying to show postgres logs for diagnosis..."
+    Write-Host "Collecting compose diagnostics..."
+    Show-ComposeDiagnostics -EnvFile $EnvFile -ComposeFile $ComposeFile
     Write-Host ""
-    docker compose --env-file $EnvFile -f $ComposeFile logs postgres
-    Write-Host ""
-    Write-Host "Common cause: an existing postgres data volume was created by another major version."
-    Write-Host "If you need the old data, set POSTGRES_IMAGE in .env.docker to the old major version first."
-    Write-Host "If you do not need the old data, run: docker compose --env-file $EnvFile -f $ComposeFile down -v"
+    Write-Host "If postgres logs mention an incompatible data directory or old major version,"
+    Write-Host "set POSTGRES_IMAGE in .env.docker to the old version first, or run:"
+    Write-Host "  docker compose --env-file $EnvFile -f $ComposeFile down -v"
     throw
 }
 

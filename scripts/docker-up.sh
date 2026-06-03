@@ -10,16 +10,27 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo "Created $ENV_FILE. Update passwords and ports if needed."
 fi
 
+show_compose_diagnostics() {
+  echo
+  echo "Current compose status:"
+  docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" ps -a || true
+
+  for service in app dashboard postgres; do
+    echo
+    echo "Recent logs for $service:"
+    docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" logs --tail 80 "$service" || true
+  done
+}
+
 if ! docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" up -d --build; then
   echo
   echo "docker compose up failed."
-  echo "Trying to show postgres logs for diagnosis..."
+  echo "Collecting compose diagnostics..."
+  show_compose_diagnostics
   echo
-  docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" logs postgres || true
-  echo
-  echo "Common cause: an existing postgres data volume was created by another major version."
-  echo "If you need the old data, set POSTGRES_IMAGE in .env.docker to the old major version first."
-  echo "If you do not need the old data, run: docker compose --env-file \"$ENV_FILE\" -f \"$ROOT_DIR/docker-compose.yml\" down -v"
+  echo "If postgres logs mention an incompatible data directory or old major version,"
+  echo "set POSTGRES_IMAGE in .env.docker to the old version first, or run:"
+  echo "  docker compose --env-file \"$ENV_FILE\" -f \"$ROOT_DIR/docker-compose.yml\" down -v"
   exit 1
 fi
 
