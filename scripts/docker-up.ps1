@@ -1,5 +1,21 @@
 $ErrorActionPreference = "Stop"
 
+function Invoke-NativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Command,
+
+        [Parameter(Mandatory = $true)]
+        [string]$FailureMessage
+    )
+
+    & $Command
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FailureMessage Exit code: $LASTEXITCODE"
+    }
+}
+
 $RootDir = Split-Path -Parent $PSScriptRoot
 $EnvFile = Join-Path $RootDir ".env.docker"
 $ExampleFile = Join-Path $RootDir ".env.docker.example"
@@ -11,7 +27,9 @@ if (-not (Test-Path $EnvFile)) {
 }
 
 try {
-    docker compose --env-file $EnvFile -f $ComposeFile up -d --build
+    Invoke-NativeCommand {
+        docker compose --env-file $EnvFile -f $ComposeFile up -d --build
+    } "docker compose up failed."
 }
 catch {
     Write-Host ""

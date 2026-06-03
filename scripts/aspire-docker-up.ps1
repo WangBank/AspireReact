@@ -1,5 +1,21 @@
 $ErrorActionPreference = "Stop"
 
+function Invoke-NativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Command,
+
+        [Parameter(Mandatory = $true)]
+        [string]$FailureMessage
+    )
+
+    & $Command
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FailureMessage Exit code: $LASTEXITCODE"
+    }
+}
+
 $RootDir = Split-Path -Parent $PSScriptRoot
 $AppHostProject = Join-Path $RootDir "Lies.AppHost/Lies.AppHost.csproj"
 $EnvFile = Join-Path $RootDir ".env.aspire-docker"
@@ -31,7 +47,20 @@ Get-Content $EnvFile | ForEach-Object {
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-aspire deploy --apphost $AppHostProject --output-path $OutputDir --non-interactive
+try {
+    Invoke-NativeCommand {
+        aspire deploy --apphost $AppHostProject --output-path $OutputDir --non-interactive
+    } "Aspire Docker deployment failed."
+}
+catch {
+    Write-Host ""
+    Write-Host "Aspire Docker deployment failed."
+    Write-Host "If the error mentions a container name conflict or a port already in use,"
+    Write-Host "stop the old stack first:"
+    Write-Host "  AppHost stack: powershell -ExecutionPolicy Bypass -File .\scripts\aspire-docker-down.ps1"
+    Write-Host "  Legacy compose stack: powershell -ExecutionPolicy Bypass -File .\scripts\docker-down.ps1"
+    throw
+}
 
 $AppPort = [System.Environment]::GetEnvironmentVariable("Deployment__Docker__AppPort", "Process")
 if ([string]::IsNullOrWhiteSpace($AppPort)) {

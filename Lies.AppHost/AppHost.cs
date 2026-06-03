@@ -95,7 +95,6 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
             .PublishAsDockerComposeService((_, service) =>
             {
                 service.Name = "dashboard";
-                service.ContainerName = "Lies-dashboard";
                 service.Restart = "unless-stopped";
                 BindServicePortToLoopback(service, dashboardPort, 18888);
             });
@@ -107,7 +106,6 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         .PublishAsDockerComposeService((_, service) =>
         {
             service.Name = "postgres";
-            service.ContainerName = "Lies-postgres";
             service.Restart = "unless-stopped";
             BindServicePortToLoopback(service, postgresPort, 5432);
             SetNamedVolumeTarget(service, "postgres_data", GetPostgresDataDirectory(postgresImageTag));
@@ -120,7 +118,6 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         .PublishAsDockerComposeService((_, service) =>
         {
             service.Name = "redis";
-            service.ContainerName = "Lies-redis";
             service.Restart = "unless-stopped";
             BindServicePortToLoopback(service, redisPort, 6379);
         });
@@ -141,7 +138,6 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         .PublishAsDockerComposeService((_, service) =>
         {
             service.Name = "app";
-            service.ContainerName = "Lies-app";
             service.Restart = "unless-stopped";
         });
 }
