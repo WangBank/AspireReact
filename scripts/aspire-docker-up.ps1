@@ -42,6 +42,73 @@ function Get-FirstExistingPath {
     return $Paths | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 
+function Get-ExistingComposeServices {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ComposeFile,
+
+        [string]$EnvFile
+    )
+
+    if (-not (Test-Path $ComposeFile)) {
+        return @()
+    }
+
+    $composeArgs = @()
+    if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
+        $composeArgs += @("--env-file", $EnvFile)
+    }
+    $composeArgs += @("-f", $ComposeFile, "config", "--services")
+
+    try {
+        $services = @(docker compose @composeArgs 2>$null)
+        $global:LASTEXITCODE = 0
+        return @($services | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    catch {
+        $global:LASTEXITCODE = 0
+        return @()
+    }
+}
+
+function Remove-StoppedComposeServicesIfPresent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Description,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ComposeFile,
+
+        [string]$EnvFile,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Services
+    )
+
+    if (-not (Test-Path $ComposeFile)) {
+        return
+    }
+
+    $existingServices = Get-ExistingComposeServices -ComposeFile $ComposeFile -EnvFile $EnvFile
+    $presentServices = @($Services | Where-Object { $_ -in $existingServices })
+    if ($presentServices.Count -eq 0) {
+        return
+    }
+
+    Write-Host "Removing stopped $Description services if present: $($presentServices -join ', ')..."
+
+    if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
+        Invoke-BestEffortNativeCommand {
+            docker compose --env-file $EnvFile -f $ComposeFile rm -f $presentServices
+        } "docker compose rm stopped services for $Description"
+        return
+    }
+
+    Invoke-BestEffortNativeCommand {
+        docker compose -f $ComposeFile rm -f $presentServices
+    } "docker compose rm stopped services for $Description"
+}
+
 function Recreate-ComposeServicesIfPresent {
     param(
         [Parameter(Mandatory = $true)]
@@ -60,64 +127,24 @@ function Recreate-ComposeServicesIfPresent {
         return
     }
 
-    Write-Host "Recreating existing $Description services: $($Services -join ', ')..."
+    $existingServices = Get-ExistingComposeServices -ComposeFile $ComposeFile -EnvFile $EnvFile
+    $presentServices = @($Services | Where-Object { $_ -in $existingServices })
+    if ($presentServices.Count -eq 0) {
+        return
+    }
+
+    Write-Host "Recreating existing $Description services: $($presentServices -join ', ')..."
 
     if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
         Invoke-BestEffortNativeCommand {
-            docker compose --env-file $EnvFile -f $ComposeFile rm -f -s $Services
+            docker compose --env-file $EnvFile -f $ComposeFile rm -f -s $presentServices
         } "docker compose rm for $Description"
         return
     }
 
     Invoke-BestEffortNativeCommand {
-        docker compose -f $ComposeFile rm -f -s $Services
+        docker compose -f $ComposeFile rm -f -s $presentServices
     } "docker compose rm for $Description"
-}
-
-function Ensure-AppHostComposeStackRunning {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ComposeFile,
-
-        [string]$EnvFile,
-
-        [Parameter(Mandatory = $true)]
-        [string[]]$Services
-    )
-
-    if (-not (Test-Path $ComposeFile)) {
-        throw "Generated AppHost compose file was not found: $ComposeFile"
-    }
-
-    $composeArgs = @()
-    if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
-        $composeArgs += @("--env-file", $EnvFile)
-    }
-    $composeArgs += @("-f", $ComposeFile)
-
-    $runningServices = @()
-    try {
-        $runningServices = @(docker compose @composeArgs ps --services --status running 2>$null)
-        $global:LASTEXITCODE = 0
-    }
-    catch {
-        $runningServices = @()
-        $global:LASTEXITCODE = 0
-    }
-
-    $missingServices = @($Services | Where-Object { $_ -notin $runningServices })
-    if ($missingServices.Count -gt 0) {
-        Write-Host "No running generated AppHost services detected for: $($missingServices -join ', ')"
-        Write-Host "Starting generated Docker Compose stack..."
-        Invoke-NativeCommand {
-            docker compose @composeArgs up -d --build $Services
-        } "Generated AppHost docker compose up failed."
-    }
-
-    Write-Host "Generated AppHost stack status:"
-    Invoke-BestEffortNativeCommand {
-        docker compose @composeArgs ps
-    } "docker compose ps for generated AppHost stack"
 }
 
 $RootDir = Split-Path -Parent $PSScriptRoot
@@ -161,13 +188,16 @@ Get-Content $EnvFile | ForEach-Object {
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$cleanupServices = @("app", "apphost-monitor", "dashboard")
-$coreServices = @("app")
-$monitorServices = @("apphost-monitor")
-Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile -Services $cleanupServices
+$staleServices = @("postgres", "redis", "app", "apphost-monitor", "dashboard", "compose-dashboard")
+$restartServices = @("app", "apphost-monitor", "dashboard", "compose-dashboard")
+Remove-StoppedComposeServicesIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile -Services $staleServices
+Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile -Services $restartServices
 if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
-    Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $cleanupServices
+    Remove-StoppedComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $staleServices
+    Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $restartServices
 }
+
+[System.Environment]::SetEnvironmentVariable("LIES_APPHOST_DISABLE_DASHBOARD", "true", "Process")
 
 try {
     Invoke-NativeCommand {
@@ -188,12 +218,6 @@ $AppHostComposeFile = Get-FirstExistingPath @(
     (Join-Path $OutputDir "docker-compose.yaml"),
     (Join-Path $OutputDir "docker-compose.yml")
 )
-
-Ensure-AppHostComposeStackRunning -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $coreServices
-
-Invoke-BestEffortNativeCommand {
-    docker compose --env-file $AppHostComposeEnvFile -f $AppHostComposeFile up -d --build $monitorServices
-} "optional generated AppHost monitor startup"
 
 $AppPort = [System.Environment]::GetEnvironmentVariable("Deployment__Docker__AppPort", "Process")
 if ([string]::IsNullOrWhiteSpace($AppPort)) {
