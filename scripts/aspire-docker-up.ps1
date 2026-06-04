@@ -162,7 +162,8 @@ Get-Content $EnvFile | ForEach-Object {
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $cleanupServices = @("app", "apphost-monitor", "dashboard")
-$requiredServices = @("app", "apphost-monitor")
+$coreServices = @("app")
+$monitorServices = @("apphost-monitor")
 Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile -Services $cleanupServices
 if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
     Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $cleanupServices
@@ -188,7 +189,11 @@ $AppHostComposeFile = Get-FirstExistingPath @(
     (Join-Path $OutputDir "docker-compose.yml")
 )
 
-Ensure-AppHostComposeStackRunning -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $requiredServices
+Ensure-AppHostComposeStackRunning -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $coreServices
+
+Invoke-BestEffortNativeCommand {
+    docker compose --env-file $AppHostComposeEnvFile -f $AppHostComposeFile up -d --build $monitorServices
+} "optional generated AppHost monitor startup"
 
 $AppPort = [System.Environment]::GetEnvironmentVariable("Deployment__Docker__AppPort", "Process")
 if ([string]::IsNullOrWhiteSpace($AppPort)) {

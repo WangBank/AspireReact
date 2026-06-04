@@ -52,13 +52,14 @@ show_compose_diagnostics() {
 }
 
 CLEANUP_SERVICES=(app apphost-monitor dashboard)
-REQUIRED_SERVICES=(app apphost-monitor)
+CORE_SERVICES=(app)
+MONITOR_SERVICES=(apphost-monitor)
 if [[ -n "$APPHOST_COMPOSE_FILE" ]]; then
   recreate_compose_services_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${CLEANUP_SERVICES[@]}"
 fi
 recreate_compose_services_if_present "legacy compose" "$ROOT_DIR/docker-compose.yml" "$ENV_FILE" "${CLEANUP_SERVICES[@]}"
 
-if ! docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" up -d --build "${REQUIRED_SERVICES[@]}"; then
+if ! docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" up -d --build "${CORE_SERVICES[@]}"; then
   echo
   echo "docker compose up failed."
   echo "Collecting compose diagnostics..."
@@ -69,6 +70,9 @@ if ! docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" up 
   echo "  docker compose --env-file \"$ENV_FILE\" -f \"$ROOT_DIR/docker-compose.yml\" down -v"
   exit 1
 fi
+
+docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" up -d --build "${MONITOR_SERVICES[@]}" || \
+  echo "Skipping optional apphost-monitor startup"
 
 APP_PORT="$(grep '^APP_PORT=' "$ENV_FILE" | cut -d'=' -f2 || true)"
 DASHBOARD_PORT="$(grep '^ASPIRE_DASHBOARD_PORT=' "$ENV_FILE" | cut -d'=' -f2 || true)"

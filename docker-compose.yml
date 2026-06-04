@@ -39,8 +39,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      apphost-monitor:
-        condition: service_started
     environment:
       ASPNETCORE_URLS: http://+:8080
       DOTNET_ENVIRONMENT: Production

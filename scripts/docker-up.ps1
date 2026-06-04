@@ -111,7 +111,8 @@ if (-not (Test-Path $EnvFile)) {
 }
 
 $cleanupServices = @("app", "apphost-monitor", "dashboard")
-$requiredServices = @("app", "apphost-monitor")
+$coreServices = @("app")
+$monitorServices = @("apphost-monitor")
 if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
     Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $cleanupServices
 }
@@ -119,7 +120,7 @@ Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $Co
 
 try {
     Invoke-NativeCommand {
-        docker compose --env-file $EnvFile -f $ComposeFile up -d --build $requiredServices
+        docker compose --env-file $EnvFile -f $ComposeFile up -d --build $coreServices
     } "docker compose up failed."
 }
 catch {
@@ -133,6 +134,10 @@ catch {
     Write-Host "  docker compose --env-file $EnvFile -f $ComposeFile down -v"
     throw
 }
+
+Invoke-BestEffortNativeCommand {
+    docker compose --env-file $EnvFile -f $ComposeFile up -d --build $monitorServices
+} "optional apphost-monitor startup"
 
 $AppPort = "5516"
 $DashboardPort = "18888"

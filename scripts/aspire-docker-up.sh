@@ -108,7 +108,8 @@ ensure_apphost_compose_stack_running() {
 }
 
 CLEANUP_SERVICES=(app apphost-monitor dashboard)
-REQUIRED_SERVICES=(app apphost-monitor)
+CORE_SERVICES=(app)
+MONITOR_SERVICES=(apphost-monitor)
 recreate_compose_services_if_present "legacy compose" "$LEGACY_COMPOSE_FILE" "$LEGACY_ENV_FILE" "${CLEANUP_SERVICES[@]}"
 if [[ -n "$APPHOST_COMPOSE_FILE" ]]; then
   recreate_compose_services_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${CLEANUP_SERVICES[@]}"
@@ -116,7 +117,9 @@ fi
 
 aspire deploy --apphost "$APPHOST_PROJECT" --output-path "$OUTPUT_DIR" --non-interactive
 refresh_apphost_compose_file
-ensure_apphost_compose_stack_running "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${REQUIRED_SERVICES[@]}"
+ensure_apphost_compose_stack_running "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${CORE_SERVICES[@]}"
+docker compose --env-file "$APPHOST_COMPOSE_ENV_FILE" -f "$APPHOST_COMPOSE_FILE" up -d --build "${MONITOR_SERVICES[@]}" || \
+  echo "Skipping optional generated AppHost monitor startup"
 
 echo
 echo "Aspire Docker deployment is up."
