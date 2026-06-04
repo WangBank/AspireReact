@@ -21,6 +21,16 @@ elif [[ -f "$OUTPUT_DIR/docker-compose.yml" ]]; then
 fi
 APPHOST_COMPOSE_ENV_FILE="$OUTPUT_DIR/.env.Production"
 
+refresh_apphost_compose_file() {
+  if [[ -f "$OUTPUT_DIR/docker-compose.yaml" ]]; then
+    APPHOST_COMPOSE_FILE="$OUTPUT_DIR/docker-compose.yaml"
+  elif [[ -f "$OUTPUT_DIR/docker-compose.yml" ]]; then
+    APPHOST_COMPOSE_FILE="$OUTPUT_DIR/docker-compose.yml"
+  else
+    APPHOST_COMPOSE_FILE=""
+  fi
+}
+
 if ! command -v aspire >/dev/null 2>&1; then
   echo "The aspire CLI is required."
   echo "Install it with: dotnet tool install --global Aspire.Cli --prerelease"
@@ -60,13 +70,53 @@ recreate_compose_services_if_present() {
     echo "Skipping cleanup issue: docker compose rm for $description"
 }
 
-RECREATED_SERVICES=(app apphost-monitor dashboard)
-recreate_compose_services_if_present "legacy compose" "$LEGACY_COMPOSE_FILE" "$LEGACY_ENV_FILE" "${RECREATED_SERVICES[@]}"
+ensure_apphost_compose_stack_running() {
+  local compose_file="$1"
+  local env_file="$2"
+  shift 2
+  local services=("$@")
+
+  [[ -f "$compose_file" ]] || {
+    echo "Generated AppHost compose file was not found: $compose_file"
+    exit 1
+  }
+
+  local compose_cmd=(docker compose)
+  if [[ -n "$env_file" && -f "$env_file" ]]; then
+    compose_cmd+=(--env-file "$env_file")
+  fi
+  compose_cmd+=(-f "$compose_file")
+
+  local running_services=""
+  running_services="$("${compose_cmd[@]}" ps --services --status running 2>/dev/null || true)"
+
+  local missing_services=()
+  for service in "${services[@]}"; do
+    if ! grep -qx "$service" <<< "$running_services"; then
+      missing_services+=("$service")
+    fi
+  done
+
+  if (( ${#missing_services[@]} > 0 )); then
+    echo "No running generated AppHost services detected for: ${missing_services[*]}"
+    echo "Starting generated Docker Compose stack..."
+    "${compose_cmd[@]}" up -d --build "${services[@]}"
+  fi
+
+  echo "Generated AppHost stack status:"
+  "${compose_cmd[@]}" ps || true
+}
+
+CLEANUP_SERVICES=(app apphost-monitor dashboard)
+REQUIRED_SERVICES=(app apphost-monitor)
+recreate_compose_services_if_present "legacy compose" "$LEGACY_COMPOSE_FILE" "$LEGACY_ENV_FILE" "${CLEANUP_SERVICES[@]}"
 if [[ -n "$APPHOST_COMPOSE_FILE" ]]; then
-  recreate_compose_services_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${RECREATED_SERVICES[@]}"
+  recreate_compose_services_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${CLEANUP_SERVICES[@]}"
 fi
 
 aspire deploy --apphost "$APPHOST_PROJECT" --output-path "$OUTPUT_DIR" --non-interactive
+refresh_apphost_compose_file
+ensure_apphost_compose_stack_running "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${REQUIRED_SERVICES[@]}"
 
 echo
 echo "Aspire Docker deployment is up."

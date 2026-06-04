@@ -74,6 +74,52 @@ function Recreate-ComposeServicesIfPresent {
     } "docker compose rm for $Description"
 }
 
+function Ensure-AppHostComposeStackRunning {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ComposeFile,
+
+        [string]$EnvFile,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Services
+    )
+
+    if (-not (Test-Path $ComposeFile)) {
+        throw "Generated AppHost compose file was not found: $ComposeFile"
+    }
+
+    $composeArgs = @()
+    if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
+        $composeArgs += @("--env-file", $EnvFile)
+    }
+    $composeArgs += @("-f", $ComposeFile)
+
+    $runningServices = @()
+    try {
+        $runningServices = @(docker compose @composeArgs ps --services --status running 2>$null)
+        $global:LASTEXITCODE = 0
+    }
+    catch {
+        $runningServices = @()
+        $global:LASTEXITCODE = 0
+    }
+
+    $missingServices = @($Services | Where-Object { $_ -notin $runningServices })
+    if ($missingServices.Count -gt 0) {
+        Write-Host "No running generated AppHost services detected for: $($missingServices -join ', ')"
+        Write-Host "Starting generated Docker Compose stack..."
+        Invoke-NativeCommand {
+            docker compose @composeArgs up -d --build $Services
+        } "Generated AppHost docker compose up failed."
+    }
+
+    Write-Host "Generated AppHost stack status:"
+    Invoke-BestEffortNativeCommand {
+        docker compose @composeArgs ps
+    } "docker compose ps for generated AppHost stack"
+}
+
 $RootDir = Split-Path -Parent $PSScriptRoot
 $AppHostProject = Join-Path $RootDir "Lies.AppHost/Lies.AppHost.csproj"
 $EnvFile = Join-Path $RootDir ".env.aspire-docker"
@@ -115,10 +161,11 @@ Get-Content $EnvFile | ForEach-Object {
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$recreatedServices = @("app", "apphost-monitor", "dashboard")
-Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile -Services $recreatedServices
+$cleanupServices = @("app", "apphost-monitor", "dashboard")
+$requiredServices = @("app", "apphost-monitor")
+Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile -Services $cleanupServices
 if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
-    Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $recreatedServices
+    Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $cleanupServices
 }
 
 try {
@@ -135,6 +182,13 @@ catch {
     Write-Host "  Legacy compose stack: powershell -ExecutionPolicy Bypass -File .\scripts\docker-down.ps1"
     throw
 }
+
+$AppHostComposeFile = Get-FirstExistingPath @(
+    (Join-Path $OutputDir "docker-compose.yaml"),
+    (Join-Path $OutputDir "docker-compose.yml")
+)
+
+Ensure-AppHostComposeStackRunning -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $requiredServices
 
 $AppPort = [System.Environment]::GetEnvironmentVariable("Deployment__Docker__AppPort", "Process")
 if ([string]::IsNullOrWhiteSpace($AppPort)) {

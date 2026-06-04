@@ -86,31 +86,11 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
             secret: true)
         .WithDescription("Docker Redis 访问密码。");
 
-    var compose = builder.AddDockerComposeEnvironment("compose")
+    builder.AddDockerComposeEnvironment("compose")
         .ConfigureComposeFile(file =>
         {
             file.Name = composeProjectName;
         });
-
-    compose.WithDashboard(dashboard =>
-    {
-        dashboard
-            .WithHostPort(dashboardPort)
-            .WithEnvironment("DASHBOARD__FRONTEND__AUTHMODE", "Unsecured")
-            .WithEnvironment("ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS", "true")
-            .WithEnvironment("DASHBOARD__OTLP__AUTHMODE", "Unsecured")
-            .WithEnvironment("DASHBOARD__OTLP__SUPPRESSUNSECUREDMESSAGE", "true")
-            .WithEnvironment("ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL", "http://apphost-monitor:" + resourceServicePort)
-            .WithEnvironment("DOTNET_RESOURCE_SERVICE_ENDPOINT_URL", "http://apphost-monitor:" + resourceServicePort)
-            .WithEnvironment("DASHBOARD__RESOURCESERVICECLIENT__URL", "http://apphost-monitor:" + resourceServicePort)
-            .WithEnvironment("DASHBOARD__RESOURCESERVICECLIENT__AUTHMODE", "Unsecured")
-            .PublishAsDockerComposeService((_, service) =>
-            {
-                service.Name = "dashboard";
-                service.Restart = "unless-stopped";
-                BindServicePortToLoopback(service, dashboardPort, 18888);
-            });
-    });
 
     var postgres = builder.AddPostgres("postgres", postgresUser, postgresPassword, port: postgresPort)
         .WithImageTag(postgresImageTag)
@@ -142,7 +122,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         .WaitFor(redis)
         .WithEnvironment("ASPNETCORE_URLS", "http://+:8080")
         .WithEnvironment("DOTNET_ENVIRONMENT", "Production")
-        .WithEnvironment("OTEL_EXPORTER_OTLP_ENDPOINT", "http://dashboard:18889")
+        .WithEnvironment("OTEL_EXPORTER_OTLP_ENDPOINT", "http://apphost-monitor:18889")
         .WithEnvironment("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
         .WithEnvironment("Redis__ConnectionString", ReferenceExpression.Create($"redis:6379,password={redisPassword}"))
         .WithEnvironment("ConnectionStrings__Redis", ReferenceExpression.Create($"redis:6379,password={redisPassword}"))
@@ -164,13 +144,21 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         .WaitFor(postgres)
         .WaitFor(postgresDb)
         .WaitFor(redis)
-        .WithEnvironment("ASPNETCORE_URLS", "http://+:17100")
+        .WithEnvironment("ASPNETCORE_URLS", "http://0.0.0.0:17100")
         .WithEnvironment("DOTNET_ENVIRONMENT", "Production")
         .WithEnvironment("LIES_APPHOST_MONITOR_MODE", "true")
         .WithEnvironment("ASPIRE_ALLOW_UNSECURED_TRANSPORT", "true")
         .WithEnvironment("ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS", "true")
-        .WithEnvironment("ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL", "http://+:18889")
-        .WithEnvironment("DOTNET_RESOURCE_SERVICE_ENDPOINT_URL", "http://+:" + resourceServicePort)
+        .WithEnvironment("ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL", "http://0.0.0.0:18889")
+        .WithEnvironment("DOTNET_RESOURCE_SERVICE_ENDPOINT_URL", "http://127.0.0.1:" + resourceServicePort)
+        .WithEnvironment(
+            "Monitoring__PostgresConnectionString",
+            ReferenceExpression.Create(
+                $"Host=postgres;Port=5432;Database={postgresDbName};Username={postgresUser};Password={postgresPassword}"))
+        .WithEnvironment(
+            "Monitoring__RedisConnectionString",
+            ReferenceExpression.Create($"redis:6379,password={redisPassword}"))
+        .WithEndpoint(targetPort: 17100, port: dashboardPort, scheme: "http", name: "dashboard", isExternal: true)
         .WithEnvironment("Monitoring__ServerUrl", "http://app:8080")
         .WithEnvironment("Monitoring__FrontendUrl", "http://app:8080")
         .WithEnvironment("Monitoring__PostgresUrl", "http://postgres:5432")
@@ -179,6 +167,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         {
             service.Name = "apphost-monitor";
             service.Restart = "unless-stopped";
+            BindServicePortToLoopback(service, dashboardPort, 17100);
         });
 }
 
@@ -208,11 +197,21 @@ static void ConfigureDeploymentMonitoring(IDistributedApplicationBuilder builder
         healthChecks.AddRedis(redisConnectionString, name: "redis");
     }
 
-    builder.AddExternalService("postgres", GetUriConfig(builder, "Monitoring:PostgresUrl", "http://postgres:5432"))
-        .WithHealthCheck("postgres");
+    var postgresService = builder.AddExternalService(
+        "postgres",
+        GetUriConfig(builder, "Monitoring:PostgresUrl", "http://postgres:5432"));
+    if (!string.IsNullOrWhiteSpace(postgresConnectionString))
+    {
+        postgresService.WithHealthCheck("postgres");
+    }
 
-    builder.AddExternalService("redis", GetUriConfig(builder, "Monitoring:RedisUrl", "http://redis:6379"))
-        .WithHealthCheck("redis");
+    var redisService = builder.AddExternalService(
+        "redis",
+        GetUriConfig(builder, "Monitoring:RedisUrl", "http://redis:6379"));
+    if (!string.IsNullOrWhiteSpace(redisConnectionString))
+    {
+        redisService.WithHealthCheck("redis");
+    }
 
     builder.AddExternalService("server", GetUriConfig(builder, "Monitoring:ServerUrl", "http://app:8080"))
         .WithHttpHealthCheck("/health");

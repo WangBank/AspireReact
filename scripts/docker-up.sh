@@ -44,20 +44,21 @@ show_compose_diagnostics() {
   echo "Current compose status:"
   docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" ps -a || true
 
-  for service in app dashboard postgres; do
+  for service in app apphost-monitor postgres; do
     echo
     echo "Recent logs for $service:"
     docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" logs --tail 80 "$service" || true
   done
 }
 
-RECREATED_SERVICES=(app apphost-monitor dashboard)
+CLEANUP_SERVICES=(app apphost-monitor dashboard)
+REQUIRED_SERVICES=(app apphost-monitor)
 if [[ -n "$APPHOST_COMPOSE_FILE" ]]; then
-  recreate_compose_services_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${RECREATED_SERVICES[@]}"
+  recreate_compose_services_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${CLEANUP_SERVICES[@]}"
 fi
-recreate_compose_services_if_present "legacy compose" "$ROOT_DIR/docker-compose.yml" "$ENV_FILE" "${RECREATED_SERVICES[@]}"
+recreate_compose_services_if_present "legacy compose" "$ROOT_DIR/docker-compose.yml" "$ENV_FILE" "${CLEANUP_SERVICES[@]}"
 
-if ! docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" up -d --build "${RECREATED_SERVICES[@]}"; then
+if ! docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" up -d --build "${REQUIRED_SERVICES[@]}"; then
   echo
   echo "docker compose up failed."
   echo "Collecting compose diagnostics..."

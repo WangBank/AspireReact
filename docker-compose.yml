@@ -1,19 +1,4 @@
 services:
-  dashboard:
-    image: ${ASPIRE_DASHBOARD_IMAGE:-mcr.microsoft.com/dotnet/aspire-dashboard:latest}
-    restart: unless-stopped
-    environment:
-      DASHBOARD__FRONTEND__AUTHMODE: Unsecured
-      ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
-      DASHBOARD__OTLP__AUTHMODE: Unsecured
-      DASHBOARD__OTLP__SUPPRESSUNSECUREDMESSAGE: "true"
-      ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL: http://apphost-monitor:20252
-      DOTNET_RESOURCE_SERVICE_ENDPOINT_URL: http://apphost-monitor:20252
-      DASHBOARD__RESOURCESERVICECLIENT__URL: http://apphost-monitor:20252
-      DASHBOARD__RESOURCESERVICECLIENT__AUTHMODE: Unsecured
-    ports:
-      - "${ASPIRE_DASHBOARD_BIND_HOST:-127.0.0.1}:${ASPIRE_DASHBOARD_PORT:-18888}:18888"
-
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:latest}
     restart: unless-stopped
@@ -50,12 +35,12 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     depends_on:
-      dashboard:
-        condition: service_started
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      apphost-monitor:
+        condition: service_started
     environment:
       ASPNETCORE_URLS: http://+:8080
       DOTNET_ENVIRONMENT: Production
@@ -64,7 +49,7 @@ services:
       Jwt__Secret: ${JWT_SECRET:-8Zk9pQ2sX7gR5tU4jB6vN2mD8aF1cH3kL0zP5qW7eS2dF9gH4jK6lA8}
       Jwt__Issuer: ${JWT_ISSUER:-Lies.Server}
       Jwt__Audience: ${JWT_AUDIENCE:-Lies.Client}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://dashboard:18889
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://apphost-monitor:18889
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       RapidOcr__ModelsDirectory: /app/RuntimeData/RapidOcr
       RapidOcr__FontPath: /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
@@ -87,19 +72,23 @@ services:
       redis:
         condition: service_healthy
     environment:
-      ASPNETCORE_URLS: http://+:17100
+      ASPNETCORE_URLS: http://0.0.0.0:17100
       DOTNET_ENVIRONMENT: Production
       LIES_APPHOST_MONITOR_MODE: "true"
       ASPIRE_ALLOW_UNSECURED_TRANSPORT: "true"
       ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
-      ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL: http://+:18889
-      DOTNET_RESOURCE_SERVICE_ENDPOINT_URL: http://+:20252
+      ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL: http://0.0.0.0:18889
+      DOTNET_RESOURCE_SERVICE_ENDPOINT_URL: http://127.0.0.1:20252
+      Monitoring__PostgresConnectionString: Host=postgres;Port=5432;Database=${POSTGRES_DB:-lies};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres123}
+      Monitoring__RedisConnectionString: redis:6379
       ConnectionStrings__PostgreSQL: Host=postgres;Port=5432;Database=${POSTGRES_DB:-lies};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres123}
       ConnectionStrings__Redis: redis:6379
       Monitoring__ServerUrl: http://app:8080
       Monitoring__FrontendUrl: http://app:8080
       Monitoring__PostgresUrl: http://postgres:5432
       Monitoring__RedisUrl: http://redis:6379
+    ports:
+      - "${ASPIRE_DASHBOARD_BIND_HOST:-127.0.0.1}:${ASPIRE_DASHBOARD_PORT:-18888}:17100"
 
 volumes:
   postgres_data:

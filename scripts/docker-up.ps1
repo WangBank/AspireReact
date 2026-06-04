@@ -87,7 +87,7 @@ function Show-ComposeDiagnostics {
     Write-Host "Current compose status:"
     docker compose --env-file $EnvFile -f $ComposeFile ps -a
 
-    foreach ($service in @("app", "dashboard", "postgres")) {
+    foreach ($service in @("app", "apphost-monitor", "postgres")) {
         Write-Host ""
         Write-Host "Recent logs for ${service}:"
         docker compose --env-file $EnvFile -f $ComposeFile logs --tail 80 $service
@@ -110,15 +110,16 @@ if (-not (Test-Path $EnvFile)) {
     Write-Host "Created $EnvFile. Update passwords and ports if needed."
 }
 
-$recreatedServices = @("app", "apphost-monitor", "dashboard")
+$cleanupServices = @("app", "apphost-monitor", "dashboard")
+$requiredServices = @("app", "apphost-monitor")
 if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
-    Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $recreatedServices
+    Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $cleanupServices
 }
-Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $ComposeFile -EnvFile $EnvFile -Services $recreatedServices
+Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $ComposeFile -EnvFile $EnvFile -Services $cleanupServices
 
 try {
     Invoke-NativeCommand {
-        docker compose --env-file $EnvFile -f $ComposeFile up -d --build app apphost-monitor dashboard
+        docker compose --env-file $EnvFile -f $ComposeFile up -d --build $requiredServices
     } "docker compose up failed."
 }
 catch {
