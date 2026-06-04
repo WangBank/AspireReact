@@ -3,11 +3,12 @@ services:
     image: ${ASPIRE_DASHBOARD_IMAGE:-mcr.microsoft.com/dotnet/aspire-dashboard:latest}
     restart: unless-stopped
     environment:
-      DASHBOARD__FRONTEND__AUTHMODE: BrowserToken
-      DASHBOARD__FRONTEND__BROWSERTOKEN: ${ASPIRE_DASHBOARD_FRONTEND_TOKEN:-lies-dashboard-local}
+      DASHBOARD__FRONTEND__AUTHMODE: Unsecured
+      ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
       DASHBOARD__OTLP__AUTHMODE: Unsecured
       DASHBOARD__OTLP__SUPPRESSUNSECUREDMESSAGE: "true"
       ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL: http://apphost-monitor:20252
+      DOTNET_RESOURCE_SERVICE_ENDPOINT_URL: http://apphost-monitor:20252
       DASHBOARD__RESOURCESERVICECLIENT__URL: http://apphost-monitor:20252
       DASHBOARD__RESOURCESERVICECLIENT__AUTHMODE: Unsecured
     ports:

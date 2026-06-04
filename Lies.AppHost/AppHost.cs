@@ -74,12 +74,6 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         publishValueAsDefault: true,
         secret: false);
 
-    var dashboardToken = builder.AddParameter(
-        "dashboardToken",
-        GetConfig(builder, "Parameters:dashboardToken", "lies-dashboard-local"),
-        publishValueAsDefault: true,
-        secret: false);
-
     var postgresPassword = builder.AddParameterFromConfiguration(
             "postgresPassword",
             "Parameters:postgresPassword",
@@ -102,11 +96,12 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
     {
         dashboard
             .WithHostPort(dashboardPort)
-            .WithEnvironment("DASHBOARD__FRONTEND__AUTHMODE", "BrowserToken")
-            .WithEnvironment("DASHBOARD__FRONTEND__BROWSERTOKEN", dashboardToken)
+            .WithEnvironment("DASHBOARD__FRONTEND__AUTHMODE", "Unsecured")
+            .WithEnvironment("ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS", "true")
             .WithEnvironment("DASHBOARD__OTLP__AUTHMODE", "Unsecured")
             .WithEnvironment("DASHBOARD__OTLP__SUPPRESSUNSECUREDMESSAGE", "true")
             .WithEnvironment("ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL", "http://apphost-monitor:" + resourceServicePort)
+            .WithEnvironment("DOTNET_RESOURCE_SERVICE_ENDPOINT_URL", "http://apphost-monitor:" + resourceServicePort)
             .WithEnvironment("DASHBOARD__RESOURCESERVICECLIENT__URL", "http://apphost-monitor:" + resourceServicePort)
             .WithEnvironment("DASHBOARD__RESOURCESERVICECLIENT__AUTHMODE", "Unsecured")
             .PublishAsDockerComposeService((_, service) =>

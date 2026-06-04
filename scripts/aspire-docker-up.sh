@@ -72,7 +72,7 @@ echo
 echo "Aspire Docker deployment is up."
 echo "App URL: http://localhost:${Deployment__Docker__AppPort:-5516}"
 if [[ "${Deployment__Docker__DashboardPort:-18888}" != "0" ]]; then
-  echo "Aspire Dashboard: http://localhost:${Deployment__Docker__DashboardPort:-18888}/login?t=${Parameters__dashboardToken:-lies-dashboard-local}"
+  echo "Aspire Dashboard: http://localhost:${Deployment__Docker__DashboardPort:-18888}"
 fi
 echo "Artifacts: $OUTPUT_DIR"
 echo "Stop with: aspire destroy --apphost \"$APPHOST_PROJECT\" --output-path \"$OUTPUT_DIR\" --non-interactive"

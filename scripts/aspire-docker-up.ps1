@@ -146,16 +146,11 @@ if ([string]::IsNullOrWhiteSpace($DashboardPort)) {
     $DashboardPort = "18888"
 }
 
-$DashboardToken = [System.Environment]::GetEnvironmentVariable("Parameters__dashboardToken", "Process")
-if ([string]::IsNullOrWhiteSpace($DashboardToken)) {
-    $DashboardToken = "lies-dashboard-local"
-}
-
 Write-Host ""
 Write-Host "Aspire Docker deployment is up."
 Write-Host "App URL: http://localhost:$AppPort"
 if ($DashboardPort -ne "0") {
-    Write-Host "Aspire Dashboard: http://localhost:$DashboardPort/login?t=$DashboardToken"
+    Write-Host "Aspire Dashboard: http://localhost:$DashboardPort"
 }
 Write-Host "Artifacts: $OutputDir"
 Write-Host "Stop with: aspire destroy --apphost '$AppHostProject' --output-path '$OutputDir' --non-interactive"

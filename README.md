@@ -167,15 +167,14 @@ http://localhost:5516
 手写 `docker-compose.yml` 这条链路还会额外启动一个仅本机可访问的 Aspire Dashboard：
 
 ```text
-http://localhost:18888/login?t=lies-dashboard-local
+http://localhost:18888
 ```
 
-默认端口和 token 可在 `.env.docker` 中调整：
+默认端口可在 `.env.docker` 中调整：
 
 ```env
 ASPIRE_DASHBOARD_BIND_HOST=127.0.0.1
 ASPIRE_DASHBOARD_PORT=18888
-ASPIRE_DASHBOARD_FRONTEND_TOKEN=lies-dashboard-local
 ```
 
 当前这套 Dashboard 会额外启动一个 `apphost-monitor` 资源服务，用来把部署态的 `postgres`、`redis`、`server`、`webfrontend` 资源树接回 Aspire Dashboard。
