@@ -28,6 +28,13 @@ const isStandaloneDisplayMode = () =>
   window.matchMedia('(display-mode: standalone)').matches
   || ((window.navigator as Navigator & { standalone?: boolean }).standalone ?? false);
 const isIosDevice = () => /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+const isInstallPromptSupported = () => 'BeforeInstallPromptEvent' in window;
+
+interface InstallGuideContent {
+  title: string;
+  description: string;
+  steps: string[];
+}
 
 const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const { authStore } = useStore();
@@ -36,6 +43,8 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [installHint, setInstallHint] = useState('');
+  const [installGuide, setInstallGuide] = useState<InstallGuideContent | null>(null);
+  const [installCopyNotice, setInstallCopyNotice] = useState('');
   const [isStandaloneApp, setIsStandaloneApp] = useState(() => isStandaloneDisplayMode());
   const [isIosInstallTarget] = useState(() => isIosDevice());
   const isEntryRoute = location.pathname.startsWith('/entry');
@@ -69,6 +78,18 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
   }, [location.pathname]);
 
   useEffect(() => {
+    if (!installCopyNotice) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setInstallCopyNotice('');
+    }, 2400);
+
+    return () => window.clearTimeout(timer);
+  }, [installCopyNotice]);
+
+  useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
       const promptEvent = event as BeforeInstallPromptEvent;
       promptEvent.preventDefault();
@@ -98,6 +119,40 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
+  const openInstallGuide = useCallback((content: InstallGuideContent) => {
+    setInstallGuide(content);
+    setInstallCopyNotice('');
+    setMobileMenuOpen(false);
+  }, []);
+
+  const closeInstallGuide = useCallback(() => {
+    setInstallGuide(null);
+  }, []);
+
+  const copyInstallLink = useCallback(async () => {
+    const url = window.location.href;
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const input = document.createElement('textarea');
+        input.value = url;
+        input.setAttribute('readonly', 'true');
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+      }
+
+      setInstallCopyNotice('当前地址已复制，可以去 Chrome / Edge / Safari 里打开安装。');
+    } catch {
+      setInstallCopyNotice(`复制失败，请手动复制当前地址：${url}`);
+    }
+  }, []);
+
   const handleInstallApp = useCallback(async () => {
     if (isStandaloneApp) {
       setInstallHint('应用已经安装好了。');
@@ -118,12 +173,41 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
     }
 
     if (isIosInstallTarget) {
-      setInstallHint('iPhone 或 iPad 请点浏览器分享按钮，再选择“添加到主屏幕”。');
+      openInstallGuide({
+        title: '请从 Safari 添加到主屏幕',
+        description: 'iPhone 或 iPad 上通常不会弹出单独的安装窗口，需要从浏览器菜单手动添加。',
+        steps: [
+          '在 Safari 里打开当前地址。',
+          '点击底部或顶部的“分享”按钮。',
+          '选择“添加到主屏幕”，确认后即可像原生应用一样打开。',
+        ],
+      });
       return;
     }
 
-    setInstallHint('当前环境还没触发安装提示，请尽量用 HTTPS 域名或构建后的站点访问。');
-  }, [installPromptEvent, isIosInstallTarget, isStandaloneApp]);
+    if (window.isSecureContext && isInstallPromptSupported()) {
+      openInstallGuide({
+        title: '当前浏览器没有弹出安装窗口',
+        description: '这通常发生在嵌入式浏览器、受限 WebView，或者浏览器暂时没有把当前站点判断为可安装时。',
+        steps: [
+          '先复制当前地址。',
+          '再用系统 Chrome 或 Edge 打开这个地址。',
+          '从地址栏右侧或浏览器菜单里选择“安装应用”或“添加到桌面”。',
+        ],
+      });
+      return;
+    }
+
+    openInstallGuide({
+      title: '当前环境不支持直接安装',
+      description: '像 Codex 内置浏览器这类嵌入式浏览器，通常不会触发 PWA 的系统安装提示，所以看起来会像“没反应”。',
+      steps: [
+        '先复制当前地址。',
+        '再用系统 Chrome、Edge 或 Safari 打开这个地址。',
+        '在浏览器菜单里选择“安装应用”或“添加到主屏幕”。',
+      ],
+    });
+  }, [installPromptEvent, isIosInstallTarget, isStandaloneApp, openInstallGuide]);
 
   const avatarLetter = (authStore.username ?? '?').charAt(0).toUpperCase();
 
@@ -327,6 +411,70 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
       </aside>
 
       {installHint && <div className="navbar-install-hint">{installHint}</div>}
+
+      {installGuide && (
+        <>
+          <button
+            type="button"
+            className="install-guide-backdrop"
+            aria-label="关闭安装说明"
+            onClick={closeInstallGuide}
+          />
+          <section
+            className="install-guide-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="install-guide-title"
+          >
+            <div className="install-guide-modal__header">
+              <div>
+                <h2 id="install-guide-title" className="install-guide-modal__title">{installGuide.title}</h2>
+                <p className="install-guide-modal__desc">{installGuide.description}</p>
+              </div>
+              <button
+                type="button"
+                className="install-guide-modal__close"
+                onClick={closeInstallGuide}
+                aria-label="关闭安装说明"
+              >
+                ×
+              </button>
+            </div>
+
+            <ol className="install-guide-modal__steps">
+              {installGuide.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+
+            <div className="install-guide-modal__url">
+              <span className="install-guide-modal__url-label">当前地址</span>
+              <code className="install-guide-modal__url-value">{window.location.href}</code>
+            </div>
+
+            {installCopyNotice && (
+              <div className="install-guide-modal__notice">{installCopyNotice}</div>
+            )}
+
+            <div className="install-guide-modal__actions">
+              <button
+                type="button"
+                className="install-guide-modal__primary"
+                onClick={copyInstallLink}
+              >
+                复制当前地址
+              </button>
+              <button
+                type="button"
+                className="install-guide-modal__secondary"
+                onClick={closeInstallGuide}
+              >
+                我知道了
+              </button>
+            </div>
+          </section>
+        </>
+      )}
 
       <main className="layout-content">
         {children}
