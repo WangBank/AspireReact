@@ -42,7 +42,7 @@ function Get-FirstExistingPath {
     return $Paths | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 
-function Stop-ComposeStackIfPresent {
+function Recreate-ComposeServicesIfPresent {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Description,
@@ -50,25 +50,28 @@ function Stop-ComposeStackIfPresent {
         [Parameter(Mandatory = $true)]
         [string]$ComposeFile,
 
-        [string]$EnvFile
+        [string]$EnvFile,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Services
     )
 
     if (-not (Test-Path $ComposeFile)) {
         return
     }
 
-    Write-Host "Stopping existing $Description stack..."
+    Write-Host "Recreating existing $Description services: $($Services -join ', ')..."
 
     if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
         Invoke-BestEffortNativeCommand {
-            docker compose --env-file $EnvFile -f $ComposeFile down --remove-orphans
-        } "docker compose down for $Description"
+            docker compose --env-file $EnvFile -f $ComposeFile rm -f -s $Services
+        } "docker compose rm for $Description"
         return
     }
 
     Invoke-BestEffortNativeCommand {
-        docker compose -f $ComposeFile down --remove-orphans
-    } "docker compose down for $Description"
+        docker compose -f $ComposeFile rm -f -s $Services
+    } "docker compose rm for $Description"
 }
 
 function Show-ComposeDiagnostics {
@@ -107,14 +110,15 @@ if (-not (Test-Path $EnvFile)) {
     Write-Host "Created $EnvFile. Update passwords and ports if needed."
 }
 
+$recreatedServices = @("app", "apphost-monitor", "dashboard")
 if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
-    Stop-ComposeStackIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile
+    Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $recreatedServices
 }
-Stop-ComposeStackIfPresent -Description "legacy compose" -ComposeFile $ComposeFile -EnvFile $EnvFile
+Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $ComposeFile -EnvFile $EnvFile -Services $recreatedServices
 
 try {
     Invoke-NativeCommand {
-        docker compose --env-file $EnvFile -f $ComposeFile up -d --build
+        docker compose --env-file $EnvFile -f $ComposeFile up -d --build app apphost-monitor dashboard
     } "docker compose up failed."
 }
 catch {

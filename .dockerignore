@@ -11,6 +11,5 @@
 **/Logs
 **/RuntimeData
 
-Lies.AppHost
 frontend/.vite
 frontend/coverage

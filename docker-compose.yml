@@ -7,6 +7,9 @@ services:
       DASHBOARD__FRONTEND__BROWSERTOKEN: ${ASPIRE_DASHBOARD_FRONTEND_TOKEN:-lies-dashboard-local}
       DASHBOARD__OTLP__AUTHMODE: Unsecured
       DASHBOARD__OTLP__SUPPRESSUNSECUREDMESSAGE: "true"
+      ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL: http://apphost-monitor:20252
+      DASHBOARD__RESOURCESERVICECLIENT__URL: http://apphost-monitor:20252
+      DASHBOARD__RESOURCESERVICECLIENT__AUTHMODE: Unsecured
     ports:
       - "${ASPIRE_DASHBOARD_BIND_HOST:-127.0.0.1}:${ASPIRE_DASHBOARD_PORT:-18888}:18888"
 
@@ -70,6 +73,32 @@ services:
     volumes:
       - app_logs:/app/Logs
       - app_runtime:/app/RuntimeData
+
+  apphost-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: apphost-monitor
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_URLS: http://+:17100
+      DOTNET_ENVIRONMENT: Production
+      LIES_APPHOST_MONITOR_MODE: "true"
+      ASPIRE_ALLOW_UNSECURED_TRANSPORT: "true"
+      ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+      ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL: http://+:18889
+      DOTNET_RESOURCE_SERVICE_ENDPOINT_URL: http://+:20252
+      ConnectionStrings__PostgreSQL: Host=postgres;Port=5432;Database=${POSTGRES_DB:-lies};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres123}
+      ConnectionStrings__Redis: redis:6379
+      Monitoring__ServerUrl: http://app:8080
+      Monitoring__FrontendUrl: http://app:8080
+      Monitoring__PostgresUrl: http://postgres:5432
+      Monitoring__RedisUrl: http://redis:6379
 
 volumes:
   postgres_data:

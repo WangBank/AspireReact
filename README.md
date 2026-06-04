@@ -178,7 +178,7 @@ ASPIRE_DASHBOARD_PORT=18888
 ASPIRE_DASHBOARD_FRONTEND_TOKEN=lies-dashboard-local
 ```
 
-当前这套 Dashboard 主要用于查看 `Lies.Server` 的 OTLP 日志、Trace 和指标。
+当前这套 Dashboard 会额外启动一个 `apphost-monitor` 资源服务，用来把部署态的 `postgres`、`redis`、`server`、`webfrontend` 资源树接回 Aspire Dashboard。
 
 如果你想在本地开发时看完整资源视图（`postgres`、`redis`、`server`、`webfrontend` 的依赖与状态），请运行：
 
@@ -189,7 +189,8 @@ dotnet run --project Lies.AppHost
 说明：
 
 - `Lies.AppHost` 现在已经建模了 PostgreSQL、Redis、Server 和前端资源
-- 手写 `docker-compose.yml` 里的 standalone dashboard 仍然更偏向遥测面板
+- 部署态会通过 `apphost-monitor` 把资源状态同步到 Dashboard
+- `server` 和 `webfrontend` 在 Docker 部署里仍由同一个 `app` 容器承载，但 Dashboard 会按两个资源节点展示健康状态，方便和本地视图保持一致
 
 `.env.docker` 里可以单独指定 PostgreSQL 镜像，例如：
 
@@ -217,6 +218,7 @@ POSTGRES_IMAGE=postgres:latest
 
 ```bash
 docker compose --env-file .env.docker logs -f app
+docker compose --env-file .env.docker logs -f apphost-monitor
 docker compose --env-file .env.docker logs -f dashboard
 docker compose --env-file .env.docker down
 ```
@@ -290,9 +292,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\aspire-docker-up.ps1
 这条链路的特点：
 
 - 由 `Lies.AppHost` 生成 Docker Compose 产物，而不是手写维护资源关系
-- 发布态资源统一为 `dashboard`、`postgres`、`redis`、`app`
+- 发布态资源包括 `dashboard`、`apphost-monitor`、`postgres`、`redis`、`app`
 - `postgres`、`redis`、`dashboard` 默认都只绑定到 `127.0.0.1`
 - `app` 继续保持对外端口 `5516`
+- `apphost-monitor` 不对外暴露端口，只在 Docker 网络内给 Dashboard 提供资源服务
 - PostgreSQL `latest` 已按 18+ 规则改成 `/var/lib/postgresql` 数据卷挂载
 
 相关配置文件：

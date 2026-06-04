@@ -1,13 +1,25 @@
 using Aspire.Hosting;
+using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Docker;
 using Aspire.Hosting.Docker.Resources.ComposeNodes;
-using Aspire.Hosting.ApplicationModel;
+using Microsoft.Extensions.DependencyInjection;
 
-var builder = DistributedApplication.CreateBuilder(args);
+var appHostMonitorMode = IsTrue(Environment.GetEnvironmentVariable("LIES_APPHOST_MONITOR_MODE"));
+var disableBuiltInDashboard = IsTrue(Environment.GetEnvironmentVariable("LIES_APPHOST_DISABLE_DASHBOARD"));
+
+var builder = DistributedApplication.CreateBuilder(new DistributedApplicationOptions
+{
+    Args = args,
+    DisableDashboard = disableBuiltInDashboard
+});
 
 if (builder.ExecutionContext.IsPublishMode)
 {
     ConfigureDockerComposeDeployment(builder);
+}
+else if (appHostMonitorMode)
+{
+    ConfigureDeploymentMonitoring(builder);
 }
 else
 {
@@ -54,6 +66,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
     var postgresImageTag = GetConfig(builder, "Deployment:Docker:PostgresImageTag", "latest");
     var postgresDbName = GetConfig(builder, "Deployment:Docker:PostgresDatabase", "lies");
     var rapidOcrAutoDownloadModels = GetConfig(builder, "Deployment:Docker:RapidOcrAutoDownloadModels", "true");
+    const int resourceServicePort = 20252;
 
     var postgresUser = builder.AddParameter(
         "postgresUser",
@@ -93,6 +106,9 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
             .WithEnvironment("DASHBOARD__FRONTEND__BROWSERTOKEN", dashboardToken)
             .WithEnvironment("DASHBOARD__OTLP__AUTHMODE", "Unsecured")
             .WithEnvironment("DASHBOARD__OTLP__SUPPRESSUNSECUREDMESSAGE", "true")
+            .WithEnvironment("ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL", "http://apphost-monitor:" + resourceServicePort)
+            .WithEnvironment("DASHBOARD__RESOURCESERVICECLIENT__URL", "http://apphost-monitor:" + resourceServicePort)
+            .WithEnvironment("DASHBOARD__RESOURCESERVICECLIENT__AUTHMODE", "Unsecured")
             .PublishAsDockerComposeService((_, service) =>
             {
                 service.Name = "dashboard";
@@ -123,7 +139,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
             BindServicePortToLoopback(service, redisPort, 6379);
         });
 
-    builder.AddDockerfile("app", "..", "Dockerfile", "final")
+    var app = builder.AddDockerfile("app", "..", "Dockerfile", "final")
         .WithReference(postgresDb, "PostgreSQL")
         .WithReference(redis, "Redis")
         .WaitFor(postgres)
@@ -146,6 +162,68 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
             service.Name = "app";
             service.Restart = "unless-stopped";
         });
+
+    builder.AddDockerfile("apphost-monitor", "..", "Dockerfile", "apphost-monitor")
+        .WithReference(postgresDb, "PostgreSQL")
+        .WithReference(redis, "Redis")
+        .WaitFor(postgres)
+        .WaitFor(postgresDb)
+        .WaitFor(redis)
+        .WithEnvironment("ASPNETCORE_URLS", "http://+:17100")
+        .WithEnvironment("DOTNET_ENVIRONMENT", "Production")
+        .WithEnvironment("LIES_APPHOST_MONITOR_MODE", "true")
+        .WithEnvironment("ASPIRE_ALLOW_UNSECURED_TRANSPORT", "true")
+        .WithEnvironment("ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS", "true")
+        .WithEnvironment("ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL", "http://+:18889")
+        .WithEnvironment("DOTNET_RESOURCE_SERVICE_ENDPOINT_URL", "http://+:" + resourceServicePort)
+        .WithEnvironment("Monitoring__ServerUrl", "http://app:8080")
+        .WithEnvironment("Monitoring__FrontendUrl", "http://app:8080")
+        .WithEnvironment("Monitoring__PostgresUrl", "http://postgres:5432")
+        .WithEnvironment("Monitoring__RedisUrl", "http://redis:6379")
+        .PublishAsDockerComposeService((_, service) =>
+        {
+            service.Name = "apphost-monitor";
+            service.Restart = "unless-stopped";
+        });
+}
+
+static void ConfigureDeploymentMonitoring(IDistributedApplicationBuilder builder)
+{
+    var postgresConnectionString = GetOptionalConfig(
+        builder,
+        "Monitoring:PostgresConnectionString",
+        "ConnectionStrings:PostgreSQL",
+        "PostgreSQL");
+
+    var redisConnectionString = GetOptionalConfig(
+        builder,
+        "Monitoring:RedisConnectionString",
+        "ConnectionStrings:Redis",
+        "Redis");
+
+    var healthChecks = builder.Services.AddHealthChecks();
+
+    if (!string.IsNullOrWhiteSpace(postgresConnectionString))
+    {
+        healthChecks.AddNpgSql(postgresConnectionString, name: "postgres");
+    }
+
+    if (!string.IsNullOrWhiteSpace(redisConnectionString))
+    {
+        healthChecks.AddRedis(redisConnectionString, name: "redis");
+    }
+
+    builder.AddExternalService("postgres", GetUriConfig(builder, "Monitoring:PostgresUrl", "http://postgres:5432"))
+        .WithHealthCheck("postgres");
+
+    builder.AddExternalService("redis", GetUriConfig(builder, "Monitoring:RedisUrl", "http://redis:6379"))
+        .WithHealthCheck("redis");
+
+    builder.AddExternalService("server", GetUriConfig(builder, "Monitoring:ServerUrl", "http://app:8080"))
+        .WithHttpHealthCheck("/health");
+
+    builder.AddExternalService("webfrontend", GetUriConfig(builder, "Monitoring:FrontendUrl", "http://app:8080"))
+        .WithHttpHealthCheck("/");
 }
 
 static string GetConfig(IDistributedApplicationBuilder builder, string key, string defaultValue)
@@ -159,6 +237,20 @@ static int GetIntConfig(IDistributedApplicationBuilder builder, string key, int 
     return int.TryParse(builder.Configuration[key], out var value) ? value : defaultValue;
 }
 
+static string? GetOptionalConfig(IDistributedApplicationBuilder builder, params string[] keys)
+{
+    foreach (var key in keys)
+    {
+        var value = builder.Configuration[key];
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            return value.Trim();
+        }
+    }
+
+    return null;
+}
+
 static int? GetNullableIntConfig(IDistributedApplicationBuilder builder, string key, int defaultValue)
 {
     if (string.IsNullOrWhiteSpace(builder.Configuration[key]))
@@ -169,6 +261,17 @@ static int? GetNullableIntConfig(IDistributedApplicationBuilder builder, string 
     return int.TryParse(builder.Configuration[key], out var value) && value > 0
         ? value
         : null;
+}
+
+static Uri GetUriConfig(IDistributedApplicationBuilder builder, string key, string defaultValue)
+{
+    var value = GetConfig(builder, key, defaultValue);
+    if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+    {
+        return uri;
+    }
+
+    throw new InvalidOperationException($"配置项 {key} 不是合法的绝对 URL：{value}");
 }
 
 static void BindServicePortToLoopback(Service service, int? hostPort, int containerPort)
@@ -208,4 +311,13 @@ static string GetPostgresDataDirectory(string imageTag)
     return int.TryParse(majorPart, out var majorVersion) && majorVersion >= 18
         ? "/var/lib/postgresql"
         : "/var/lib/postgresql/data";
+}
+
+static bool IsTrue(string? value)
+{
+    return value is not null
+        && (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "1", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "on", StringComparison.OrdinalIgnoreCase));
 }

@@ -39,28 +39,31 @@ set +a
 
 mkdir -p "$OUTPUT_DIR"
 
-stop_compose_stack_if_present() {
+recreate_compose_services_if_present() {
   local description="$1"
   local compose_file="$2"
   local env_file="${3:-}"
+  shift 3
+  local services=("$@")
 
   [[ -f "$compose_file" ]] || return 0
 
-  echo "Stopping existing $description stack..."
+  echo "Recreating existing $description services: ${services[*]}..."
 
   if [[ -n "$env_file" && -f "$env_file" ]]; then
-    docker compose --env-file "$env_file" -f "$compose_file" down --remove-orphans || \
-      echo "Skipping cleanup issue: docker compose down for $description"
+    docker compose --env-file "$env_file" -f "$compose_file" rm -f -s "${services[@]}" || \
+      echo "Skipping cleanup issue: docker compose rm for $description"
     return 0
   fi
 
-  docker compose -f "$compose_file" down --remove-orphans || \
-    echo "Skipping cleanup issue: docker compose down for $description"
+  docker compose -f "$compose_file" rm -f -s "${services[@]}" || \
+    echo "Skipping cleanup issue: docker compose rm for $description"
 }
 
-stop_compose_stack_if_present "legacy compose" "$LEGACY_COMPOSE_FILE" "$LEGACY_ENV_FILE"
+RECREATED_SERVICES=(app apphost-monitor dashboard)
+recreate_compose_services_if_present "legacy compose" "$LEGACY_COMPOSE_FILE" "$LEGACY_ENV_FILE" "${RECREATED_SERVICES[@]}"
 if [[ -n "$APPHOST_COMPOSE_FILE" ]]; then
-  stop_compose_stack_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE"
+  recreate_compose_services_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${RECREATED_SERVICES[@]}"
 fi
 
 aspire deploy --apphost "$APPHOST_PROJECT" --output-path "$OUTPUT_DIR" --non-interactive

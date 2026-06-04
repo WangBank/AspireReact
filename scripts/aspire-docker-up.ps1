@@ -42,7 +42,7 @@ function Get-FirstExistingPath {
     return $Paths | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 
-function Stop-ComposeStackIfPresent {
+function Recreate-ComposeServicesIfPresent {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Description,
@@ -50,25 +50,28 @@ function Stop-ComposeStackIfPresent {
         [Parameter(Mandatory = $true)]
         [string]$ComposeFile,
 
-        [string]$EnvFile
+        [string]$EnvFile,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Services
     )
 
     if (-not (Test-Path $ComposeFile)) {
         return
     }
 
-    Write-Host "Stopping existing $Description stack..."
+    Write-Host "Recreating existing $Description services: $($Services -join ', ')..."
 
     if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
         Invoke-BestEffortNativeCommand {
-            docker compose --env-file $EnvFile -f $ComposeFile down --remove-orphans
-        } "docker compose down for $Description"
+            docker compose --env-file $EnvFile -f $ComposeFile rm -f -s $Services
+        } "docker compose rm for $Description"
         return
     }
 
     Invoke-BestEffortNativeCommand {
-        docker compose -f $ComposeFile down --remove-orphans
-    } "docker compose down for $Description"
+        docker compose -f $ComposeFile rm -f -s $Services
+    } "docker compose rm for $Description"
 }
 
 $RootDir = Split-Path -Parent $PSScriptRoot
@@ -112,9 +115,10 @@ Get-Content $EnvFile | ForEach-Object {
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-Stop-ComposeStackIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile
+$recreatedServices = @("app", "apphost-monitor", "dashboard")
+Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile -Services $recreatedServices
 if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
-    Stop-ComposeStackIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile
+    Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $recreatedServices
 }
 
 try {

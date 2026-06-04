@@ -16,6 +16,23 @@ RUN dotnet restore Lies.Server/Lies.Server.csproj
 COPY Lies.Server/ Lies.Server/
 RUN dotnet publish Lies.Server/Lies.Server.csproj -c Release -o /app/publish /p:UseAppHost=false
 
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS apphost-build
+WORKDIR /src
+
+COPY Lies.AppHost/Lies.AppHost.csproj Lies.AppHost/
+COPY Lies.Server/Lies.Server.csproj Lies.Server/
+RUN dotnet restore Lies.AppHost/Lies.AppHost.csproj
+
+COPY Lies.AppHost/ Lies.AppHost/
+COPY Lies.Server/ Lies.Server/
+RUN dotnet build Lies.AppHost/Lies.AppHost.csproj -c Release
+RUN mkdir -p /app/apphost \
+    && cp -a /src/Lies.AppHost/bin/Release/net10.0/. /app/apphost/
+RUN set -eux; \
+    mkdir -p /app/nuget-packages; \
+    cp -a /root/.nuget/packages/aspire.dashboard.sdk.linux-* /app/nuget-packages/; \
+    cp -a /root/.nuget/packages/aspire.hosting.orchestration.linux-* /app/nuget-packages/
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
@@ -48,3 +65,16 @@ RUN mkdir -p /app/Logs /app/RuntimeData/RapidOcr
 EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "Lies.Server.dll"]
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS apphost-monitor
+WORKDIR /app
+
+ENV ASPNETCORE_URLS=http://+:17100
+ENV DOTNET_ENVIRONMENT=Production
+ENV ASPIRE_ALLOW_UNSECURED_TRANSPORT=true
+ENV ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS=true
+
+COPY --from=apphost-build /app/apphost ./
+COPY --from=apphost-build /app/nuget-packages /root/.nuget/packages
+
+ENTRYPOINT ["dotnet", "Lies.AppHost.dll"]
