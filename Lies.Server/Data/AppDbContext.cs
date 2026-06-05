@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<PortfolioImportAudit> PortfolioImportAudits { get; set; }
     public DbSet<StockBasic> StockBasics { get; set; }
     public DbSet<User> Users { get; set; }
+    public DbSet<SystemSetting> SystemSettings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,13 +32,21 @@ public class AppDbContext : DbContext
             }
         }
 
-        modelBuilder.Entity<AccountDaily>().HasIndex(a => a.Date).IsUnique();
-        modelBuilder.Entity<BankFlow>().HasIndex(b => b.Date);
-        modelBuilder.Entity<StockTrade>().HasIndex(s => new { s.TradeDate, s.StockCode });
-        modelBuilder.Entity<TradeNote>().HasIndex(t => new { t.Date, t.StockCode });
+        modelBuilder.Entity<AccountDaily>()
+            .HasIndex(a => new { a.UserId, a.Date })
+            .IsUnique();
+        modelBuilder.Entity<BankFlow>()
+            .HasIndex(b => new { b.UserId, b.Date });
+        modelBuilder.Entity<StockTrade>()
+            .HasIndex(s => new { s.UserId, s.TradeDate, s.StockCode });
+        modelBuilder.Entity<TradeNote>()
+            .HasIndex(t => new { t.UserId, t.Date, t.StockCode });
+        modelBuilder.Entity<PortfolioImportAudit>()
+            .HasIndex(a => a.UserId);
         modelBuilder.Entity<PortfolioImportAudit>().HasIndex(a => a.CreatedAt);
         modelBuilder.Entity<PortfolioImportAudit>().HasIndex(a => a.ImportDate);
         modelBuilder.Entity<PortfolioImportAudit>().HasIndex(a => a.SaveStatus);
+        modelBuilder.Entity<SystemSetting>().HasIndex(s => s.SettingKey).IsUnique();
         
         // StockBasic 配置
         modelBuilder.Entity<StockBasic>()
@@ -55,5 +64,41 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<User>()
             .HasIndex(u => u.Email)
             .IsUnique();
+
+        modelBuilder.Entity<AccountDaily>()
+            .HasOne(a => a.User)
+            .WithMany(u => u.AccountDailies)
+            .HasForeignKey(a => a.UserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<BankFlow>()
+            .HasOne(b => b.User)
+            .WithMany(u => u.BankFlows)
+            .HasForeignKey(b => b.UserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<StockTrade>()
+            .HasOne(s => s.User)
+            .WithMany(u => u.StockTrades)
+            .HasForeignKey(s => s.UserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<TradeNote>()
+            .HasOne(t => t.User)
+            .WithMany(u => u.TradeNotes)
+            .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<PortfolioImportAudit>()
+            .HasOne(a => a.User)
+            .WithMany(u => u.PortfolioImportAudits)
+            .HasForeignKey(a => a.UserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<SystemSetting>()
+            .HasOne(s => s.UpdatedByUser)
+            .WithMany(u => u.UpdatedSystemSettings)
+            .HasForeignKey(s => s.UpdatedByUserId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

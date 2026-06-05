@@ -11,32 +11,32 @@ public interface IAccountService
     /// <summary>
     /// 新增当日账户资金
     /// </summary>
-    Task<AccountResult> CreateAsync(AccountDailyRequest request);
+    Task<AccountResult> CreateAsync(int userId, AccountDailyRequest request);
 
     /// <summary>
     /// 修改账户资金记录
     /// </summary>
-    Task<AccountResult> UpdateAsync(int id, AccountDailyRequest request);
+    Task<AccountResult> UpdateAsync(int userId, int id, AccountDailyRequest request);
 
     /// <summary>
     /// 删除账户资金记录
     /// </summary>
-    Task<AccountResult> DeleteAsync(int id);
+    Task<AccountResult> DeleteAsync(int userId, int id);
 
     /// <summary>
     /// 按日期范围查询账户资金
     /// </summary>
-    Task<List<AccountDailyResponse>> GetByDateRangeAsync(DateTime? startDate, DateTime? endDate);
+    Task<List<AccountDailyResponse>> GetByDateRangeAsync(int userId, DateTime? startDate, DateTime? endDate);
 
     /// <summary>
     /// 获取最新一条账户资金记录
     /// </summary>
-    Task<AccountDailyResponse?> GetLatestAsync();
+    Task<AccountDailyResponse?> GetLatestAsync(int userId);
 
     /// <summary>
     /// 根据 ID 获取账户资金记录
     /// </summary>
-    Task<AccountDailyResponse?> GetByIdAsync(int id);
+    Task<AccountDailyResponse?> GetByIdAsync(int userId, int id);
 }
 
 /// <summary>
@@ -46,5 +46,6 @@ public class AccountResult
 {
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
+    public string? ErrorCode { get; set; }
     public AccountDailyResponse? Data { get; set; }
 }

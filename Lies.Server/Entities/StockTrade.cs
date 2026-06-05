@@ -5,6 +5,8 @@ public enum TradeBoard { 主板, 创业板, 科创板, 北交所 }
 public class StockTrade
 {
     public int Id { get; set; }
+    public int? UserId { get; set; }
+    public User? User { get; set; }
     public DateTime TradeDate { get; set; }
     public string StockCode { get; set; } = string.Empty;
     public string StockName { get; set; } = string.Empty;

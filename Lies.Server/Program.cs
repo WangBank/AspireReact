@@ -1,12 +1,15 @@
 using Lies.Server.Data;
+using Lies.Server.Infrastructure;
 using Lies.Server.Middlewares;
 using Lies.Server.Services;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry;
 using Serilog;
 using Serilog.Events;
 using Serilog.Sinks.OpenTelemetry;
+using System.Threading.RateLimiting;
 
 static OtlpProtocol ResolveOtlpProtocol(string? value)
 {
@@ -19,6 +22,111 @@ static OtlpProtocol ResolveOtlpProtocol(string? value)
     return OtlpProtocol.Grpc;
 }
 
+static string ResolveRateLimitIdentity(HttpContext context)
+{
+    var userId = context.Items["UserId"]?.ToString();
+    if (!string.IsNullOrWhiteSpace(userId))
+    {
+        return $"user:{userId}";
+    }
+
+    if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor))
+    {
+        var forwardedValue = forwardedFor.FirstOrDefault()?.Split(',').FirstOrDefault()?.Trim();
+        if (!string.IsNullOrWhiteSpace(forwardedValue))
+        {
+            return $"ip:{forwardedValue}";
+        }
+    }
+
+    if (context.Request.Headers.TryGetValue("X-Real-IP", out var realIp))
+    {
+        var realIpValue = realIp.FirstOrDefault()?.Trim();
+        if (!string.IsNullOrWhiteSpace(realIpValue))
+        {
+            return $"ip:{realIpValue}";
+        }
+    }
+
+    return $"ip:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+}
+
+static RateLimitPartition<string> CreateApiRateLimitPartition(HttpContext context)
+{
+    var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+    var identity = ResolveRateLimitIdentity(context);
+
+    return path switch
+    {
+        var p when p.StartsWith("/api/auth/captcha", StringComparison.OrdinalIgnoreCase)
+            => RateLimitPartition.GetFixedWindowLimiter(
+                $"{identity}:captcha",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 20,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                }),
+        var p when p.StartsWith("/api/auth/login", StringComparison.OrdinalIgnoreCase)
+                 || p.StartsWith("/api/auth/register", StringComparison.OrdinalIgnoreCase)
+            => RateLimitPartition.GetFixedWindowLimiter(
+                $"{identity}:auth-write",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                }),
+        var p when p.StartsWith("/api/portfolio-import/screenshot", StringComparison.OrdinalIgnoreCase)
+            => RateLimitPartition.GetFixedWindowLimiter(
+                $"{identity}:ocr",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 12,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                }),
+        var p when p.StartsWith("/api/stock/search", StringComparison.OrdinalIgnoreCase)
+            => RateLimitPartition.GetFixedWindowLimiter(
+                $"{identity}:stock-search",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 60,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                }),
+        var p when p.StartsWith("/api/admin/export/database", StringComparison.OrdinalIgnoreCase)
+            => RateLimitPartition.GetFixedWindowLimiter(
+                $"{identity}:admin-export",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 3,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                }),
+        _ => RateLimitPartition.GetFixedWindowLimiter(
+            $"{identity}:api-default",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 180,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0,
+                AutoReplenishment = true
+            })
+    };
+}
+
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .WriteTo.Console()
@@ -29,6 +137,9 @@ try
     Log.Information("正在启动 Lies.Server");
 
     var builder = WebApplication.CreateBuilder(args);
+    var webRootPath = builder.Environment.WebRootPath ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
+    Directory.CreateDirectory(webRootPath);
+    builder.WebHost.UseWebRoot(webRootPath);
 
     AuthConfig.ValidateJwtConfiguration(builder.Configuration);
 
@@ -127,16 +238,47 @@ try
     builder.Services.AddScoped<IStockSearchService, StockSearchService>();
     builder.Services.AddScoped<ICaptchaService, CaptchaService>();
     builder.Services.AddScoped<IAuthService, AuthService>();
+    builder.Services.AddScoped<IAdminService, AdminService>();
     builder.Services.AddScoped<IAccountService, AccountService>();
     builder.Services.AddScoped<IBankFlowService, BankFlowService>();
     builder.Services.AddScoped<IStockTradeService, StockTradeService>();
     builder.Services.AddScoped<ITradeNoteService, TradeNoteService>();
     builder.Services.AddScoped<IPortfolioScreenshotImportService, PortfolioScreenshotImportService>();
+    builder.Services.AddScoped<ISystemSettingService, SystemSettingService>();
+    builder.Services.AddScoped<ISensitiveWordService, SensitiveWordService>();
     builder.Services.AddScoped<IDataHealthService, DataHealthService>();
     builder.Services.AddScoped<IMarketIndexService, MarketIndexService>();
+    builder.Services.AddScoped<RequireAuthenticatedApiFilter>();
 
     // 添加控制器支持
-    builder.Services.AddControllers();
+    builder.Services.AddControllers(options =>
+    {
+        options.Filters.AddService<RequireAuthenticatedApiFilter>();
+    });
+
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.OnRejected = async (context, cancellationToken) =>
+        {
+            context.HttpContext.Response.ContentType = "application/json; charset=utf-8";
+            await context.HttpContext.Response.WriteAsJsonAsync(new
+            {
+                success = false,
+                message = "请求过于频繁，请稍后再试"
+            }, cancellationToken);
+        };
+
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        {
+            if (!httpContext.Request.Path.StartsWithSegments("/api"))
+            {
+                return RateLimitPartition.GetNoLimiter("non-api");
+            }
+
+            return CreateApiRateLimitPartition(httpContext);
+        });
+    });
 
     // 添加健康检查
     builder.Services.AddHealthChecks()
@@ -191,8 +333,26 @@ try
         app.MapOpenApi();
     }
 
+    app.UseRouting();
+
     // JWT 认证中间件
     app.UseJwtMiddleware();
+
+    app.Use(async (context, next) =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            context.Response.Headers["Cache-Control"] = "no-store, no-cache, max-age=0";
+            context.Response.Headers["Pragma"] = "no-cache";
+            context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            context.Response.Headers["Referrer-Policy"] = "no-referrer";
+            context.Response.Headers["X-Frame-Options"] = "DENY";
+        }
+
+        await next();
+    });
+
+    app.UseRateLimiter();
 
     // 映射控制器路由
     app.MapControllers();

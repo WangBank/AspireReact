@@ -27,6 +27,15 @@ public class User
     [Column("password_hash")]
     public string PasswordHash { get; set; } = string.Empty;
 
+    [Required]
+    [MaxLength(20)]
+    [Column("role")]
+    public string Role { get; set; } = "User";
+
+    [MaxLength(500)]
+    [Column("avatar_path")]
+    public string? AvatarPath { get; set; }
+
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -41,4 +50,6 @@ public class User
     public virtual ICollection<AccountDaily>? AccountDailies { get; set; }
     public virtual ICollection<BankFlow>? BankFlows { get; set; }
     public virtual ICollection<TradeNote>? TradeNotes { get; set; }
+    public virtual ICollection<PortfolioImportAudit>? PortfolioImportAudits { get; set; }
+    public virtual ICollection<SystemSetting>? UpdatedSystemSettings { get; set; }
 }

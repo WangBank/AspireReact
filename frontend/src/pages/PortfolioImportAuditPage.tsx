@@ -50,7 +50,11 @@ const getStatusLabel = (item: Pick<PortfolioImportAuditListItem, 'parseSuccess' 
   return '保存失败';
 };
 
-const PortfolioImportAuditPage = () => {
+interface PortfolioImportAuditPageProps {
+  embedded?: boolean;
+}
+
+const PortfolioImportAuditPage = ({ embedded = false }: PortfolioImportAuditPageProps) => {
   const initialAuditId = Number(new URLSearchParams(window.location.search).get('id') || 0);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
@@ -163,29 +167,31 @@ const PortfolioImportAuditPage = () => {
 
   return (
     <div className="pia-container">
-      <header className="pia-header">
-        <div>
-          <h1 className="pia-title">图片识别审计</h1>
-          <p className="pia-subtitle">这里只展示走过 OCR 导入的新记录。历史手工录入不会出现在这里，也不需要补原图。</p>
-        </div>
-        <button
-          type="button"
-          className="pia-refresh-btn"
-          onClick={() => {
-            void loadList();
-            setDetailRefreshNonce(value => value + 1);
-          }}
-          disabled={loading || detailLoading}
-        >
-          {loading ? '加载中...' : '刷新审计'}
-        </button>
-      </header>
+      {!embedded && (
+        <header className="pia-header">
+          <div>
+            <h1 className="pia-title">图片识别审计</h1>
+            <p className="pia-subtitle">这里只展示走过 OCR 导入的新记录。历史手工录入不会出现在这里，也不需要补原图。</p>
+          </div>
+          <button
+            type="button"
+            className="pia-refresh-btn"
+            onClick={() => {
+              void loadList();
+              setDetailRefreshNonce(value => value + 1);
+            }}
+            disabled={loading || detailLoading}
+          >
+            {loading ? '加载中...' : '刷新审计'}
+          </button>
+        </header>
+      )}
 
       <main className="pia-main">
         <section className="pia-list-panel">
           <div className="pia-info-banner">
             <strong>历史手工记录继续可用。</strong>
-            <span>之前手动录入的账户、银证和交易数据仍然会参与统计与体检；这个页面只负责回看后续图片识别链路。</span>
+            <span>之前手动录入的账户、银证和交易数据仍然会继续参与统计；这个页面只负责回看后续图片识别链路。</span>
           </div>
 
           <div className="pia-toolbar">
@@ -217,7 +223,7 @@ const PortfolioImportAuditPage = () => {
           {loading && items.length === 0 && !error ? (
             <div className="pia-empty">正在加载识别审计列表...</div>
           ) : items.length === 0 ? (
-            <div className="pia-empty">当前筛选条件下没有 OCR 审计记录。历史手工录入数据不在这里查看，可到数据体检页检查异常。</div>
+            <div className="pia-empty">当前筛选条件下没有 OCR 审计记录。历史手工录入数据不会出现在这里。</div>
           ) : (
             <>
               <div className="pia-list">

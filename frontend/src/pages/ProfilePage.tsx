@@ -1,16 +1,18 @@
 import { observer } from 'mobx-react-lite';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import './ProfilePage.css';
 
 const ProfilePage = observer(() => {
   const { authStore } = useStore();
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   // 个人信息表单
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
   const [profileSubmitting, setProfileSubmitting] = useState(false);
+  const [avatarSubmitting, setAvatarSubmitting] = useState(false);
 
   // 密码表单
   const [currentPassword, setCurrentPassword] = useState('');
@@ -75,6 +77,29 @@ const ProfilePage = observer(() => {
     }
   }, [currentPassword, newPassword, confirmPassword, authStore]);
 
+  const handleAvatarChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setProfileSuccess(null);
+    authStore.clearError();
+    setAvatarSubmitting(true);
+
+    try {
+      await authStore.uploadAvatar(file);
+      setProfileSuccess('头像更新成功');
+    } catch {
+      // 错误已在 store 中设置
+    } finally {
+      setAvatarSubmitting(false);
+      event.target.value = '';
+    }
+  }, [authStore]);
+
+  const avatarLetter = (authStore.username ?? authStore.profile?.username ?? '?').charAt(0).toUpperCase();
+
   if (!authStore.profile && !authStore.error) {
     return (
       <div className="profile-container">
@@ -121,6 +146,45 @@ const ProfilePage = observer(() => {
             <div className="profile-banner profile-banner--error">{authStore.error}</div>
           )}
           <form className="profile-form" onSubmit={handleUpdateProfile}>
+            <div className="profile-avatar-section">
+              <div className="profile-avatar-section__media">
+                {authStore.avatarUrl ? (
+                  <img
+                    className="profile-avatar-section__image"
+                    src={authStore.avatarUrl}
+                    alt={`${authStore.username ?? '用户'}头像`}
+                  />
+                ) : (
+                  <div className="profile-avatar-section__fallback">{avatarLetter}</div>
+                )}
+              </div>
+              <div className="profile-avatar-section__body">
+                <div className="profile-avatar-section__title-row">
+                  <span className="profile-avatar-section__title">头像</span>
+                  <span className={`profile-role-badge${authStore.isAdmin ? ' profile-role-badge--admin' : ''}`}>
+                    {authStore.isAdmin ? '管理员' : (authStore.role || '普通用户')}
+                  </span>
+                </div>
+                <p className="profile-avatar-section__desc">支持 PNG、JPG、JPEG、WebP，建议上传清晰的方形图片。</p>
+                <div className="profile-avatar-section__actions">
+                  <button
+                    className="profile-btn profile-btn--secondary"
+                    type="button"
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={avatarSubmitting}
+                  >
+                    {avatarSubmitting ? '上传中...' : '更换头像'}
+                  </button>
+                  <input
+                    ref={avatarInputRef}
+                    className="profile-avatar-section__input"
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    onChange={handleAvatarChange}
+                  />
+                </div>
+              </div>
+            </div>
             <div className="profile-field">
               <label className="profile-field__label">用户名</label>
               <input
@@ -141,6 +205,15 @@ const ProfilePage = observer(() => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+              />
+            </div>
+            <div className="profile-field">
+              <label className="profile-field__label">账户角色</label>
+              <input
+                className="profile-field__input profile-field__input--readonly"
+                type="text"
+                value={authStore.isAdmin ? 'Admin / 管理员' : (authStore.role || 'User / 普通用户')}
+                readOnly
               />
             </div>
             <div className="profile-field">

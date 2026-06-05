@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react';
-import reflectionSourceRaw from '../data/reflection-source.txt?raw';
+import { observer } from 'mobx-react-lite';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { reflectionService } from '../services/ReflectionService';
+import { useStore } from '../stores/StoreProvider';
 import './ReflectionPage.css';
 
 type ReflectionSectionId = 'tuiXue' | 'me' | 'xiaoming';
@@ -8,7 +11,6 @@ interface ReflectionSectionConfig {
   id: ReflectionSectionId;
   label: string;
   description: string;
-  placeholder: string;
 }
 
 interface ReflectionGroup {
@@ -16,13 +18,6 @@ interface ReflectionGroup {
   sentences: string[];
 }
 
-interface ReflectionStoredState {
-  notes: Record<ReflectionSectionId, string>;
-  savedAt: string;
-}
-
-const STORAGE_KEY = 'Lies-reflection-notes-v2';
-const LEGACY_STORAGE_KEY = 'Lies-reflection-notes-v1';
 const DATE_LINE_PATTERN = /^\d{4}-\d{2}-\d{2}(?: \d{2}:\d{2})?$/;
 const SENTENCE_PATTERN = /[^。！？；!?;]+[。！？；!?;]?/g;
 
@@ -30,43 +25,25 @@ const SECTIONS: ReflectionSectionConfig[] = [
   {
     id: 'tuiXue',
     label: '退学炒股',
-    description: '完整原文已经预置，按日期和句子整理，方便长期回看。',
-    placeholder: '支持继续手动补充或删改，每个日期下建议一行一句。',
+    description: '完整原文按日期与句子整理，方便一口气回看整段脉络。',
   },
   {
     id: 'me',
     label: '我',
-    description: '自动摘出偏向自我提醒和复盘的句子，方便单独聚焦自己。',
-    placeholder: '可以补充你自己的纪律、复盘结论和当天最该提醒自己的话。',
+    description: '过滤掉“小明”相关内容后，单独盯住更适合自我提醒的句子。',
   },
   {
     id: 'xiaoming',
     label: '小明',
-    description: '自动摘出包含“小明”的句子，单独盯住最容易诱发偏差的提醒。',
-    placeholder: '可以继续把你和“小明”的关键对话与提醒补进来。',
+    description: '把包含“小明”的句子拆出来，专门盯住最容易诱发心魔的对话。',
   },
 ];
 
 const DAILY_PROMPTS = [
-  '今天出手的理由，是否仍然站得住？',
-  '今天最大的偏离，是冲动、侥幸，还是执行不到位？',
-  '如果明天只保留一条纪律，我最该留下哪一句？',
+  '今天出手的理由，是否还能经得起明天复盘？',
+  '今天最明显的偏离，到底是冲动、侥幸，还是执行不到位？',
+  '如果只保留一句纪律带到明天，我最该留下哪一句？',
 ];
-
-const createEmptyNotes = (): Record<ReflectionSectionId, string> => ({
-  tuiXue: '',
-  me: '',
-  xiaoming: '',
-});
-
-const cloneNotes = (notes: Record<ReflectionSectionId, string>): Record<ReflectionSectionId, string> => ({
-  tuiXue: notes.tuiXue,
-  me: notes.me,
-  xiaoming: notes.xiaoming,
-});
-
-const isBlankNotes = (notes: Record<ReflectionSectionId, string>) =>
-  Object.values(notes).every((value) => value.trim().length === 0);
 
 const splitIntoSentences = (value: string) => {
   const normalized = value.replace(/\s+/g, ' ').trim();
@@ -133,157 +110,96 @@ const buildSectionText = (
     .filter(Boolean)
     .join('\n\n');
 
-const PRESET_GROUPS = parseReflectionText(reflectionSourceRaw);
-const PRESET_NOTES: Record<ReflectionSectionId, string> = {
-  tuiXue: buildSectionText(PRESET_GROUPS, () => true),
-  me: buildSectionText(PRESET_GROUPS, (sentence) => !sentence.includes('小明')),
-  xiaoming: buildSectionText(PRESET_GROUPS, (sentence) => sentence.includes('小明')),
-};
+const formatDateTime = (value: string | null) =>
+  value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '未记录';
 
-const readStoredState = (): ReflectionStoredState => {
-  if (typeof window === 'undefined') {
-    return {
-      notes: cloneNotes(PRESET_NOTES),
-      savedAt: '',
-    };
-  }
-
-  const currentRaw = window.localStorage.getItem(STORAGE_KEY);
-  if (currentRaw) {
-    try {
-      const parsed = JSON.parse(currentRaw) as {
-        notes?: Partial<Record<ReflectionSectionId, string>>;
-        savedAt?: string;
-      };
-
-      return {
-        notes: {
-          tuiXue: parsed.notes?.tuiXue ?? '',
-          me: parsed.notes?.me ?? '',
-          xiaoming: parsed.notes?.xiaoming ?? '',
-        },
-        savedAt: parsed.savedAt ?? '',
-      };
-    } catch {
-      return {
-        notes: cloneNotes(PRESET_NOTES),
-        savedAt: '',
-      };
-    }
-  }
-
-  const legacyRaw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-  if (!legacyRaw) {
-    return {
-      notes: cloneNotes(PRESET_NOTES),
-      savedAt: '',
-    };
-  }
-
-  try {
-    const parsed = JSON.parse(legacyRaw) as {
-      notes?: Partial<Record<ReflectionSectionId, string>>;
-      savedAt?: string;
-    };
-    const loadedNotes = {
-      tuiXue: parsed.notes?.tuiXue ?? '',
-      me: parsed.notes?.me ?? '',
-      xiaoming: parsed.notes?.xiaoming ?? '',
-    };
-
-    return {
-      notes: isBlankNotes(loadedNotes) ? cloneNotes(PRESET_NOTES) : loadedNotes,
-      savedAt: parsed.savedAt ?? '',
-    };
-  } catch {
-    return {
-      notes: cloneNotes(PRESET_NOTES),
-      savedAt: '',
-    };
-  }
-};
-
-const ReflectionPage = () => {
-  const [storedState, setStoredState] = useState<ReflectionStoredState>(() => readStoredState());
+const ReflectionPage = observer(() => {
+  const navigate = useNavigate();
+  const { authStore } = useStore();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-
-  const notes = storedState.notes;
-  const savedAt = storedState.savedAt;
-  const normalizedQuery = query.trim().toLowerCase();
+  const [content, setContent] = useState('');
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [updatedByUsername, setUpdatedByUsername] = useState<string | null>(null);
 
   useEffect(() => {
-    const nextSavedAt = new Date().toLocaleString('zh-CN', { hour12: false });
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        notes,
-        savedAt: nextSavedAt,
-      })
-    );
-    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    let active = true;
 
-    setStoredState((current) => ({
-      ...current,
-      savedAt: nextSavedAt,
-    }));
-  }, [notes]);
+    const load = async () => {
+      setLoading(true);
+      setError('');
 
-  const replaceNotes = (nextNotes: Record<ReflectionSectionId, string>) => {
-    setStoredState((current) => ({
-      ...current,
-      notes: cloneNotes(nextNotes),
-    }));
-  };
+      try {
+        const data = await reflectionService.getContent();
+        if (!active) {
+          return;
+        }
 
-  const updateSection = (id: ReflectionSectionId, value: string) => {
-    setStoredState((current) => ({
-      ...current,
-      notes: {
-        ...current.notes,
-        [id]: value,
-      },
-    }));
-  };
+        setContent(data.content || '');
+        setUpdatedAt(data.updatedAt);
+        setUpdatedByUsername(data.updatedByUsername);
+      } catch (err) {
+        if (active) {
+          setError(err instanceof Error ? err.message : '加载吾日三省吾身内容失败');
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
 
-  const clearSection = (id: ReflectionSectionId) => {
-    updateSection(id, '');
-  };
+    void load();
 
-  const restorePreset = () => {
-    replaceNotes(PRESET_NOTES);
-    setQuery('');
-  };
+    return () => {
+      active = false;
+    };
+  }, []);
 
-  const clearAll = () => {
-    replaceNotes(createEmptyNotes());
-    setQuery('');
-  };
+  const groups = useMemo(() => parseReflectionText(content), [content]);
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const sectionNotes = useMemo<Record<ReflectionSectionId, string>>(
+    () => ({
+      tuiXue: buildSectionText(groups, () => true),
+      me: buildSectionText(groups, (sentence) => !sentence.includes('小明')),
+      xiaoming: buildSectionText(groups, (sentence) => sentence.includes('小明')),
+    }),
+    [groups]
+  );
 
   return (
     <div className="reflection-container">
       <header className="reflection-header">
         <div>
           <h1 className="reflection-title">吾日三省吾身</h1>
-          <p className="reflection-subtitle">完整原文已内置，按日期和句子回看，尽量把情绪化交易扼杀在出手前。</p>
+          <p className="reflection-subtitle">内容由管理员统一维护，普通用户只读回看，专注把情绪化交易拦在出手前。</p>
         </div>
         <div className="reflection-header__actions">
           <div className="reflection-save-meta">
-            <span className="reflection-save-meta__label">本地最近保存</span>
-            <span className="reflection-save-meta__value">{savedAt || '已载入预置原文'}</span>
+            <span className="reflection-save-meta__label">最近维护</span>
+            <span className="reflection-save-meta__value">{formatDateTime(updatedAt)}</span>
+            <span className="reflection-save-meta__hint">
+              {updatedByUsername ? `维护人 ${updatedByUsername}` : '当前还没有记录维护人'}
+            </span>
           </div>
-          <button className="reflection-btn reflection-btn--secondary" onClick={restorePreset} type="button">
-            恢复预置原文
-          </button>
-          <button className="reflection-btn reflection-btn--secondary" onClick={clearAll} type="button">
-            清空当前编辑
-          </button>
+          {authStore.isAdmin && (
+            <button
+              className="reflection-btn reflection-btn--secondary"
+              onClick={() => navigate('/admin?tab=reflection')}
+              type="button"
+            >
+              去管理员后台维护
+            </button>
+          )}
         </div>
       </header>
 
       <section className="reflection-banner">
-        <p className="reflection-banner__title">已预置完整原文</p>
+        <p className="reflection-banner__title">只读回看模式</p>
         <p className="reflection-banner__text">
-          这里已经内置了完整文章，并按日期保留、按句拆开。你可以直接搜索、删改、补充，也可以随时一键恢复到预置版本。
+          这里展示的是管理员维护后的完整原文，页面会自动按日期分组、按句拆分，并保留搜索能力，方便长期复盘。
         </p>
       </section>
 
@@ -308,86 +224,87 @@ const ReflectionPage = () => {
         </label>
       </section>
 
-      <section className="reflection-grid">
-        {SECTIONS.map((section) => {
-          const previewGroups = parseReflectionText(notes[section.id]);
-          const totalSentenceCount = previewGroups.reduce((sum, group) => sum + group.sentences.length, 0);
-          const visibleGroups = previewGroups
-            .map((group) => ({
-              ...group,
-              sentences: normalizedQuery
-                ? group.sentences.filter((sentence) => sentence.toLowerCase().includes(normalizedQuery))
-                : group.sentences,
-            }))
-            .filter((group) => group.sentences.length > 0);
-          const visibleSentenceCount = visibleGroups.reduce((sum, group) => sum + group.sentences.length, 0);
+      {loading ? (
+        <div className="reflection-loading">正在加载内容...</div>
+      ) : error ? (
+        <div className="reflection-error">
+          <span>{error}</span>
+          <button
+            className="reflection-btn reflection-btn--secondary"
+            onClick={() => window.location.reload()}
+            type="button"
+          >
+            重试
+          </button>
+        </div>
+      ) : (
+        <section className="reflection-grid">
+          {SECTIONS.map((section) => {
+            const previewGroups = parseReflectionText(sectionNotes[section.id]);
+            const totalSentenceCount = previewGroups.reduce((sum, group) => sum + group.sentences.length, 0);
+            const visibleGroups = previewGroups
+              .map((group) => ({
+                ...group,
+                sentences: normalizedQuery
+                  ? group.sentences.filter((sentence) => sentence.toLowerCase().includes(normalizedQuery))
+                  : group.sentences,
+              }))
+              .filter((group) => group.sentences.length > 0);
+            const visibleSentenceCount = visibleGroups.reduce((sum, group) => sum + group.sentences.length, 0);
 
-          let visibleIndex = 0;
+            let visibleIndex = 0;
 
-          return (
-            <article className="reflection-card" key={section.id}>
-              <div className="reflection-card__header">
-                <div>
-                  <h2 className="reflection-card__title">{section.label}</h2>
-                  <p className="reflection-card__description">{section.description}</p>
-                </div>
-                <div className="reflection-card__meta">
-                  <span>{totalSentenceCount} 句</span>
-                  <button
-                    className="reflection-btn reflection-btn--ghost"
-                    onClick={() => clearSection(section.id)}
-                    type="button"
-                  >
-                    清空
-                  </button>
-                </div>
-              </div>
-
-              <textarea
-                className="reflection-card__textarea"
-                value={notes[section.id]}
-                onChange={(event) => updateSection(section.id, event.target.value)}
-                placeholder={section.placeholder}
-                rows={12}
-              />
-
-              <div className="reflection-card__preview">
-                <div className="reflection-card__preview-header">
-                  <span>按句预览</span>
-                  <span>
-                    {visibleSentenceCount} / {totalSentenceCount}
-                  </span>
-                </div>
-                {visibleGroups.length > 0 ? (
-                  <div className="reflection-card__line-list">
-                    {visibleGroups.map((group, groupIndex) => (
-                      <div className="reflection-card__group" key={`${section.id}-${groupIndex}-${group.date ?? 'default'}`}>
-                        {group.date ? <div className="reflection-card__date">{group.date}</div> : null}
-                        {group.sentences.map((sentence) => {
-                          visibleIndex += 1;
-
-                          return (
-                            <div className="reflection-card__line" key={`${section.id}-${groupIndex}-${visibleIndex}-${sentence}`}>
-                              <span className="reflection-card__line-index">{String(visibleIndex).padStart(2, '0')}</span>
-                              <span className="reflection-card__line-text">{sentence}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))}
+            return (
+              <article className="reflection-card" key={section.id}>
+                <div className="reflection-card__header">
+                  <div>
+                    <h2 className="reflection-card__title">{section.label}</h2>
+                    <p className="reflection-card__description">{section.description}</p>
                   </div>
-                ) : (
-                  <div className="reflection-card__empty">
-                    {totalSentenceCount === 0 ? '还没有整理内容。' : '没有匹配当前关键词的句子。'}
+                  <div className="reflection-card__meta">
+                    <span>{totalSentenceCount} 句</span>
+                    <span>{previewGroups.length} 组</span>
                   </div>
-                )}
-              </div>
-            </article>
-          );
-        })}
-      </section>
+                </div>
+
+                <div className="reflection-card__preview reflection-card__preview--read-only">
+                  <div className="reflection-card__preview-header">
+                    <span>按句预览</span>
+                    <span>
+                      {visibleSentenceCount} / {totalSentenceCount}
+                    </span>
+                  </div>
+                  {visibleGroups.length > 0 ? (
+                    <div className="reflection-card__line-list">
+                      {visibleGroups.map((group, groupIndex) => (
+                        <div className="reflection-card__group" key={`${section.id}-${groupIndex}-${group.date ?? 'default'}`}>
+                          {group.date ? <div className="reflection-card__date">{group.date}</div> : null}
+                          {group.sentences.map((sentence) => {
+                            visibleIndex += 1;
+
+                            return (
+                              <div className="reflection-card__line" key={`${section.id}-${groupIndex}-${visibleIndex}-${sentence}`}>
+                                <span className="reflection-card__line-index">{String(visibleIndex).padStart(2, '0')}</span>
+                                <span className="reflection-card__line-text">{sentence}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="reflection-card__empty">
+                      {totalSentenceCount === 0 ? '当前还没有维护内容。' : '没有匹配当前关键词的句子。'}
+                    </div>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      )}
     </div>
   );
-};
+});
 
 export default ReflectionPage;

@@ -8,19 +8,36 @@ namespace Lies.Server.Services;
 public class BankFlowService : IBankFlowService
 {
     private readonly AppDbContext _db;
+    private readonly ISensitiveWordService _sensitiveWordService;
 
-    public BankFlowService(AppDbContext db)
+    public BankFlowService(AppDbContext db, ISensitiveWordService sensitiveWordService)
     {
         _db = db;
+        _sensitiveWordService = sensitiveWordService;
     }
 
     /// <summary>
     /// 新增流水记录
     /// </summary>
-    public async Task<BankFlowResult> CreateAsync(BankFlowRequest request)
+    public async Task<BankFlowResult> CreateAsync(int userId, BankFlowRequest request)
     {
+        var validation = await _sensitiveWordService.ValidateAsync(
+        [
+            new SensitiveWordInput("银证备注", request.Remark)
+        ]);
+        if (!validation.IsValid)
+        {
+            return new BankFlowResult
+            {
+                Success = false,
+                Message = validation.Message,
+                ErrorCode = "validation"
+            };
+        }
+
         var entity = new BankFlow
         {
+            UserId = userId,
             Date = request.Date.Date,
             FlowType = request.FlowType,
             Amount = request.Amount,
@@ -42,15 +59,30 @@ public class BankFlowService : IBankFlowService
     /// <summary>
     /// 修改流水记录
     /// </summary>
-    public async Task<BankFlowResult> UpdateAsync(int id, BankFlowRequest request)
+    public async Task<BankFlowResult> UpdateAsync(int userId, int id, BankFlowRequest request)
     {
-        var entity = await _db.BankFlows.FindAsync(id);
+        var validation = await _sensitiveWordService.ValidateAsync(
+        [
+            new SensitiveWordInput("银证备注", request.Remark)
+        ]);
+        if (!validation.IsValid)
+        {
+            return new BankFlowResult
+            {
+                Success = false,
+                Message = validation.Message,
+                ErrorCode = "validation"
+            };
+        }
+
+        var entity = await _db.BankFlows.FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
         if (entity == null)
         {
             return new BankFlowResult
             {
                 Success = false,
-                Message = $"未找到 ID 为 {id} 的银证流水记录"
+                Message = $"未找到 ID 为 {id} 的银证流水记录",
+                ErrorCode = "not_found"
             };
         }
 
@@ -72,15 +104,16 @@ public class BankFlowService : IBankFlowService
     /// <summary>
     /// 删除流水记录
     /// </summary>
-    public async Task<BankFlowResult> DeleteAsync(int id)
+    public async Task<BankFlowResult> DeleteAsync(int userId, int id)
     {
-        var entity = await _db.BankFlows.FindAsync(id);
+        var entity = await _db.BankFlows.FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
         if (entity == null)
         {
             return new BankFlowResult
             {
                 Success = false,
-                Message = $"未找到 ID 为 {id} 的银证流水记录"
+                Message = $"未找到 ID 为 {id} 的银证流水记录",
+                ErrorCode = "not_found"
             };
         }
 
@@ -97,9 +130,11 @@ public class BankFlowService : IBankFlowService
     /// <summary>
     /// 按日期范围查询流水
     /// </summary>
-    public async Task<List<BankFlowResponse>> GetByDateRangeAsync(DateTime? startDate, DateTime? endDate)
+    public async Task<List<BankFlowResponse>> GetByDateRangeAsync(int userId, DateTime? startDate, DateTime? endDate)
     {
-        var query = _db.BankFlows.AsNoTracking();
+        var query = _db.BankFlows
+            .AsNoTracking()
+            .Where(item => item.UserId == userId);
 
         if (startDate.HasValue)
         {
@@ -124,10 +159,11 @@ public class BankFlowService : IBankFlowService
     /// <summary>
     /// 获取最近10条流水
     /// </summary>
-    public async Task<List<BankFlowResponse>> GetRecentAsync()
+    public async Task<List<BankFlowResponse>> GetRecentAsync(int userId)
     {
         var list = await _db.BankFlows
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .OrderByDescending(b => b.CreatedAt)
             .Take(10)
             .ToListAsync();
@@ -138,11 +174,11 @@ public class BankFlowService : IBankFlowService
     /// <summary>
     /// 根据 ID 获取银证流水记录
     /// </summary>
-    public async Task<BankFlowResponse?> GetByIdAsync(int id)
+    public async Task<BankFlowResponse?> GetByIdAsync(int userId, int id)
     {
         var entity = await _db.BankFlows
             .AsNoTracking()
-            .FirstOrDefaultAsync(b => b.Id == id);
+            .FirstOrDefaultAsync(b => b.Id == id && b.UserId == userId);
 
         return entity == null ? null : ToResponse(entity);
     }

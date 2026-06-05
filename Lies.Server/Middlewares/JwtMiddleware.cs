@@ -1,5 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text.Json;
+using Lies.Server.Infrastructure;
 using Lies.Server.Services;
 using Microsoft.IdentityModel.Tokens;
 
@@ -7,6 +9,15 @@ namespace Lies.Server.Middlewares;
 
 public class JwtMiddleware
 {
+    private static readonly string[] AdminAllowedApiPrefixes =
+    [
+        "/api/admin",
+        "/api/auth",
+        "/api/config",
+        "/api/stock/cache",
+        "/api/portfolio-import/audits"
+    ];
+
     private readonly RequestDelegate _next;
     private readonly IConfiguration _configuration;
     private readonly ILogger<JwtMiddleware> _logger;
@@ -27,7 +38,47 @@ public class JwtMiddleware
             await AttachUserToContext(context, token);
         }
 
+        if (ShouldBlockAdminBusinessRequest(context))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "application/json; charset=utf-8";
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new
+            {
+                success = false,
+                message = "管理员账号仅可访问管理员后台，不提供首页、录入、列表、统计与笔记等业务数据。"
+            }));
+            return;
+        }
+
         await _next(context);
+    }
+
+    private static bool ShouldBlockAdminBusinessRequest(HttpContext context)
+    {
+        if (!string.Equals(context.Items["UserRole"]?.ToString(), "Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var path = context.Request.Path.Value;
+        if (string.IsNullOrWhiteSpace(path) || !path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (AdminAllowedApiPrefixes.Any(prefix =>
+            path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var endpoint = context.GetEndpoint();
+        if (endpoint?.Metadata.GetMetadata<RequireAdminUserAttribute>() is not null)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private static string? ExtractToken(HttpContext context)
@@ -78,11 +129,19 @@ public class JwtMiddleware
                     || c.Type == JwtRegisteredClaimNames.UniqueName
                     || c.Type == "unique_name"
                     || c.Type == "name");
+                var roleClaim = claims.FirstOrDefault(c =>
+                    c.Type == ClaimTypes.Role
+                    || c.Type == "role");
 
                 if (userIdClaim != null)
                     context.Items["UserId"] = userIdClaim.Value;
                 if (usernameClaim != null)
                     context.Items["Username"] = usernameClaim.Value;
+                if (roleClaim != null)
+                {
+                    context.Items["UserRole"] = roleClaim.Value;
+                    context.Items["IsAdmin"] = string.Equals(roleClaim.Value, "Admin", StringComparison.OrdinalIgnoreCase);
+                }
             }
         }
         catch (Exception ex)

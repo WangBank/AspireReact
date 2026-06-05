@@ -201,6 +201,7 @@ public class StockTradeResult
 {
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
+    public string? ErrorCode { get; set; }
     public StockTradeResponse? Data { get; set; }
 }
 

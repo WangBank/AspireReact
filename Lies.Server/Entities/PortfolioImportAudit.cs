@@ -3,6 +3,7 @@ namespace Lies.Server.Entities;
 public class PortfolioImportAudit
 {
     public int Id { get; set; }
+    public int? UserId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ImportDate { get; set; }
     public DateTime? RecognizedDate { get; set; }
@@ -27,4 +28,6 @@ public class PortfolioImportAudit
     public string? FinalPayloadJson { get; set; }
     public string? SaveErrorsJson { get; set; }
     public string? SaveMessage { get; set; }
+
+    public virtual User? User { get; set; }
 }

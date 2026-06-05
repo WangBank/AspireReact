@@ -3,9 +3,14 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../stores/StoreProvider';
 import './ConfigPage.css';
 
-const ConfigPage = observer(() => {
+interface ConfigPageProps {
+  embedded?: boolean;
+}
+
+const ConfigPage = observer(({ embedded = false }: ConfigPageProps) => {
   const { configStore } = useStore();
   const [inputValue, setInputValue] = useState('');
+  const [sensitiveWordsValue, setSensitiveWordsValue] = useState('');
 
   useEffect(() => {
     configStore.fetch();
@@ -18,28 +23,43 @@ const ConfigPage = observer(() => {
     }
   }, [configStore.tonghuashunLinkPrefix]);
 
+  useEffect(() => {
+    setSensitiveWordsValue(configStore.sensitiveWordsText);
+  }, [configStore.sensitiveWordsText]);
+
   const handleSave = async () => {
     const trimmed = inputValue.trim();
     if (!trimmed) return;
-    await configStore.updatePrefix(trimmed);
+    await configStore.updateSettings(trimmed, sensitiveWordsValue);
   };
 
   const handleClear = () => {
     setInputValue('');
   };
 
+  const handleClearSensitiveWords = () => {
+    setSensitiveWordsValue('');
+  };
+
   const previewUrl = inputValue.trim()
     ? `${inputValue.trim()}${inputValue.trim().endsWith('/') ? '' : '/'}000001/`
     : null;
+  const normalizedSensitiveWordCount = sensitiveWordsValue
+    .split(/[\r\n,，;；|]+/)
+    .map(item => item.trim())
+    .filter(Boolean)
+    .length;
 
   return (
     <div className="config-container">
-      <header className="config-header">
-        <div>
-          <h1 className="config-title">系统配置</h1>
-          <p className="config-subtitle">管理同花顺心魔详情页链接前缀</p>
-        </div>
-      </header>
+      {!embedded && (
+        <header className="config-header">
+          <div>
+            <h1 className="config-title">系统配置</h1>
+            <p className="config-subtitle">管理同花顺心魔详情页链接前缀</p>
+          </div>
+        </header>
+      )}
 
       <main className="config-main">
         {configStore.loading && !configStore.tonghuashunLinkPrefix && (
@@ -131,6 +151,69 @@ const ConfigPage = observer(() => {
               </a>
             </div>
           )}
+        </div>
+
+        <div className="config-card">
+          <p className="config-card-title">敏感词维护</p>
+
+          <div className="config-field">
+            <label>敏感词列表</label>
+            <div className="config-field-input" style={{ alignItems: 'stretch' }}>
+              <textarea
+                placeholder={'一行一个，或使用逗号分隔\n例如：傻逼\n他妈的'}
+                value={sensitiveWordsValue}
+                onChange={(e) => setSensitiveWordsValue(e.target.value)}
+                disabled={configStore.loading}
+                rows={10}
+                style={{
+                  width: '100%',
+                  minHeight: 220,
+                  resize: 'vertical',
+                  borderRadius: 14,
+                  border: '1px solid var(--border-color)',
+                  padding: '14px 16px',
+                  background: 'var(--panel-bg)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'inherit',
+                  fontSize: '0.95rem',
+                  lineHeight: 1.6,
+                }}
+              />
+            </div>
+            <p className="config-hint">
+              当前编辑中共 {normalizedSensitiveWordCount} 个敏感词，保存后会立即作用于注册、资料修改、备注、笔记和交易说明等文本字段。
+            </p>
+            {(configStore.sensitiveWordsUpdatedAt || configStore.sensitiveWordsUpdatedByUsername) && (
+              <p className="config-hint">
+                最近更新：
+                {configStore.sensitiveWordsUpdatedAt
+                  ? new Date(configStore.sensitiveWordsUpdatedAt).toLocaleString('zh-CN', { hour12: false })
+                  : '未记录'}
+                {configStore.sensitiveWordsUpdatedByUsername
+                  ? ` · ${configStore.sensitiveWordsUpdatedByUsername}`
+                  : ''}
+              </p>
+            )}
+            <div className="config-field-input">
+              <button
+                className="config-save-btn"
+                onClick={handleSave}
+                disabled={configStore.loading || !inputValue.trim()}
+                type="button"
+              >
+                {configStore.loading ? '保存中...' : '保存全部配置'}
+              </button>
+              <button
+                className="config-save-btn"
+                style={{ background: '#fff', color: '#374151', border: '1px solid #d1d5db' }}
+                onClick={handleClearSensitiveWords}
+                disabled={configStore.loading}
+                type="button"
+              >
+                清空敏感词
+              </button>
+            </div>
+          </div>
         </div>
       </main>
     </div>

@@ -2,24 +2,44 @@ const TOKEN_KEY = 'jwt_token';
 
 let memoryToken: string | null = null;
 
-const hasLocalStorage = () =>
-  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
-
 const hasSessionStorage = () =>
   typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
 
-const readStoredToken = (): string | null => {
+const hasLocalStorage = () =>
+  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+
+const clearLegacyLocalToken = () => {
   try {
-    const localToken = hasLocalStorage() ? window.localStorage.getItem(TOKEN_KEY) : null;
-    if (localToken) {
-      return localToken;
+    if (hasLocalStorage()) {
+      window.localStorage.removeItem(TOKEN_KEY);
     }
   } catch {
-    // Ignore and continue to sessionStorage fallback.
+    // 忽略旧版本地缓存清理失败。
+  }
+};
+
+const readStoredToken = (): string | null => {
+  try {
+    const sessionToken = hasSessionStorage() ? window.sessionStorage.getItem(TOKEN_KEY) : null;
+    if (sessionToken) {
+      return sessionToken;
+    }
+  } catch {
+    // Ignore and continue to legacy localStorage fallback.
   }
 
   try {
-    return hasSessionStorage() ? window.sessionStorage.getItem(TOKEN_KEY) : null;
+    const legacyLocalToken = hasLocalStorage() ? window.localStorage.getItem(TOKEN_KEY) : null;
+    if (!legacyLocalToken) {
+      return null;
+    }
+
+    if (hasSessionStorage()) {
+      window.sessionStorage.setItem(TOKEN_KEY, legacyLocalToken);
+    }
+
+    clearLegacyLocalToken();
+    return legacyLocalToken;
   } catch {
     return null;
   }
@@ -42,18 +62,6 @@ export const setAuthToken = (token: string | null) => {
   memoryToken = token;
 
   try {
-    if (hasLocalStorage()) {
-      if (token) {
-        window.localStorage.setItem(TOKEN_KEY, token);
-      } else {
-        window.localStorage.removeItem(TOKEN_KEY);
-      }
-    }
-  } catch {
-    // 保留内存态 token，避免当前会话因为持久存储不可用而丢失鉴权。
-  }
-
-  try {
     if (hasSessionStorage()) {
       if (token) {
         window.sessionStorage.setItem(TOKEN_KEY, token);
@@ -64,6 +72,8 @@ export const setAuthToken = (token: string | null) => {
   } catch {
     // 保留内存态 token，避免当前会话因为会话存储不可用而丢失鉴权。
   }
+
+  clearLegacyLocalToken();
 };
 
 export const hydrateAuthToken = () => {

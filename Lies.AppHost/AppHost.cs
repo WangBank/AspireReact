@@ -30,6 +30,13 @@ builder.Build().Run();
 
 static void ConfigureLocalDevelopment(IDistributedApplicationBuilder builder)
 {
+    var infrastructureMode = GetConfig(builder, "LocalDevelopment:InfrastructureMode", "external");
+    if (!string.Equals(infrastructureMode, "managed", StringComparison.OrdinalIgnoreCase))
+    {
+        ConfigureLocalDevelopmentWithExternalInfrastructure(builder);
+        return;
+    }
+
     var postgresImageTag = GetConfig(builder, "Deployment:Docker:PostgresImageTag", "latest");
     var postgresDbName = GetConfig(builder, "Deployment:Docker:PostgresDatabase", "lies");
     var appPort = GetIntConfig(builder, "Deployment:Docker:AppPort", 5516);
@@ -47,6 +54,65 @@ static void ConfigureLocalDevelopment(IDistributedApplicationBuilder builder)
         .WaitFor(redis)
         .WithHttpHealthCheck("/health")
         .WithExternalHttpEndpoints();
+
+    var webfrontend = builder.AddViteApp("webfrontend", "../frontend")
+        .WithEndpoint(port: appPort, scheme: "http")
+        .WithReference(server)
+        .WaitFor(server);
+
+    server.PublishWithContainerFiles(webfrontend, "wwwroot");
+}
+
+static void ConfigureLocalDevelopmentWithExternalInfrastructure(IDistributedApplicationBuilder builder)
+{
+    var appPort = GetIntConfig(builder, "Deployment:Docker:AppPort", 5516);
+    var postgresConnectionString = GetOptionalConfig(
+        builder,
+        "LocalDevelopment:PostgresConnectionString",
+        "ConnectionStrings:PostgreSQL",
+        "PostgreSQL");
+
+    var redisConnectionString = GetOptionalConfig(
+        builder,
+        "LocalDevelopment:RedisConnectionString",
+        "Redis:ConnectionString",
+        "ConnectionStrings:Redis",
+        "Redis");
+
+    var healthChecks = builder.Services.AddHealthChecks();
+
+    var postgresService = builder.AddExternalService(
+        "postgres",
+        GetUriConfig(builder, "LocalDevelopment:PostgresUrl", "http://127.0.0.1:5432"));
+    if (!string.IsNullOrWhiteSpace(postgresConnectionString))
+    {
+        healthChecks.AddNpgSql(postgresConnectionString, name: "postgres");
+        postgresService.WithHealthCheck("postgres");
+    }
+
+    var redisService = builder.AddExternalService(
+        "redis",
+        GetUriConfig(builder, "LocalDevelopment:RedisUrl", "http://127.0.0.1:6379"));
+    if (!string.IsNullOrWhiteSpace(redisConnectionString))
+    {
+        healthChecks.AddRedis(redisConnectionString, name: "redis");
+        redisService.WithHealthCheck("redis");
+    }
+
+    var server = builder.AddProject<Projects.Lies_Server>("server")
+        .WithHttpHealthCheck("/health")
+        .WithExternalHttpEndpoints();
+
+    if (!string.IsNullOrWhiteSpace(postgresConnectionString))
+    {
+        server.WithEnvironment("ConnectionStrings__PostgreSQL", postgresConnectionString);
+    }
+
+    if (!string.IsNullOrWhiteSpace(redisConnectionString))
+    {
+        server.WithEnvironment("Redis__ConnectionString", redisConnectionString);
+        server.WithEnvironment("ConnectionStrings__Redis", redisConnectionString);
+    }
 
     var webfrontend = builder.AddViteApp("webfrontend", "../frontend")
         .WithEndpoint(port: appPort, scheme: "http")

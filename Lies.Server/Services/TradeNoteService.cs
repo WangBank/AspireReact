@@ -8,19 +8,36 @@ namespace Lies.Server.Services;
 public class TradeNoteService : ITradeNoteService
 {
     private readonly AppDbContext _db;
+    private readonly ISensitiveWordService _sensitiveWordService;
 
-    public TradeNoteService(AppDbContext db)
+    public TradeNoteService(AppDbContext db, ISensitiveWordService sensitiveWordService)
     {
         _db = db;
+        _sensitiveWordService = sensitiveWordService;
     }
 
     /// <summary>
     /// 新增笔记
     /// </summary>
-    public async Task<NoteResult> CreateAsync(NoteRequest request)
+    public async Task<NoteResult> CreateAsync(int userId, NoteRequest request)
     {
+        var validation = await _sensitiveWordService.ValidateAsync(
+        [
+            new SensitiveWordInput("笔记内容", request.Content)
+        ]);
+        if (!validation.IsValid)
+        {
+            return new NoteResult
+            {
+                Success = false,
+                Message = validation.Message,
+                ErrorCode = "validation"
+            };
+        }
+
         var entity = new TradeNote
         {
+            UserId = userId,
             Date = request.Date.Date,
             StockCode = string.IsNullOrWhiteSpace(request.StockCode) ? null : request.StockCode.Trim(),
             Content = request.Content,
@@ -42,15 +59,30 @@ public class TradeNoteService : ITradeNoteService
     /// <summary>
     /// 修改笔记
     /// </summary>
-    public async Task<NoteResult> UpdateAsync(int id, NoteRequest request)
+    public async Task<NoteResult> UpdateAsync(int userId, int id, NoteRequest request)
     {
-        var entity = await _db.TradeNotes.FindAsync(id);
+        var validation = await _sensitiveWordService.ValidateAsync(
+        [
+            new SensitiveWordInput("笔记内容", request.Content)
+        ]);
+        if (!validation.IsValid)
+        {
+            return new NoteResult
+            {
+                Success = false,
+                Message = validation.Message,
+                ErrorCode = "validation"
+            };
+        }
+
+        var entity = await _db.TradeNotes.FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
         if (entity == null)
         {
             return new NoteResult
             {
                 Success = false,
-                Message = $"未找到 ID 为 {id} 的笔记"
+                Message = $"未找到 ID 为 {id} 的笔记",
+                ErrorCode = "not_found"
             };
         }
 
@@ -72,15 +104,16 @@ public class TradeNoteService : ITradeNoteService
     /// <summary>
     /// 删除笔记
     /// </summary>
-    public async Task<NoteResult> DeleteAsync(int id)
+    public async Task<NoteResult> DeleteAsync(int userId, int id)
     {
-        var entity = await _db.TradeNotes.FindAsync(id);
+        var entity = await _db.TradeNotes.FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
         if (entity == null)
         {
             return new NoteResult
             {
                 Success = false,
-                Message = $"未找到 ID 为 {id} 的笔记"
+                Message = $"未找到 ID 为 {id} 的笔记",
+                ErrorCode = "not_found"
             };
         }
 
@@ -97,9 +130,11 @@ public class TradeNoteService : ITradeNoteService
     /// <summary>
     /// 按条件搜索笔记（支持日期、心魔代码、关键词）
     /// </summary>
-    public async Task<List<NoteResponse>> SearchAsync(DateTime? date = null, string? stockCode = null, string? keyword = null)
+    public async Task<List<NoteResponse>> SearchAsync(int userId, DateTime? date = null, string? stockCode = null, string? keyword = null)
     {
-        var query = _db.TradeNotes.AsNoTracking();
+        var query = _db.TradeNotes
+            .AsNoTracking()
+            .Where(item => item.UserId == userId);
 
         if (date.HasValue)
         {
@@ -130,10 +165,11 @@ public class TradeNoteService : ITradeNoteService
     /// <summary>
     /// 获取全局笔记（StockCode 为空）
     /// </summary>
-    public async Task<List<NoteResponse>> GetGlobalNotesAsync()
+    public async Task<List<NoteResponse>> GetGlobalNotesAsync(int userId)
     {
         var list = await _db.TradeNotes
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .Where(n => n.StockCode == null)
             .OrderByDescending(n => n.Date)
             .ThenByDescending(n => n.UpdatedAt)
@@ -145,11 +181,11 @@ public class TradeNoteService : ITradeNoteService
     /// <summary>
     /// 获取指定心魔的笔记
     /// </summary>
-    public async Task<List<NoteResponse>> GetByStockCodeAsync(string stockCode)
+    public async Task<List<NoteResponse>> GetByStockCodeAsync(int userId, string stockCode)
     {
         var list = await _db.TradeNotes
             .AsNoTracking()
-            .Where(n => n.StockCode == stockCode)
+            .Where(n => n.UserId == userId && n.StockCode == stockCode)
             .OrderByDescending(n => n.Date)
             .ThenByDescending(n => n.UpdatedAt)
             .ToListAsync();

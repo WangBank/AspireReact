@@ -148,6 +148,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
     }
 
     public async Task<PortfolioScreenshotImportResult> ParseAsync(
+        int userId,
         PortfolioScreenshotImportRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -167,6 +168,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         var importDate = request.ImportDate?.Date ?? DateTime.SpecifyKind(DateTime.Today, DateTimeKind.Unspecified);
         var audit = new PortfolioImportAudit
         {
+            UserId = userId,
             ImportDate = importDate,
             SourceFileName = Path.GetFileName(request.Image.FileName),
             ContentType = string.IsNullOrWhiteSpace(request.Image.ContentType)
@@ -212,7 +214,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             }
 
             var warnings = new List<string>();
-            var compositeImport = await TryParseCompositeScreenshotAsync(tokens, importDate, warnings, cancellationToken);
+            var compositeImport = await TryParseCompositeScreenshotAsync(userId, tokens, importDate, warnings, cancellationToken);
             PortfolioAccountImportResponse? account;
             PortfolioBankFlowImportResponse? bankFlow;
             List<PortfolioPositionImportResponse> positions;
@@ -235,7 +237,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
                 bankFlow = null;
                 if (isDailyFlowScreenshot)
                 {
-                    positions = await ParseDailyFlowPositionsAsync(tokens, importDate, warnings, cancellationToken);
+                    positions = await ParseDailyFlowPositionsAsync(tokens, userId, importDate, warnings, cancellationToken);
                 }
                 else if (isMobileHoldingsScreenshot)
                 {
@@ -467,6 +469,8 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
     }
 
     public async Task<bool> FinalizeAuditAsync(
+        int currentUserId,
+        bool isAdmin,
         int id,
         PortfolioImportAuditFinalizeRequest request,
         CancellationToken cancellationToken = default)
@@ -475,6 +479,11 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         if (audit == null)
         {
             return false;
+        }
+
+        if (!isAdmin && audit.UserId != currentUserId)
+        {
+            throw new UnauthorizedAccessException("无权回填其他用户的识别审计记录。");
         }
 
         var finalPayload = new PortfolioImportAuditFinalPayload
@@ -1207,6 +1216,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
     }
 
     private async Task<CompositeImportParseResult?> TryParseCompositeScreenshotAsync(
+        int userId,
         List<OcrToken> tokens,
         DateTime importDate,
         List<string> warnings,
@@ -1220,7 +1230,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         var accountRows = ParseAccountHistoryRows(leftTokens, warnings);
         var detailDate = ResolveCompositeDetailDate(rightTokens, accountRows, importDate, warnings);
         var accountRow = SelectAccountHistoryRow(accountRows, detailDate, warnings);
-        var positions = await ParseDailyFlowPositionsAsync(rightTokens, detailDate, warnings, cancellationToken);
+        var positions = await ParseDailyFlowPositionsAsync(rightTokens, userId, detailDate, warnings, cancellationToken);
         var dailyPnL = ResolveDailyFlowDailyPnL(positions, rightTokens, warnings);
 
         if (accountRow == null && positions.Count == 0)
@@ -1436,6 +1446,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
 
     private async Task<List<PortfolioPositionImportResponse>> ParseDailyFlowPositionsAsync(
         List<OcrToken> tokens,
+        int userId,
         DateTime importDate,
         List<string> warnings,
         CancellationToken cancellationToken)
@@ -1498,7 +1509,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
                 continue;
             }
 
-            var normalized = await NormalizeDailyFlowPositionAsync(candidate, importDate, warnings, cancellationToken);
+            var normalized = await NormalizeDailyFlowPositionAsync(candidate, userId, importDate, warnings, cancellationToken);
             if (normalized != null)
             {
                 positions.Add(normalized);
@@ -1760,6 +1771,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
 
     private async Task<PortfolioPositionImportResponse?> NormalizeDailyFlowPositionAsync(
         FlowPositionCandidate candidate,
+        int userId,
         DateTime importDate,
         List<string> warnings,
         CancellationToken cancellationToken)
@@ -1775,7 +1787,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
             return null;
         }
 
-        var previousRecord = await GetPreviousRecordAsync(stockCode, stock?.StockName ?? candidate.StockName, importDate, cancellationToken);
+        var previousRecord = await GetPreviousRecordAsync(userId, stockCode, stock?.StockName ?? candidate.StockName, importDate, cancellationToken);
         var cumulativePnL = (previousRecord?.CumulativePnL ?? 0) + candidate.DailyPnL;
         var isLiquidated = candidate.PositionQuantity <= 0;
 
@@ -1811,6 +1823,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
     }
 
     private async Task<StockTrade?> GetPreviousRecordAsync(
+        int userId,
         string stockCode,
         string stockName,
         DateTime importDate,
@@ -1821,6 +1834,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
         {
             return await _db.StockTrades
                 .AsNoTracking()
+                .Where(trade => trade.UserId == userId)
                 .Where(trade => trade.StockCode == stockCode && trade.TradeDate < date)
                 .OrderByDescending(trade => trade.TradeDate)
                 .ThenByDescending(trade => trade.Id)
@@ -1829,6 +1843,7 @@ public class PortfolioScreenshotImportService : IPortfolioScreenshotImportServic
 
         return await _db.StockTrades
             .AsNoTracking()
+            .Where(trade => trade.UserId == userId)
             .Where(trade => trade.StockName == stockName && trade.TradeDate < date)
             .OrderByDescending(trade => trade.TradeDate)
             .ThenByDescending(trade => trade.Id)

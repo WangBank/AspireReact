@@ -1,5 +1,7 @@
 using Lies.Server.DTOs;
+using Lies.Server.Infrastructure;
 using Lies.Server.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Lies.Server.Controllers;
@@ -8,6 +10,14 @@ namespace Lies.Server.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
+    private static readonly HashSet<string> AllowedAvatarContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/webp"
+    };
+
     private readonly IAuthService _authService;
     private readonly ICaptchaService _captchaService;
 
@@ -20,6 +30,7 @@ public class AuthController : ControllerBase
     /// <summary>
     /// 获取图形验证码（返回Base64图片和验证码ID）
     /// </summary>
+    [AllowAnonymous]
     [HttpGet("captcha")]
     public async Task<IActionResult> GetCaptcha()
     {
@@ -43,6 +54,7 @@ public class AuthController : ControllerBase
     /// <summary>
     /// 用户注册
     /// </summary>
+    [AllowAnonymous]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
@@ -61,7 +73,14 @@ public class AuthController : ControllerBase
         return Ok(new
         {
             success = true,
-            data = new { token = result.Token, username = result.Username },
+            data = new
+            {
+                token = result.Token,
+                username = result.Username,
+                role = result.Role,
+                isAdmin = result.IsAdmin,
+                avatarUrl = result.AvatarUrl
+            },
             message = result.Message
         });
     }
@@ -69,6 +88,7 @@ public class AuthController : ControllerBase
     /// <summary>
     /// 用户登录
     /// </summary>
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
@@ -87,7 +107,14 @@ public class AuthController : ControllerBase
         return Ok(new
         {
             success = true,
-            data = new { token = result.Token, username = result.Username },
+            data = new
+            {
+                token = result.Token,
+                username = result.Username,
+                role = result.Role,
+                isAdmin = result.IsAdmin,
+                avatarUrl = result.AvatarUrl
+            },
             message = result.Message
         });
     }
@@ -131,11 +158,11 @@ public class AuthController : ControllerBase
     [HttpGet("profile")]
     public async Task<IActionResult> GetProfile()
     {
-        var userIdStr = HttpContext.Items["UserId"]?.ToString();
-        if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out var userId))
+        var userId = this.GetCurrentUserId();
+        if (!userId.HasValue)
             return Unauthorized(new { success = false, message = "未登录或Token无效" });
 
-        var profile = await _authService.GetProfileAsync(userId);
+        var profile = await _authService.GetProfileAsync(userId.Value);
         if (profile == null)
             return NotFound(new { success = false, message = "用户不存在" });
 
@@ -151,11 +178,11 @@ public class AuthController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(new { success = false, message = "参数验证失败", errors = ModelState });
 
-        var userIdStr = HttpContext.Items["UserId"]?.ToString();
-        if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out var userId))
+        var userId = this.GetCurrentUserId();
+        if (!userId.HasValue)
             return Unauthorized(new { success = false, message = "未登录或Token无效" });
 
-        var result = await _authService.UpdateProfileAsync(userId, request);
+        var result = await _authService.UpdateProfileAsync(userId.Value, request);
 
         if (!result.Success)
             return BadRequest(new { success = false, message = result.Message });
@@ -172,15 +199,50 @@ public class AuthController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(new { success = false, message = "参数验证失败", errors = ModelState });
 
-        var userIdStr = HttpContext.Items["UserId"]?.ToString();
-        if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out var userId))
+        var userId = this.GetCurrentUserId();
+        if (!userId.HasValue)
             return Unauthorized(new { success = false, message = "未登录或Token无效" });
 
-        var result = await _authService.ChangePasswordAsync(userId, request);
+        var result = await _authService.ChangePasswordAsync(userId.Value, request);
 
         if (!result.Success)
             return BadRequest(new { success = false, message = result.Message });
 
         return Ok(new { success = true, message = result.Message });
+    }
+
+    [HttpPost("profile/avatar")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<IActionResult> UpdateAvatar([FromForm] IFormFile avatar, CancellationToken cancellationToken)
+    {
+        var userId = this.GetCurrentUserId();
+        if (!userId.HasValue)
+        {
+            return Unauthorized(new { success = false, message = "未登录或Token无效" });
+        }
+
+        if (avatar == null || avatar.Length == 0)
+        {
+            return BadRequest(new { success = false, message = "请上传头像图片" });
+        }
+
+        if (!string.IsNullOrWhiteSpace(avatar.ContentType)
+            && !AllowedAvatarContentTypes.Contains(avatar.ContentType))
+        {
+            return BadRequest(new { success = false, message = "头像仅支持 PNG、JPG、JPEG、WebP 格式" });
+        }
+
+        var profile = await _authService.UpdateAvatarAsync(userId.Value, avatar, cancellationToken);
+        if (profile == null)
+        {
+            return NotFound(new { success = false, message = "用户不存在或已被禁用" });
+        }
+
+        return Ok(new
+        {
+            success = true,
+            data = profile,
+            message = "头像更新成功"
+        });
     }
 }

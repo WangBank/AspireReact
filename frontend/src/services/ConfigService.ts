@@ -4,6 +4,10 @@ const API_BASE = '/api/config';
 
 export interface ConfigResponse {
   tonghuashunLinkPrefix: string;
+  sensitiveWordsText: string;
+  sensitiveWordCount: number;
+  sensitiveWordsUpdatedAt: string | null;
+  sensitiveWordsUpdatedByUsername: string | null;
 }
 
 export interface ConfigApiResponse {
@@ -32,11 +36,11 @@ export class ConfigService {
     return json.data;
   }
 
-  async update(tonghuashunLinkPrefix: string): Promise<ConfigResponse> {
+  async update(tonghuashunLinkPrefix: string, sensitiveWordsText: string): Promise<ConfigResponse> {
     const response = await fetch(API_BASE, {
       method: 'PUT',
       headers: this.getAuthHeaders(),
-      body: JSON.stringify({ tonghuashunLinkPrefix }),
+      body: JSON.stringify({ tonghuashunLinkPrefix, sensitiveWordsText }),
     });
     const json: ConfigApiResponse = await response.json();
     if (!json.success) {

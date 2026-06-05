@@ -1,4 +1,5 @@
 using Lies.Server.DTOs;
+using Lies.Server.Infrastructure;
 using Lies.Server.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -26,6 +27,12 @@ public class StockTradeController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         // 兼容 tradeDate 单日精确查询
         DateTime? tradeDateStart = null;
         DateTime? tradeDateEnd = null;
@@ -45,7 +52,7 @@ public class StockTradeController : ControllerBase
             PageSize = pageSize
         };
 
-        var result = await _tradeService.QueryAsync(request);
+        var result = await _tradeService.QueryAsync(userId, request);
 
         return Ok(new
         {
@@ -65,7 +72,13 @@ public class StockTradeController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var result = await _tradeService.GetByIdAsync(id);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var result = await _tradeService.GetByIdAsync(userId, id);
 
         if (!result.Success)
         {
@@ -90,6 +103,12 @@ public class StockTradeController : ControllerBase
         [FromQuery] string? stockCode = null,
         [FromQuery] string? board = null)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         var request = new TradeSummaryRequest
         {
             StartDate = startDate,
@@ -98,7 +117,7 @@ public class StockTradeController : ControllerBase
             Board = board
         };
 
-        var result = await _tradeService.GetSummaryAsync(request);
+        var result = await _tradeService.GetSummaryAsync(userId, request);
 
         return Ok(new
         {
@@ -114,6 +133,12 @@ public class StockTradeController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] StockTradeRequest request)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -124,11 +149,16 @@ public class StockTradeController : ControllerBase
             });
         }
 
-        var result = await _tradeService.CreateAsync(request);
+        var result = await _tradeService.CreateAsync(userId, request);
 
         if (!result.Success)
         {
-            return Conflict(new { success = false, message = result.Message });
+            return result.ErrorCode switch
+            {
+                "validation" => BadRequest(new { success = false, message = result.Message }),
+                "conflict" => Conflict(new { success = false, message = result.Message }),
+                _ => BadRequest(new { success = false, message = result.Message })
+            };
         }
 
         return CreatedAtAction(nameof(GetById), new { id = result.Data!.Id }, new
@@ -145,6 +175,12 @@ public class StockTradeController : ControllerBase
     [HttpPost("batch")]
     public async Task<IActionResult> BatchCreate([FromBody] BatchStockTradeRequest request)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -155,7 +191,7 @@ public class StockTradeController : ControllerBase
             });
         }
 
-        var result = await _tradeService.BatchCreateAsync(request);
+        var result = await _tradeService.BatchCreateAsync(userId, request);
 
         return Ok(new
         {
@@ -174,6 +210,12 @@ public class StockTradeController : ControllerBase
     [HttpPut("batch")]
     public async Task<IActionResult> BatchUpdate([FromBody] BatchTradeUpdateRequest request)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -184,7 +226,7 @@ public class StockTradeController : ControllerBase
             });
         }
 
-        var result = await _tradeService.BatchUpdateAsync(request);
+        var result = await _tradeService.BatchUpdateAsync(userId, request);
 
         return Ok(new
         {
@@ -203,6 +245,12 @@ public class StockTradeController : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] StockTradeRequest request)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -213,11 +261,17 @@ public class StockTradeController : ControllerBase
             });
         }
 
-        var result = await _tradeService.UpdateAsync(id, request);
+        var result = await _tradeService.UpdateAsync(userId, id, request);
 
         if (!result.Success)
         {
-            return NotFound(new { success = false, message = result.Message });
+            return result.ErrorCode switch
+            {
+                "validation" => BadRequest(new { success = false, message = result.Message }),
+                "conflict" => Conflict(new { success = false, message = result.Message }),
+                "not_found" => NotFound(new { success = false, message = result.Message }),
+                _ => BadRequest(new { success = false, message = result.Message })
+            };
         }
 
         return Ok(new
@@ -234,7 +288,13 @@ public class StockTradeController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var result = await _tradeService.DeleteAsync(id);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var result = await _tradeService.DeleteAsync(userId, id);
 
         if (!result.Success)
         {

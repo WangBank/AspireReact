@@ -13,6 +13,9 @@ export interface AuthResponse {
   data: {
     token: string;
     username: string;
+    role: string;
+    isAdmin: boolean;
+    avatarUrl: string | null;
   };
 }
 
@@ -26,6 +29,9 @@ export interface UserProfile {
   id: number;
   username: string;
   email: string;
+  role: string;
+  isAdmin: boolean;
+  avatarUrl: string | null;
   createdAt: string;
   lastLoginAt: string | null;
 }
@@ -165,6 +171,26 @@ export class AuthService {
     }
 
     return json;
+  }
+
+  async uploadAvatar(file: File): Promise<UserProfile> {
+    const token = getAuthToken();
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const response = await fetch(`${API_BASE}/profile/avatar`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+
+    const json: ProfileResponse = await response.json();
+
+    if (!response.ok || !json.success) {
+      throw new Error(json.message || '上传头像失败');
+    }
+
+    return json.data;
   }
 }
 

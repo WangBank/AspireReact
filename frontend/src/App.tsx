@@ -1,6 +1,8 @@
 import { observer } from 'mobx-react-lite';
+import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useStore } from './stores/StoreProvider';
+import GlobalLoadingMask from './components/GlobalLoadingMask';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
@@ -12,15 +14,13 @@ import AccountListPage from './pages/AccountListPage';
 import BankFlowListPage from './pages/BankFlowListPage';
 import TradeListPage from './pages/TradeListPage';
 import StatisticsPage from './pages/StatisticsPage';
-import DataHealthPage from './pages/DataHealthPage';
 import GlobalNotesPage from './pages/GlobalNotesPage';
 import StockNotesPage from './pages/StockNotesPage';
 import ReflectionPage from './pages/ReflectionPage';
-import ConfigPage from './pages/ConfigPage';
 import ProfilePage from './pages/ProfilePage';
 import UnifiedListPage from './pages/UnifiedListPage';
 import StockHistoryPage from './pages/StockHistoryPage';
-import PortfolioImportAuditPage from './pages/PortfolioImportAuditPage';
+import AdminPage from './pages/AdminPage';
 import './App.css';
 
 const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) => {
@@ -31,199 +31,247 @@ const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) =>
   return <>{children}</>;
 });
 
+const UserRoute = observer(({ children }: { children: React.ReactNode }) => {
+  const { authStore } = useStore();
+
+  if (!authStore.isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (authStore.isAdmin) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return <>{children}</>;
+});
+
+const AdminRoute = observer(({ children }: { children: React.ReactNode }) => {
+  const { authStore } = useStore();
+
+  if (!authStore.isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!authStore.isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+});
+
 const App = observer(() => {
   const { authStore } = useStore();
 
+  useEffect(() => {
+    if (authStore.isAuthenticated && !authStore.profile && !authStore.loading) {
+      void authStore.fetchProfile();
+    }
+  }, [authStore, authStore.isAuthenticated, authStore.loading, authStore.profile]);
+
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          authStore.isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />
-        }
-      />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <DashboardPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/entry/account"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <AccountEntryPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/entry/bankflow"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <BankFlowEntryPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/entry/trade"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <TradeEntryPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/entry/unified/:id?"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <UnifiedEntryPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/list/account"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <AccountListPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/list/bankflow"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <BankFlowListPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/list/trade"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <TradeListPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/list/unified"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <UnifiedListPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/statistics"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <StatisticsPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/health"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <DataHealthPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/audits/imports"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <PortfolioImportAuditPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/notes/global"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <GlobalNotesPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/notes/stock"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <StockNotesPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/notes/reflection"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <ReflectionPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/config"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <ConfigPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/profile"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <ProfilePage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/stocks/:stockCode/history"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <StockHistoryPage />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to={authStore.isAuthenticated ? '/dashboard' : '/login'} replace />} />
-    </Routes>
+    <>
+      <GlobalLoadingMask />
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            authStore.isAuthenticated
+              ? <Navigate to={authStore.isAdmin ? '/admin' : '/dashboard'} replace />
+              : <LoginPage />
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <UserRoute>
+              <Layout>
+                <DashboardPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/entry/account"
+          element={
+            <UserRoute>
+              <Layout>
+                <AccountEntryPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/entry/bankflow"
+          element={
+            <UserRoute>
+              <Layout>
+                <BankFlowEntryPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/entry/trade"
+          element={
+            <UserRoute>
+              <Layout>
+                <TradeEntryPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/entry/unified/:id?"
+          element={
+            <UserRoute>
+              <Layout>
+                <UnifiedEntryPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/list/account"
+          element={
+            <UserRoute>
+              <Layout>
+                <AccountListPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/list/bankflow"
+          element={
+            <UserRoute>
+              <Layout>
+                <BankFlowListPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/list/trade"
+          element={
+            <UserRoute>
+              <Layout>
+                <TradeListPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/list/unified"
+          element={
+            <UserRoute>
+              <Layout>
+                <UnifiedListPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/statistics"
+          element={
+            <UserRoute>
+              <Layout>
+                <StatisticsPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <Layout>
+                <AdminPage />
+              </Layout>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/health"
+          element={
+            <ProtectedRoute>
+              <Navigate to={authStore.isAdmin ? '/admin' : '/dashboard'} replace />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notes/global"
+          element={
+            <UserRoute>
+              <Layout>
+                <GlobalNotesPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/notes/stock"
+          element={
+            <UserRoute>
+              <Layout>
+                <StockNotesPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/notes/reflection"
+          element={
+            <UserRoute>
+              <Layout>
+                <ReflectionPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/config"
+          element={
+            authStore.isAdmin
+              ? <Navigate to="/admin?tab=settings" replace />
+              : <Navigate to="/dashboard" replace />
+          }
+        />
+        <Route
+          path="/audits/imports"
+          element={
+            authStore.isAdmin
+              ? <Navigate to="/admin?tab=audits" replace />
+              : <Navigate to="/dashboard" replace />
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <ProfilePage />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/stocks/:stockCode/history"
+          element={
+            <UserRoute>
+              <Layout>
+                <StockHistoryPage />
+              </Layout>
+            </UserRoute>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <Navigate to={authStore.isAuthenticated ? (authStore.isAdmin ? '/admin' : '/dashboard') : '/login'} replace />
+          }
+        />
+      </Routes>
+    </>
   );
 });
 

@@ -1,4 +1,5 @@
 using Lies.Server.DTOs;
+using Lies.Server.Infrastructure;
 using Lies.Server.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -32,6 +33,12 @@ public class PortfolioImportController : ControllerBase
         [FromForm] PortfolioScreenshotImportRequest request,
         CancellationToken cancellationToken)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -62,7 +69,7 @@ public class PortfolioImportController : ControllerBase
             });
         }
 
-        var result = await _portfolioScreenshotImportService.ParseAsync(request, cancellationToken);
+        var result = await _portfolioScreenshotImportService.ParseAsync(userId, request, cancellationToken);
         if (!result.Success)
         {
             return StatusCode(result.StatusCode, new
@@ -87,6 +94,16 @@ public class PortfolioImportController : ControllerBase
         [FromQuery] string? saveStatus = null,
         CancellationToken cancellationToken = default)
     {
+        if (this.GetCurrentUserId() is null)
+        {
+            return Unauthorized(new { success = false, message = "未登录或Token无效" });
+        }
+
+        if (!this.IsCurrentUserAdmin())
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "仅管理员可以查看识别审计" });
+        }
+
         var result = await _portfolioScreenshotImportService.GetAuditPageAsync(
             page,
             pageSize,
@@ -106,6 +123,16 @@ public class PortfolioImportController : ControllerBase
         int id,
         CancellationToken cancellationToken)
     {
+        if (this.GetCurrentUserId() is null)
+        {
+            return Unauthorized(new { success = false, message = "未登录或Token无效" });
+        }
+
+        if (!this.IsCurrentUserAdmin())
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "仅管理员可以查看识别审计详情" });
+        }
+
         var result = await _portfolioScreenshotImportService.GetAuditDetailAsync(id, cancellationToken);
         if (result == null)
         {
@@ -125,6 +152,16 @@ public class PortfolioImportController : ControllerBase
         int id,
         CancellationToken cancellationToken)
     {
+        if (this.GetCurrentUserId() is null)
+        {
+            return Unauthorized(new { success = false, message = "未登录或Token无效" });
+        }
+
+        if (!this.IsCurrentUserAdmin())
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = "仅管理员可以查看识别原图" });
+        }
+
         var result = await _portfolioScreenshotImportService.GetAuditImageAsync(id, cancellationToken);
         if (result == null)
         {
@@ -140,6 +177,12 @@ public class PortfolioImportController : ControllerBase
         [FromBody] PortfolioImportAuditFinalizeRequest request,
         CancellationToken cancellationToken)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -150,10 +193,23 @@ public class PortfolioImportController : ControllerBase
             });
         }
 
-        var success = await _portfolioScreenshotImportService.FinalizeAuditAsync(id, request, cancellationToken);
-        if (!success)
+        try
         {
-            return NotFound(new { success = false, message = "未找到对应的识别审计记录" });
+            var success = await _portfolioScreenshotImportService.FinalizeAuditAsync(
+                userId,
+                this.IsCurrentUserAdmin(),
+                id,
+                request,
+                cancellationToken);
+
+            if (!success)
+            {
+                return NotFound(new { success = false, message = "未找到对应的识别审计记录" });
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { success = false, message = ex.Message });
         }
 
         return Ok(new

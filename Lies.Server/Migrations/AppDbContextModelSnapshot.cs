@@ -53,10 +53,8 @@ namespace Lies.Server.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Date")
+                    b.HasIndex("UserId", "Date")
                         .IsUnique();
-
-                    b.HasIndex("UserId");
 
                     b.ToTable("AccountDailies");
                 });
@@ -90,9 +88,7 @@ namespace Lies.Server.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Date");
-
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "Date");
 
                     b.ToTable("BankFlows");
                 });
@@ -177,6 +173,9 @@ namespace Lies.Server.Migrations
                     b.Property<string>("StoredImagePath")
                         .HasColumnType("text");
 
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("WarningCount")
                         .HasColumnType("integer");
 
@@ -187,6 +186,8 @@ namespace Lies.Server.Migrations
                     b.HasIndex("ImportDate");
 
                     b.HasIndex("SaveStatus");
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("PortfolioImportAudits");
                 });
@@ -305,11 +306,47 @@ namespace Lies.Server.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("TradeDate", "StockCode");
+                    b.HasIndex("UserId", "TradeDate", "StockCode");
 
                     b.ToTable("StockTrades");
+                });
+
+            modelBuilder.Entity("Lies.Server.Entities.SystemSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("SettingKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("setting_key");
+
+                    b.Property<string>("SettingValue")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("setting_value");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("integer")
+                        .HasColumnName("updated_by_user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SettingKey")
+                        .IsUnique();
+
+                    b.HasIndex("UpdatedByUserId");
+
+                    b.ToTable("system_settings");
                 });
 
             modelBuilder.Entity("Lies.Server.Entities.TradeNote", b =>
@@ -341,9 +378,7 @@ namespace Lies.Server.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("Date", "StockCode");
+                    b.HasIndex("UserId", "Date", "StockCode");
 
                     b.ToTable("TradeNotes");
                 });
@@ -356,6 +391,11 @@ namespace Lies.Server.Migrations
                         .HasColumnName("id");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AvatarPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("avatar_path");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -381,6 +421,12 @@ namespace Lies.Server.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("password_hash");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("role");
+
                     b.Property<string>("Username")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -400,30 +446,62 @@ namespace Lies.Server.Migrations
 
             modelBuilder.Entity("Lies.Server.Entities.AccountDaily", b =>
                 {
-                    b.HasOne("Lies.Server.Entities.User", null)
+                    b.HasOne("Lies.Server.Entities.User", "User")
                         .WithMany("AccountDailies")
-                        .HasForeignKey("UserId");
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Lies.Server.Entities.BankFlow", b =>
                 {
-                    b.HasOne("Lies.Server.Entities.User", null)
+                    b.HasOne("Lies.Server.Entities.User", "User")
                         .WithMany("BankFlows")
-                        .HasForeignKey("UserId");
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Lies.Server.Entities.PortfolioImportAudit", b =>
+                {
+                    b.HasOne("Lies.Server.Entities.User", "User")
+                        .WithMany("PortfolioImportAudits")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Lies.Server.Entities.StockTrade", b =>
                 {
-                    b.HasOne("Lies.Server.Entities.User", null)
+                    b.HasOne("Lies.Server.Entities.User", "User")
                         .WithMany("StockTrades")
-                        .HasForeignKey("UserId");
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Lies.Server.Entities.SystemSetting", b =>
+                {
+                    b.HasOne("Lies.Server.Entities.User", "UpdatedByUser")
+                        .WithMany("UpdatedSystemSettings")
+                        .HasForeignKey("UpdatedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("UpdatedByUser");
                 });
 
             modelBuilder.Entity("Lies.Server.Entities.TradeNote", b =>
                 {
-                    b.HasOne("Lies.Server.Entities.User", null)
+                    b.HasOne("Lies.Server.Entities.User", "User")
                         .WithMany("TradeNotes")
-                        .HasForeignKey("UserId");
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Lies.Server.Entities.User", b =>
@@ -432,9 +510,13 @@ namespace Lies.Server.Migrations
 
                     b.Navigation("BankFlows");
 
+                    b.Navigation("PortfolioImportAudits");
+
                     b.Navigation("StockTrades");
 
                     b.Navigation("TradeNotes");
+
+                    b.Navigation("UpdatedSystemSettings");
                 });
 #pragma warning restore 612, 618
         }

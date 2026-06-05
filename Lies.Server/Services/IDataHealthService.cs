@@ -4,5 +4,5 @@ namespace Lies.Server.Services;
 
 public interface IDataHealthService
 {
-    Task<DataHealthReportResponse> BuildReportAsync(CancellationToken cancellationToken = default);
+    Task<DataHealthReportResponse> BuildReportAsync(int userId, CancellationToken cancellationToken = default);
 }

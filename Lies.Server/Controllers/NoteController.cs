@@ -1,4 +1,5 @@
 using Lies.Server.DTOs;
+using Lies.Server.Infrastructure;
 using Lies.Server.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,7 +26,13 @@ public class NoteController : ControllerBase
         [FromQuery] string? stockCode = null,
         [FromQuery] string? keyword = null)
     {
-        var list = await _noteService.SearchAsync(date, stockCode, keyword);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var list = await _noteService.SearchAsync(userId, date, stockCode, keyword);
 
         return Ok(new
         {
@@ -41,7 +48,13 @@ public class NoteController : ControllerBase
     [HttpGet("global")]
     public async Task<IActionResult> GetGlobal()
     {
-        var list = await _noteService.GetGlobalNotesAsync();
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var list = await _noteService.GetGlobalNotesAsync(userId);
 
         return Ok(new
         {
@@ -57,7 +70,13 @@ public class NoteController : ControllerBase
     [HttpGet("stock/{stockCode}")]
     public async Task<IActionResult> GetByStockCode(string stockCode)
     {
-        var list = await _noteService.GetByStockCodeAsync(stockCode);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var list = await _noteService.GetByStockCodeAsync(userId, stockCode);
 
         return Ok(new
         {
@@ -73,6 +92,12 @@ public class NoteController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] NoteRequest request)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -83,7 +108,16 @@ public class NoteController : ControllerBase
             });
         }
 
-        var result = await _noteService.CreateAsync(request);
+        var result = await _noteService.CreateAsync(userId, request);
+
+        if (!result.Success)
+        {
+            return result.ErrorCode switch
+            {
+                "validation" => BadRequest(new { success = false, message = result.Message }),
+                _ => BadRequest(new { success = false, message = result.Message })
+            };
+        }
 
         return CreatedAtAction(nameof(Search), null, new
         {
@@ -99,6 +133,12 @@ public class NoteController : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] NoteRequest request)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -109,11 +149,16 @@ public class NoteController : ControllerBase
             });
         }
 
-        var result = await _noteService.UpdateAsync(id, request);
+        var result = await _noteService.UpdateAsync(userId, id, request);
 
         if (!result.Success)
         {
-            return NotFound(new { success = false, message = result.Message });
+            return result.ErrorCode switch
+            {
+                "validation" => BadRequest(new { success = false, message = result.Message }),
+                "not_found" => NotFound(new { success = false, message = result.Message }),
+                _ => BadRequest(new { success = false, message = result.Message })
+            };
         }
 
         return Ok(new
@@ -130,7 +175,13 @@ public class NoteController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var result = await _noteService.DeleteAsync(id);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var result = await _noteService.DeleteAsync(userId, id);
 
         if (!result.Success)
         {

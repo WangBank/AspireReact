@@ -10,17 +10,17 @@ interface NavLinkItem {
   type: 'link';
 }
 
-const NAV_ITEMS: NavLinkItem[] = [
+const BASE_NAV_ITEMS: NavLinkItem[] = [
   { label: '首页', path: '/dashboard', type: 'link' },
   { label: '录入', path: '/entry/unified', type: 'link' },
   { label: '数据列表', path: '/list/unified', type: 'link' },
   { label: '统计', path: '/statistics', type: 'link' },
-  { label: '体检', path: '/health', type: 'link' },
-  { label: '审计', path: '/audits/imports', type: 'link' },
   { label: '全局笔记', path: '/notes/global', type: 'link' },
   { label: '心魔笔记', path: '/notes/stock', type: 'link' },
   { label: '吾日三省吾身', path: '/notes/reflection', type: 'link' },
-  { label: '设置', path: '/config', type: 'link' },
+];
+const ADMIN_NAV_ITEMS: NavLinkItem[] = [
+  { label: '管理员后台', path: '/admin', type: 'link' },
 ];
 
 const QUICK_ENTRY_PATH = '/entry/unified';
@@ -47,9 +47,12 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const [installCopyNotice, setInstallCopyNotice] = useState('');
   const [isStandaloneApp, setIsStandaloneApp] = useState(() => isStandaloneDisplayMode());
   const [isIosInstallTarget] = useState(() => isIosDevice());
+  const homePath = authStore.isAdmin ? '/admin' : '/dashboard';
   const isEntryRoute = location.pathname.startsWith('/entry');
-  const showFloatingEntry = !isEntryRoute;
+  const showTradingNavigation = !authStore.isAdmin;
+  const showFloatingEntry = showTradingNavigation && !isEntryRoute;
   const showInstallAction = !isStandaloneApp;
+  const navItems = authStore.isAdmin ? ADMIN_NAV_ITEMS : BASE_NAV_ITEMS;
 
   const handleLogout = useCallback(() => {
     authStore.logout();
@@ -210,18 +213,21 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
   }, [installPromptEvent, isIosInstallTarget, isStandaloneApp, openInstallGuide]);
 
   const avatarLetter = (authStore.username ?? '?').charAt(0).toUpperCase();
+  const roleLabel = authStore.isAdmin ? '管理员' : '普通用户';
 
   return (
     <div className="layout-container">
       <nav className="navbar">
         <div className="navbar-main">
-          <NavLink to="/dashboard" className="navbar-brand">
-            <div className="navbar-brand__icon">S</div>
+          <NavLink to={homePath} className="navbar-brand">
+            <div className="navbar-brand__icon">
+              <img src="/brand-mark.svg" alt="心魔录" className="navbar-brand__icon-image" />
+            </div>
             <span className="navbar-brand__text">心魔录</span>
           </NavLink>
 
           <ul className="navbar-links">
-            {NAV_ITEMS.map((item) => (
+            {navItems.map((item) => (
               <li key={item.path}>
                 <NavLink
                   to={item.path}
@@ -237,18 +243,20 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
         </div>
 
         <div className="navbar-actions">
-          <NavLink
-            to={QUICK_ENTRY_PATH}
-            className={`navbar-entry-cta${isEntryRoute ? ' navbar-entry-cta--active' : ''}`}
-          >
-            <span className="navbar-entry-cta__icon" aria-hidden="true">
-              +
-            </span>
-            <span className="navbar-entry-cta__body">
-              <span className="navbar-entry-cta__title">快捷录入</span>
-              <span className="navbar-entry-cta__meta">OCR / 手动一体</span>
-            </span>
-          </NavLink>
+          {showTradingNavigation && (
+            <NavLink
+              to={QUICK_ENTRY_PATH}
+              className={`navbar-entry-cta${isEntryRoute ? ' navbar-entry-cta--active' : ''}`}
+            >
+              <span className="navbar-entry-cta__icon" aria-hidden="true">
+                +
+              </span>
+              <span className="navbar-entry-cta__body">
+                <span className="navbar-entry-cta__title">快捷录入</span>
+                <span className="navbar-entry-cta__meta">OCR / 手动一体</span>
+              </span>
+            </NavLink>
+          )}
 
           {showInstallAction && (
             <button
@@ -275,8 +283,19 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
               aria-haspopup="true"
               aria-expanded={userMenuOpen}
             >
-              <div className="navbar-user__avatar">{avatarLetter}</div>
+              <div className="navbar-user__avatar">
+                {authStore.avatarUrl ? (
+                  <img
+                    src={authStore.avatarUrl}
+                    alt={`${authStore.username ?? '用户'}头像`}
+                    className="navbar-user__avatar-image"
+                  />
+                ) : (
+                  avatarLetter
+                )}
+              </div>
               <span className="navbar-user__name">{authStore.username ?? '用户'}</span>
+              {authStore.isAdmin && <span className="navbar-user__role">Admin</span>}
               <span className={`navbar-user__arrow${userMenuOpen ? ' navbar-user__arrow--open' : ''}`}>▾</span>
             </button>
 
@@ -293,6 +312,19 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                   个人信息
                 </button>
+                {authStore.isAdmin && (
+                  <button
+                    className="navbar-user__menu-item"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      window.location.href = '/admin';
+                    }}
+                    type="button"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    管理员后台
+                  </button>
+                )}
                 <div className="navbar-user__menu-divider" />
                 <button
                   className="navbar-user__menu-item navbar-user__menu-item--danger"
@@ -331,7 +363,7 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
         <div className="navbar-mobile-drawer__header">
           <div>
             <div className="navbar-mobile-drawer__title">心魔录</div>
-            <div className="navbar-mobile-drawer__subtitle">欢迎回来，{authStore.username ?? '用户'}</div>
+            <div className="navbar-mobile-drawer__subtitle">欢迎回来，{authStore.username ?? '用户'} · {roleLabel}</div>
           </div>
           <button
             className="navbar-mobile-drawer__close"
@@ -344,19 +376,21 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
         </div>
 
         <div className="navbar-mobile-drawer__content">
-          <NavLink
-            to={QUICK_ENTRY_PATH}
-            className={`navbar-mobile-entry${isEntryRoute ? ' navbar-mobile-entry--active' : ''}`}
-            onClick={() => setMobileMenuOpen(false)}
-          >
-            <span className="navbar-mobile-entry__icon" aria-hidden="true">
-              +
-            </span>
-            <span className="navbar-mobile-entry__body">
-              <span className="navbar-mobile-entry__title">快捷录入</span>
-              <span className="navbar-mobile-entry__meta">直接进入统一录入页</span>
-            </span>
-          </NavLink>
+          {showTradingNavigation && (
+            <NavLink
+              to={QUICK_ENTRY_PATH}
+              className={`navbar-mobile-entry${isEntryRoute ? ' navbar-mobile-entry--active' : ''}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <span className="navbar-mobile-entry__icon" aria-hidden="true">
+                +
+              </span>
+              <span className="navbar-mobile-entry__body">
+                <span className="navbar-mobile-entry__title">快捷录入</span>
+                <span className="navbar-mobile-entry__meta">直接进入统一录入页</span>
+              </span>
+            </NavLink>
+          )}
 
           {showInstallAction && (
             <button
@@ -374,7 +408,7 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
             </button>
           )}
 
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}

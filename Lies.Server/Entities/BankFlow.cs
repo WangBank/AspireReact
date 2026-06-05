@@ -3,6 +3,8 @@ namespace Lies.Server.Entities;
 public class BankFlow
 {
     public int Id { get; set; }
+    public int? UserId { get; set; }
+    public User? User { get; set; }
     public DateTime Date { get; set; }
     public string FlowType { get; set; } = string.Empty; // "转入" / "转出"
     public decimal Amount { get; set; }

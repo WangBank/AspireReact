@@ -10,40 +10,40 @@ public interface IStockTradeService
     /// <summary>
     /// 新增交易记录（带验证）
     /// </summary>
-    Task<StockTradeResult> CreateAsync(StockTradeRequest request);
+    Task<StockTradeResult> CreateAsync(int userId, StockTradeRequest request);
 
     /// <summary>
     /// 修改交易记录
     /// </summary>
-    Task<StockTradeResult> UpdateAsync(int id, StockTradeRequest request);
+    Task<StockTradeResult> UpdateAsync(int userId, int id, StockTradeRequest request);
 
     /// <summary>
     /// 删除交易记录
     /// </summary>
-    Task<StockTradeResult> DeleteAsync(int id);
+    Task<StockTradeResult> DeleteAsync(int userId, int id);
 
     /// <summary>
     /// 单条详情
     /// </summary>
-    Task<StockTradeResult> GetByIdAsync(int id);
+    Task<StockTradeResult> GetByIdAsync(int userId, int id);
 
     /// <summary>
     /// 多条件筛选查询（分页）
     /// </summary>
-    Task<PagedResult<StockTradeResponse>> QueryAsync(TradeQueryRequest request);
+    Task<PagedResult<StockTradeResponse>> QueryAsync(int userId, TradeQueryRequest request);
 
     /// <summary>
     /// 统计汇总（按日期范围、心魔、板块统计盈亏）
     /// </summary>
-    Task<TradeSummaryResponse> GetSummaryAsync(TradeSummaryRequest request);
+    Task<TradeSummaryResponse> GetSummaryAsync(int userId, TradeSummaryRequest request);
 
     /// <summary>
     /// 批量新增交易记录
     /// </summary>
-    Task<BatchStockTradeResult> BatchCreateAsync(BatchStockTradeRequest request);
+    Task<BatchStockTradeResult> BatchCreateAsync(int userId, BatchStockTradeRequest request);
 
     /// <summary>
     /// 批量修改交易记录
     /// </summary>
-    Task<BatchStockTradeResult> BatchUpdateAsync(BatchTradeUpdateRequest request);
+    Task<BatchStockTradeResult> BatchUpdateAsync(int userId, BatchTradeUpdateRequest request);
 }

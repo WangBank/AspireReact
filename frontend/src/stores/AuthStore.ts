@@ -4,11 +4,59 @@ import type { CaptchaData, UserProfile } from '../services/AuthService';
 import { hydrateAuthToken, setAuthToken } from '../utils/authToken';
 
 const USERNAME_KEY = 'auth_username';
+const ROLE_KEY = 'auth_role';
+const IS_ADMIN_KEY = 'auth_is_admin';
+const AVATAR_URL_KEY = 'auth_avatar_url';
+
+const readStoredSessionValue = (key: string): string | null => {
+  try {
+    const sessionValue = sessionStorage.getItem(key);
+    if (sessionValue) {
+      return sessionValue;
+    }
+  } catch {
+    // 忽略会话存储读取失败，继续兼容旧缓存。
+  }
+
+  try {
+    const legacyLocalValue = localStorage.getItem(key);
+    if (!legacyLocalValue) {
+      return null;
+    }
+
+    sessionStorage.setItem(key, legacyLocalValue);
+    localStorage.removeItem(key);
+    return legacyLocalValue;
+  } catch {
+    return null;
+  }
+};
+
+const persistSessionValue = (key: string, value: string | null) => {
+  try {
+    if (value) {
+      sessionStorage.setItem(key, value);
+    } else {
+      sessionStorage.removeItem(key);
+    }
+  } catch {
+    // 忽略会话存储失败，保留内存态即可。
+  }
+
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // 忽略旧缓存清理失败。
+  }
+};
 
 export class AuthStore {
   token: string | null = null;
   username: string | null = null;
   email: string | null = null;
+  role: string | null = null;
+  isAdmin = false;
+  avatarUrl: string | null = null;
   profile: UserProfile | null = null;
   captcha: CaptchaData | null = null;
   loading = false;
@@ -22,10 +70,23 @@ export class AuthStore {
   private loadFromStorage() {
     this.token = hydrateAuthToken();
     try {
-      this.username = localStorage.getItem(USERNAME_KEY);
+      this.username = readStoredSessionValue(USERNAME_KEY);
+      this.role = readStoredSessionValue(ROLE_KEY);
+      this.isAdmin = readStoredSessionValue(IS_ADMIN_KEY) === 'true';
+      this.avatarUrl = readStoredSessionValue(AVATAR_URL_KEY);
     } catch {
       this.username = null;
+      this.role = null;
+      this.isAdmin = false;
+      this.avatarUrl = null;
     }
+  }
+
+  private persistSession() {
+    persistSessionValue(USERNAME_KEY, this.username);
+    persistSessionValue(ROLE_KEY, this.role);
+    persistSessionValue(IS_ADMIN_KEY, String(this.isAdmin));
+    persistSessionValue(AVATAR_URL_KEY, this.avatarUrl);
   }
 
   get isAuthenticated(): boolean {
@@ -54,14 +115,13 @@ export class AuthStore {
       runInAction(() => {
         this.token = result.data.token;
         this.username = result.data.username;
+        this.role = result.data.role;
+        this.isAdmin = result.data.isAdmin;
+        this.avatarUrl = result.data.avatarUrl;
         this.loading = false;
       });
       setAuthToken(result.data.token);
-      try {
-        localStorage.setItem(USERNAME_KEY, result.data.username);
-      } catch {
-        // 忽略存储失败，当前会话仍然保留内存态用户名。
-      }
+      this.persistSession();
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '登录失败';
@@ -92,14 +152,13 @@ export class AuthStore {
       runInAction(() => {
         this.token = result.data.token;
         this.username = result.data.username;
+        this.role = result.data.role;
+        this.isAdmin = result.data.isAdmin;
+        this.avatarUrl = result.data.avatarUrl;
         this.loading = false;
       });
       setAuthToken(result.data.token);
-      try {
-        localStorage.setItem(USERNAME_KEY, result.data.username);
-      } catch {
-        // 忽略存储失败，当前会话仍然保留内存态用户名。
-      }
+      this.persistSession();
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '注册失败';
@@ -116,12 +175,11 @@ export class AuthStore {
         this.profile = profile;
         this.email = profile.email;
         this.username = profile.username;
+        this.role = profile.role;
+        this.isAdmin = profile.isAdmin;
+        this.avatarUrl = profile.avatarUrl;
       });
-      try {
-        localStorage.setItem(USERNAME_KEY, profile.username);
-      } catch {
-        // 忽略存储失败，当前会话仍然保留内存态用户名。
-      }
+      this.persistSession();
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '获取个人信息失败';
@@ -145,13 +203,7 @@ export class AuthStore {
         }
         this.loading = false;
       });
-      if (result.data) {
-        try {
-          localStorage.setItem(USERNAME_KEY, result.data.username);
-        } catch {
-          // 忽略存储失败，当前会话仍然保留内存态用户名。
-        }
-      }
+      this.persistSession();
       return result;
     } catch (err) {
       runInAction(() => {
@@ -184,16 +236,56 @@ export class AuthStore {
     }
   };
 
+  uploadAvatar = async (file: File) => {
+    this.loading = true;
+    this.error = null;
+    try {
+      const profile = await authService.uploadAvatar(file);
+      runInAction(() => {
+        this.profile = profile;
+        this.username = profile.username;
+        this.email = profile.email;
+        this.role = profile.role;
+        this.isAdmin = profile.isAdmin;
+        this.avatarUrl = profile.avatarUrl;
+        this.loading = false;
+      });
+      this.persistSession();
+      return profile;
+    } catch (err) {
+      runInAction(() => {
+        this.error = err instanceof Error ? err.message : '上传头像失败';
+        this.loading = false;
+      });
+      throw err;
+    }
+  };
+
   logout = () => {
     this.token = null;
     this.username = null;
     this.email = null;
+    this.role = null;
+    this.isAdmin = false;
+    this.avatarUrl = null;
     this.profile = null;
     this.captcha = null;
     this.error = null;
     setAuthToken(null);
     try {
+      sessionStorage.removeItem(USERNAME_KEY);
+      sessionStorage.removeItem(ROLE_KEY);
+      sessionStorage.removeItem(IS_ADMIN_KEY);
+      sessionStorage.removeItem(AVATAR_URL_KEY);
+    } catch {
+      // 忽略会话存储失败。
+    }
+
+    try {
       localStorage.removeItem(USERNAME_KEY);
+      localStorage.removeItem(ROLE_KEY);
+      localStorage.removeItem(IS_ADMIN_KEY);
+      localStorage.removeItem(AVATAR_URL_KEY);
     } catch {
       // 忽略存储失败。
     }

@@ -111,174 +111,8 @@ const buildImportCriticalTradeIssues = (rows: TradeRow[]): string[] => {
   return issues;
 };
 
-type DraftHealthSeverity = 'error' | 'warning' | 'info';
-
-interface DraftHealthIssue {
-  severity: DraftHealthSeverity;
-  title: string;
-  description: string;
-}
-
-const buildDraftHealthIssues = (params: {
-  accountDate: string;
-  totalAssets: string;
-  positionValue: string;
-  availableFunds: string;
-  dailyPnL: string;
-  bankFlowDate: string;
-  bankFlowAmount: string;
-  tradeDate: string;
-  tradeRows: TradeRow[];
-}): DraftHealthIssue[] => {
-  const issues: DraftHealthIssue[] = [];
-  const validRows = params.tradeRows.filter(row => row.stockCode.trim() !== '');
-  const accountFields = [
-    params.totalAssets.trim(),
-    params.positionValue.trim(),
-    params.availableFunds.trim(),
-    params.dailyPnL.trim(),
-  ];
-  const filledAccountFieldCount = accountFields.filter(value => value !== '').length;
-  const hasPartialAccountData = filledAccountFieldCount > 0 && filledAccountFieldCount < accountFields.length;
-  const hasBankFlowData = params.bankFlowAmount.trim() !== '';
-
-  if (hasPartialAccountData) {
-    issues.push({
-      severity: 'error',
-      title: '账户资金字段未填完整',
-      description: '总资产、持仓市值、可用资金、当日盈亏需要一起填写，否则很难校验当天真实收益。',
-    });
-  }
-
-  const totalAssets = parseOptionalNumber(params.totalAssets);
-  const positionValue = parseOptionalNumber(params.positionValue);
-  const availableFunds = parseOptionalNumber(params.availableFunds);
-  const accountDailyPnL = parseOptionalNumber(params.dailyPnL);
-
-  if (totalAssets != null && positionValue != null && availableFunds != null) {
-    const diff = Number((totalAssets - positionValue - availableFunds).toFixed(2));
-    if (Math.abs(diff) >= 1) {
-      issues.push({
-        severity: Math.abs(diff) >= 100 ? 'error' : 'warning',
-        title: '账户总资产与持仓 + 可用不一致',
-        description: `当前相差 ${diff.toFixed(2)} 元，请确认是否有识别遗漏、在途资金或录入误差。`,
-      });
-    }
-  }
-
-  if (accountDailyPnL != null && validRows.length > 0) {
-    const tradeDailyPnLSum = validRows.reduce((sum, row) => sum + (parseOptionalNumber(row.dailyPnL) ?? 0), 0);
-    const diff = Number((accountDailyPnL - tradeDailyPnLSum).toFixed(2));
-    if (Math.abs(diff) >= 1) {
-      issues.push({
-        severity: Math.abs(diff) >= 500 ? 'error' : 'warning',
-        title: '账户当日盈亏与当前交易草稿汇总不一致',
-        description: `账户当日盈亏与心魔明细汇总相差 ${diff.toFixed(2)} 元，建议保存前再核对一次。`,
-      });
-    }
-  }
-
-  const seenStockCodes = new Set<string>();
-  validRows.forEach(row => {
-    const label = row.stockName.trim() || row.stockCode.trim();
-    const buyQuantity = Number(row.buyQuantity) || 0;
-    const sellQuantity = Number(row.sellQuantity) || 0;
-    const positionQuantity = Number(row.positionQuantity) || 0;
-    const buyPrice = Number(row.buyPrice) || 0;
-    const sellPrice = Number(row.sellPrice) || 0;
-    const currentPrice = parseOptionalNumber(row.currentPrice) ?? 0;
-    const costPrice = parseOptionalNumber(row.costPrice) ?? 0;
-
-    if (seenStockCodes.has(row.stockCode)) {
-      issues.push({
-        severity: 'error',
-        title: `${label} 在当前批量草稿中重复`,
-        description: '同一只股票同一天重复录入，很容易把持仓盈亏和累计盈亏算重。',
-      });
-    } else {
-      seenStockCodes.add(row.stockCode);
-    }
-
-    if (buyQuantity > 0 && buyPrice <= 0) {
-      issues.push({
-        severity: 'error',
-        title: `${label} 缺少买入均价`,
-        description: '买入数量已经填写，但买入均价缺失，保存后会影响后续周期与做T统计。',
-      });
-    }
-
-    if (sellQuantity > 0 && sellPrice <= 0) {
-      issues.push({
-        severity: 'error',
-        title: `${label} 缺少卖出均价`,
-        description: '卖出数量已经填写，但卖出均价缺失，当前截图不适合直接保存。',
-      });
-    }
-
-    if (row.isLiquidated && (positionQuantity > 0 || currentPrice > 0 || costPrice > 0)) {
-      issues.push({
-        severity: 'error',
-        title: `${label} 已标记清仓但仍保留持仓字段`,
-        description: '清仓记录不应该继续带持仓数量、成本价或收盘价，否则后续持仓统计会串行污染。',
-      });
-    }
-
-    if (!row.isLiquidated && positionQuantity > 0 && currentPrice <= 0) {
-      issues.push({
-        severity: 'warning',
-        title: `${label} 缺少收盘价`,
-        description: '仍有持仓但收盘价为空，会导致持仓盈亏、当日盈亏和收益日历校验不稳定。',
-      });
-    }
-
-    if (!row.isLiquidated && positionQuantity > 0 && costPrice <= 0) {
-      issues.push({
-        severity: 'warning',
-        title: `${label} 缺少成本价`,
-        description: '仍有持仓但成本价为空，持仓盈亏和周期统计会失真。',
-      });
-    }
-  });
-
-  const businessDates = new Set<string>();
-  if (filledAccountFieldCount > 0 && params.accountDate) {
-    businessDates.add(params.accountDate);
-  }
-  if (hasBankFlowData && params.bankFlowDate) {
-    businessDates.add(params.bankFlowDate);
-  }
-  if (validRows.length > 0 && params.tradeDate) {
-    businessDates.add(params.tradeDate);
-  }
-  if (businessDates.size > 1) {
-    issues.push({
-      severity: 'warning',
-      title: '当前三个录入区的日期不一致',
-      description: `当前涉及日期 ${Array.from(businessDates).join('、')}，如果本来是同一天的截图，建议统一后再保存。`,
-    });
-  }
-
-  if (validRows.length > 0 && filledAccountFieldCount === 0) {
-    issues.push({
-      severity: 'info',
-      title: '当前只有交易草稿，没有账户快照',
-      description: '这不会阻止保存，但后续净入金修正收益率、资金使用率和收益日历会少一层校验。',
-    });
-  }
-
-  if (hasBankFlowData && filledAccountFieldCount === 0) {
-    issues.push({
-      severity: 'info',
-      title: '当前有银证流水，但没有账户快照',
-      description: '建议把当天账户总资产一起补录，后面看净入金修正收益率会更准。',
-    });
-  }
-
-  return issues;
-};
-
 const UnifiedEntryPage = observer(() => {
-  const { unifiedEntryStore: store, dashboardStore } = useStore();
+  const { unifiedEntryStore: store, dashboardStore, authStore } = useStore();
   const navigate = useNavigate();
 
   // 从 URL 读取 type 和 id 参数
@@ -951,22 +785,6 @@ const UnifiedEntryPage = observer(() => {
     && Math.abs(accountBalanceDiff) >= 1;
   const importCriticalIssues = lastImportResult ? buildImportCriticalTradeIssues(tradeRows) : [];
   const hasImportCriticalIssues = importCriticalIssues.length > 0;
-  const draftHealthIssues = buildDraftHealthIssues({
-    accountDate: acDate,
-    totalAssets: acTotalAssets,
-    positionValue: acPositionValue,
-    availableFunds: acAvailable,
-    dailyPnL: acDailyPnL,
-    bankFlowDate: bfDate,
-    bankFlowAmount: bfAmount,
-    tradeDate,
-    tradeRows,
-  });
-  const draftHealthErrorCount = draftHealthIssues.filter(item => item.severity === 'error').length;
-  const draftHealthWarningCount = draftHealthIssues.filter(item => item.severity === 'warning').length;
-  const draftHealthInfoCount = draftHealthIssues.filter(item => item.severity === 'info').length;
-  const shouldShowDraftHealthPanel = !isEditMode
-    && (hasDraftValues || importFile !== null || lastImportResult !== null || draftHealthIssues.length > 0);
 
   return (
     <div className="unified-entry-container">
@@ -1089,11 +907,11 @@ const UnifiedEntryPage = observer(() => {
                 <span>银证流水：{lastImportResult.bankFlow ? `${lastImportResult.bankFlow.flowType} ${lastImportResult.bankFlow.amount}` : '未识别/无净流入'}</span>
                 <span>心魔条数：{lastImportResult.positions.length}</span>
                 <span>回填日期：{lastImportResult.recognizedDate?.split('T')[0] || importDate}</span>
-                {lastImportResult.auditId > 0 && (
+                {authStore.isAdmin && lastImportResult.auditId > 0 && (
                   <button
                     type="button"
                     className="image-import-panel__audit-link"
-                    onClick={() => navigate(`/audits/imports?id=${lastImportResult.auditId}`)}
+                    onClick={() => navigate(`/admin?tab=audits&id=${lastImportResult.auditId}`)}
                   >
                     查看审计 #{lastImportResult.auditId}
                   </button>
@@ -1138,50 +956,6 @@ const UnifiedEntryPage = observer(() => {
                   <li key={`${warning}-${index}`}>{warning}</li>
                 ))}
               </ul>
-            </div>
-          )}
-        </section>
-      )}
-
-      {shouldShowDraftHealthPanel && (
-        <section className="draft-health-panel">
-          <div className="draft-health-panel__header">
-            <div>
-              <h2 className="draft-health-panel__title">当前草稿体检</h2>
-              <p className="draft-health-panel__subtitle">保存前先看一眼，优先拦截日期错位、持仓字段残留、盈亏对不上的问题。</p>
-            </div>
-            {lastImportResult?.auditId ? (
-              <button
-                type="button"
-                className="draft-health-panel__audit-btn"
-                onClick={() => navigate(`/audits/imports?id=${lastImportResult.auditId}`)}
-              >
-                打开审计页
-              </button>
-            ) : null}
-          </div>
-
-          <div className="draft-health-panel__summary">
-            <span className="draft-health-panel__pill draft-health-panel__pill--error">错误 {draftHealthErrorCount}</span>
-            <span className="draft-health-panel__pill draft-health-panel__pill--warning">提醒 {draftHealthWarningCount}</span>
-            <span className="draft-health-panel__pill draft-health-panel__pill--info">信息 {draftHealthInfoCount}</span>
-          </div>
-
-          {draftHealthIssues.length === 0 ? (
-            <div className="draft-health-panel__empty">
-              当前草稿没有发现明显异常，可以继续保存。
-            </div>
-          ) : (
-            <div className="draft-health-panel__list">
-              {draftHealthIssues.map((issue, index) => (
-                <article
-                  key={`${issue.title}-${index}`}
-                  className={`draft-health-panel__item draft-health-panel__item--${issue.severity}`}
-                >
-                  <p className="draft-health-panel__item-title">{issue.title}</p>
-                  <p className="draft-health-panel__item-desc">{issue.description}</p>
-                </article>
-              ))}
             </div>
           )}
         </section>

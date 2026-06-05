@@ -1,4 +1,5 @@
 using Lies.Server.Services;
+using Lies.Server.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Lies.Server.Controllers;
@@ -17,7 +18,13 @@ public class DataHealthController : ControllerBase
     [HttpGet("report")]
     public async Task<IActionResult> GetReport(CancellationToken cancellationToken)
     {
-        var report = await _dataHealthService.BuildReportAsync(cancellationToken);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var report = await _dataHealthService.BuildReportAsync(userId, cancellationToken);
         return Ok(new
         {
             success = true,

@@ -1,6 +1,7 @@
 using Lies.Server.Data;
 using Lies.Server.DTOs;
 using Lies.Server.Entities;
+using Lies.Server.Infrastructure;
 using Lies.Server.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
@@ -37,12 +38,18 @@ public class DashboardController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Get()
     {
-        var latestAccount = await _accountService.GetLatestAsync();
-        var latestTradeDate = await GetLatestTradeDateAsync();
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var latestAccount = await _accountService.GetLatestAsync(userId);
+        var latestTradeDate = await GetLatestTradeDateAsync(userId);
         var referenceDate = (latestTradeDate ?? latestAccount?.Date ?? DateTime.UtcNow.Date).Date;
         var latestRecordDate = latestTradeDate ?? latestAccount?.Date;
-        var latestRecordDailyPnL = await GetLatestRecordDailyPnLAsync(latestRecordDate, latestAccount);
-        var accountHistory = await _accountService.GetByDateRangeAsync(null, referenceDate);
+        var latestRecordDailyPnL = await GetLatestRecordDailyPnLAsync(userId, latestRecordDate, latestAccount);
+        var accountHistory = await _accountService.GetByDateRangeAsync(userId, null, referenceDate);
         var todayPnL = accountHistory
             .Where(record => record.Date.Date == referenceDate)
             .Sum(record => record.DailyPnL);
@@ -57,12 +64,13 @@ public class DashboardController : ControllerBase
             .Where(record => record.Date.Date >= monthStart && record.Date.Date <= referenceDate)
             .Sum(record => record.DailyPnL);
 
-        var summary = await _tradeService.GetSummaryAsync(new TradeSummaryRequest());
+        var summary = await _tradeService.GetSummaryAsync(userId, new TradeSummaryRequest());
         var cumulativePnL = summary.TotalPnL;
-        var recentBankFlows = await _bankFlowService.GetRecentAsync();
+        var recentBankFlows = await _bankFlowService.GetRecentAsync(userId);
         var periodDefinitions = BuildPeriodDefinitions(referenceDate, accountHistory, todayPnL, weekPnL, monthPnL, cumulativePnL);
         var bankFlows = await _db.BankFlows
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .Where(item => item.Date <= referenceDate)
             .ToListAsync();
         var marketIndexSeries = await _marketIndexService.GetDailySeriesAsync(
@@ -75,7 +83,7 @@ public class DashboardController : ControllerBase
             Page = 1,
             PageSize = 5
         };
-        var recentTradesResult = await _tradeService.QueryAsync(tradeQuery);
+        var recentTradesResult = await _tradeService.QueryAsync(userId, tradeQuery);
 
         var dashboardData = new DashboardResponse
         {
@@ -103,10 +111,11 @@ public class DashboardController : ControllerBase
     /// <summary>
     /// 获取三类录入数据中最新的业务日期
     /// </summary>
-    private async Task<DateTime?> GetLatestTradeDateAsync()
+    private async Task<DateTime?> GetLatestTradeDateAsync(int userId)
     {
         return await _db.StockTrades
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .OrderByDescending(item => item.TradeDate)
             .Select(item => (DateTime?)item.TradeDate)
             .FirstOrDefaultAsync();
@@ -116,7 +125,7 @@ public class DashboardController : ControllerBase
     /// 获取最近交易日期对应的当日盈亏
     /// 优先取账户日表，其次回退为当日交易记录的 dailyPnL 汇总
     /// </summary>
-    private async Task<decimal> GetLatestRecordDailyPnLAsync(DateTime? latestRecordDate, AccountDailyResponse? latestAccount)
+    private async Task<decimal> GetLatestRecordDailyPnLAsync(int userId, DateTime? latestRecordDate, AccountDailyResponse? latestAccount)
     {
         if (!latestRecordDate.HasValue)
         {
@@ -131,6 +140,7 @@ public class DashboardController : ControllerBase
 
         var matchedAccountPnL = await _db.AccountDailies
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .Where(item => item.Date == targetDate)
             .Select(item => (decimal?)item.DailyPnL)
             .FirstOrDefaultAsync();
@@ -142,6 +152,7 @@ public class DashboardController : ControllerBase
 
         var matchedTradePnL = await _db.StockTrades
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .Where(item => item.TradeDate == targetDate)
             .SumAsync(item => (decimal?)item.DailyPnL);
 

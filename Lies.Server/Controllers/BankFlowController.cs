@@ -1,4 +1,5 @@
 using Lies.Server.DTOs;
+using Lies.Server.Infrastructure;
 using Lies.Server.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -23,7 +24,13 @@ public class BankFlowController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
-        var list = await _bankFlowService.GetByDateRangeAsync(startDate, endDate);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var list = await _bankFlowService.GetByDateRangeAsync(userId, startDate, endDate);
 
         return Ok(new
         {
@@ -39,7 +46,13 @@ public class BankFlowController : ControllerBase
     [HttpGet("recent")]
     public async Task<IActionResult> GetRecent()
     {
-        var list = await _bankFlowService.GetRecentAsync();
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var list = await _bankFlowService.GetRecentAsync(userId);
 
         return Ok(new
         {
@@ -55,7 +68,13 @@ public class BankFlowController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var data = await _bankFlowService.GetByIdAsync(id);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var data = await _bankFlowService.GetByIdAsync(userId, id);
 
         if (data == null)
         {
@@ -80,6 +99,12 @@ public class BankFlowController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] BankFlowRequest request)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -90,7 +115,16 @@ public class BankFlowController : ControllerBase
             });
         }
 
-        var result = await _bankFlowService.CreateAsync(request);
+        var result = await _bankFlowService.CreateAsync(userId, request);
+
+        if (!result.Success)
+        {
+            return result.ErrorCode switch
+            {
+                "validation" => BadRequest(new { success = false, message = result.Message }),
+                _ => BadRequest(new { success = false, message = result.Message })
+            };
+        }
 
         return CreatedAtAction(nameof(GetByDateRange), null, new
         {
@@ -106,6 +140,12 @@ public class BankFlowController : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] BankFlowRequest request)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -116,11 +156,16 @@ public class BankFlowController : ControllerBase
             });
         }
 
-        var result = await _bankFlowService.UpdateAsync(id, request);
+        var result = await _bankFlowService.UpdateAsync(userId, id, request);
 
         if (!result.Success)
         {
-            return NotFound(new { success = false, message = result.Message });
+            return result.ErrorCode switch
+            {
+                "validation" => BadRequest(new { success = false, message = result.Message }),
+                "not_found" => NotFound(new { success = false, message = result.Message }),
+                _ => BadRequest(new { success = false, message = result.Message })
+            };
         }
 
         return Ok(new
@@ -137,7 +182,13 @@ public class BankFlowController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var result = await _bankFlowService.DeleteAsync(id);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var result = await _bankFlowService.DeleteAsync(userId, id);
 
         if (!result.Success)
         {

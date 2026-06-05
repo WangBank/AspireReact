@@ -1,4 +1,5 @@
 using Lies.Server.DTOs;
+using Lies.Server.Infrastructure;
 using Lies.Server.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -23,7 +24,13 @@ public class AccountController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
-        var list = await _accountService.GetByDateRangeAsync(startDate, endDate);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var list = await _accountService.GetByDateRangeAsync(userId, startDate, endDate);
 
         return Ok(new
         {
@@ -39,7 +46,13 @@ public class AccountController : ControllerBase
     [HttpGet("latest")]
     public async Task<IActionResult> GetLatest()
     {
-        var data = await _accountService.GetLatestAsync();
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var data = await _accountService.GetLatestAsync(userId);
 
         if (data == null)
         {
@@ -65,7 +78,13 @@ public class AccountController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {
-        var data = await _accountService.GetByIdAsync(id);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var data = await _accountService.GetByIdAsync(userId, id);
 
         if (data == null)
         {
@@ -90,6 +109,12 @@ public class AccountController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] AccountDailyRequest request)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -100,11 +125,16 @@ public class AccountController : ControllerBase
             });
         }
 
-        var result = await _accountService.CreateAsync(request);
+        var result = await _accountService.CreateAsync(userId, request);
 
         if (!result.Success)
         {
-            return Conflict(new { success = false, message = result.Message });
+            return result.ErrorCode switch
+            {
+                "validation" => BadRequest(new { success = false, message = result.Message }),
+                "conflict" => Conflict(new { success = false, message = result.Message }),
+                _ => BadRequest(new { success = false, message = result.Message })
+            };
         }
 
         return CreatedAtAction(nameof(GetByDateRange), null, new
@@ -121,6 +151,12 @@ public class AccountController : ControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] AccountDailyRequest request)
     {
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
         if (!ModelState.IsValid)
         {
             return BadRequest(new
@@ -131,11 +167,17 @@ public class AccountController : ControllerBase
             });
         }
 
-        var result = await _accountService.UpdateAsync(id, request);
+        var result = await _accountService.UpdateAsync(userId, id, request);
 
         if (!result.Success)
         {
-            return NotFound(new { success = false, message = result.Message });
+            return result.ErrorCode switch
+            {
+                "validation" => BadRequest(new { success = false, message = result.Message }),
+                "conflict" => Conflict(new { success = false, message = result.Message }),
+                "not_found" => NotFound(new { success = false, message = result.Message }),
+                _ => BadRequest(new { success = false, message = result.Message })
+            };
         }
 
         return Ok(new
@@ -152,7 +194,13 @@ public class AccountController : ControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var result = await _accountService.DeleteAsync(id);
+        var guard = this.RequireCurrentUser(out var userId);
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        var result = await _accountService.DeleteAsync(userId, id);
 
         if (!result.Success)
         {

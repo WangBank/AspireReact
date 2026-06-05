@@ -14,27 +14,32 @@ public class DataHealthService : IDataHealthService
         _db = db;
     }
 
-    public async Task<DataHealthReportResponse> BuildReportAsync(CancellationToken cancellationToken = default)
+    public async Task<DataHealthReportResponse> BuildReportAsync(int userId, CancellationToken cancellationToken = default)
     {
         var accounts = await _db.AccountDailies
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .OrderBy(item => item.Date)
             .ToListAsync(cancellationToken);
         var bankFlows = await _db.BankFlows
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .OrderBy(item => item.Date)
             .ToListAsync(cancellationToken);
         var trades = await _db.StockTrades
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .OrderBy(item => item.TradeDate)
             .ThenBy(item => item.Id)
             .ToListAsync(cancellationToken);
         var notes = await _db.TradeNotes
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .OrderBy(item => item.Date)
             .ToListAsync(cancellationToken);
         var audits = await _db.PortfolioImportAudits
             .AsNoTracking()
+            .Where(item => item.UserId == userId)
             .OrderByDescending(item => item.CreatedAt)
             .ToListAsync(cancellationToken);
 

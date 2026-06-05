@@ -8,19 +8,68 @@ namespace Lies.Server.Services;
 public class StockTradeService : IStockTradeService
 {
     private readonly AppDbContext _db;
+    private readonly ISensitiveWordService _sensitiveWordService;
 
-    public StockTradeService(AppDbContext db)
+    public StockTradeService(AppDbContext db, ISensitiveWordService sensitiveWordService)
     {
         _db = db;
+        _sensitiveWordService = sensitiveWordService;
+    }
+
+    private IQueryable<StockTrade> UserTradesQuery(int userId)
+    {
+        return _db.StockTrades.Where(item => item.UserId == userId);
+    }
+
+    private IQueryable<BankFlow> UserBankFlowsQuery(int userId)
+    {
+        return _db.BankFlows.Where(item => item.UserId == userId);
+    }
+
+    private IQueryable<AccountDaily> UserAccountsQuery(int userId)
+    {
+        return _db.AccountDailies.Where(item => item.UserId == userId);
+    }
+
+    private Task<SensitiveWordValidationResult> ValidateTradeTextAsync(StockTradeRequest request)
+    {
+        var inputs = new List<SensitiveWordInput>
+        {
+            new("卖出原因", request.SellReason),
+            new("交易备注", request.TradeNote)
+        };
+
+        if (request.EmotionTags is { Count: > 0 })
+        {
+            inputs.AddRange(request.EmotionTags.Select(tag => new SensitiveWordInput("情绪标签", tag)));
+        }
+
+        if (request.TradeTags is { Count: > 0 })
+        {
+            inputs.AddRange(request.TradeTags.Select(tag => new SensitiveWordInput("交易标签", tag)));
+        }
+
+        return _sensitiveWordService.ValidateAsync(inputs);
     }
 
     /// <summary>
     /// 新增交易记录（带验证）
     /// </summary>
-    public async Task<StockTradeResult> CreateAsync(StockTradeRequest request)
+    public async Task<StockTradeResult> CreateAsync(int userId, StockTradeRequest request)
     {
+        var validation = await ValidateTradeTextAsync(request);
+        if (!validation.IsValid)
+        {
+            return new StockTradeResult
+            {
+                Success = false,
+                Message = validation.Message,
+                ErrorCode = "validation"
+            };
+        }
+
         // 验证：同一心魔在同一天不应重复录入（防止误操作）
-        var exists = await _db.StockTrades.AnyAsync(t =>
+        var exists = await UserTradesQuery(userId).AnyAsync(t =>
             t.TradeDate == request.TradeDate.Date &&
             t.StockCode == request.StockCode);
         if (exists)
@@ -28,12 +77,14 @@ public class StockTradeService : IStockTradeService
             return new StockTradeResult
             {
                 Success = false,
-                Message = $"心魔 {request.StockCode} 在 {request.TradeDate:yyyy-MM-dd} 已有交易记录，请勿重复添加"
+                Message = $"心魔 {request.StockCode} 在 {request.TradeDate:yyyy-MM-dd} 已有交易记录，请勿重复添加",
+                ErrorCode = "conflict"
             };
         }
 
         var entity = new StockTrade
         {
+            UserId = userId,
             TradeDate = request.TradeDate.Date,
             StockCode = request.StockCode,
             StockName = request.StockName,
@@ -63,14 +114,14 @@ public class StockTradeService : IStockTradeService
         {
             Success = true,
             Message = "交易记录添加成功",
-            Data = await BuildCorrectedResponseAsync(entity.Id) ?? ToResponse(entity)
+            Data = await BuildCorrectedResponseAsync(userId, entity.Id) ?? ToResponse(entity)
         };
     }
 
     /// <summary>
     /// 批量新增交易记录
     /// </summary>
-    public async Task<BatchStockTradeResult> BatchCreateAsync(BatchStockTradeRequest request)
+    public async Task<BatchStockTradeResult> BatchCreateAsync(int userId, BatchStockTradeRequest request)
     {
         var results = new List<StockTradeResponse>();
         var errors = new List<string>();
@@ -80,6 +131,14 @@ public class StockTradeService : IStockTradeService
 
         foreach (var tradeRequest in request.Trades)
         {
+            var validation = await ValidateTradeTextAsync(tradeRequest);
+            if (!validation.IsValid)
+            {
+                failCount++;
+                errors.Add($"心魔 {tradeRequest.StockCode} 在 {tradeRequest.TradeDate:yyyy-MM-dd} 含敏感词，已跳过：{validation.Message}");
+                continue;
+            }
+
             var requestKey = BuildTradeRequestKey(tradeRequest.TradeDate, tradeRequest.StockCode);
             if (!requestKeys.Add(requestKey))
             {
@@ -89,7 +148,7 @@ public class StockTradeService : IStockTradeService
             }
 
             // 验证：同一心魔在同一天不应重复录入
-            var exists = await _db.StockTrades.AnyAsync(t =>
+            var exists = await UserTradesQuery(userId).AnyAsync(t =>
                 t.TradeDate == tradeRequest.TradeDate.Date &&
                 t.StockCode == tradeRequest.StockCode);
             if (exists)
@@ -101,6 +160,7 @@ public class StockTradeService : IStockTradeService
 
             var entity = new StockTrade
             {
+                UserId = userId,
                 TradeDate = tradeRequest.TradeDate.Date,
                 StockCode = tradeRequest.StockCode,
                 StockName = tradeRequest.StockName,
@@ -148,22 +208,34 @@ public class StockTradeService : IStockTradeService
     /// <summary>
     /// 修改交易记录
     /// </summary>
-    public async Task<StockTradeResult> UpdateAsync(int id, StockTradeRequest request)
+    public async Task<StockTradeResult> UpdateAsync(int userId, int id, StockTradeRequest request)
     {
-        var entity = await _db.StockTrades.FindAsync(id);
+        var validation = await ValidateTradeTextAsync(request);
+        if (!validation.IsValid)
+        {
+            return new StockTradeResult
+            {
+                Success = false,
+                Message = validation.Message,
+                ErrorCode = "validation"
+            };
+        }
+
+        var entity = await UserTradesQuery(userId).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null)
         {
             return new StockTradeResult
             {
                 Success = false,
-                Message = $"未找到 ID 为 {id} 的交易记录"
+                Message = $"未找到 ID 为 {id} 的交易记录",
+                ErrorCode = "not_found"
             };
         }
 
         // 如果修改了日期或心魔代码，检查是否与其他记录冲突
         if (entity.TradeDate != request.TradeDate.Date || entity.StockCode != request.StockCode)
         {
-            var conflict = await _db.StockTrades.AnyAsync(t =>
+            var conflict = await UserTradesQuery(userId).AnyAsync(t =>
                 t.Id != id &&
                 t.TradeDate == request.TradeDate.Date &&
                 t.StockCode == request.StockCode);
@@ -172,7 +244,8 @@ public class StockTradeService : IStockTradeService
                 return new StockTradeResult
                 {
                     Success = false,
-                    Message = $"心魔 {request.StockCode} 在 {request.TradeDate:yyyy-MM-dd} 已有其他交易记录，无法修改为该组合"
+                    Message = $"心魔 {request.StockCode} 在 {request.TradeDate:yyyy-MM-dd} 已有其他交易记录，无法修改为该组合",
+                    ErrorCode = "conflict"
                 };
             }
         }
@@ -204,14 +277,14 @@ public class StockTradeService : IStockTradeService
         {
             Success = true,
             Message = "交易记录修改成功",
-            Data = await BuildCorrectedResponseAsync(entity.Id) ?? ToResponse(entity)
+            Data = await BuildCorrectedResponseAsync(userId, entity.Id) ?? ToResponse(entity)
         };
     }
 
     /// <summary>
     /// 批量修改交易记录
     /// </summary>
-    public async Task<BatchStockTradeResult> BatchUpdateAsync(BatchTradeUpdateRequest request)
+    public async Task<BatchStockTradeResult> BatchUpdateAsync(int userId, BatchTradeUpdateRequest request)
     {
         var results = new List<StockTradeResponse>();
         var errors = new List<string>();
@@ -221,7 +294,7 @@ public class StockTradeService : IStockTradeService
 
         foreach (var item in request.Trades)
         {
-            var entity = await _db.StockTrades.FindAsync(item.Id);
+            var entity = await UserTradesQuery(userId).FirstOrDefaultAsync(trade => trade.Id == item.Id);
             if (entity == null)
             {
                 failCount++;
@@ -230,6 +303,14 @@ public class StockTradeService : IStockTradeService
             }
 
             var req = item.Data;
+            var validation = await ValidateTradeTextAsync(req);
+            if (!validation.IsValid)
+            {
+                failCount++;
+                errors.Add($"心魔 {req.StockCode} 在 {req.TradeDate:yyyy-MM-dd} 含敏感词，跳过 ID {item.Id}：{validation.Message}");
+                continue;
+            }
+
             var requestKey = BuildTradeRequestKey(req.TradeDate, req.StockCode);
             if (!requestKeys.Add(requestKey))
             {
@@ -241,7 +322,7 @@ public class StockTradeService : IStockTradeService
             // 如果修改了日期或心魔代码，检查是否与其他记录冲突
             if (entity.TradeDate != req.TradeDate.Date || entity.StockCode != req.StockCode)
             {
-                var conflict = await _db.StockTrades.AnyAsync(t =>
+                var conflict = await UserTradesQuery(userId).AnyAsync(t =>
                     t.Id != item.Id &&
                     t.TradeDate == req.TradeDate.Date &&
                     t.StockCode == req.StockCode);
@@ -297,15 +378,16 @@ public class StockTradeService : IStockTradeService
     /// <summary>
     /// 删除交易记录
     /// </summary>
-    public async Task<StockTradeResult> DeleteAsync(int id)
+    public async Task<StockTradeResult> DeleteAsync(int userId, int id)
     {
-        var entity = await _db.StockTrades.FindAsync(id);
+        var entity = await UserTradesQuery(userId).FirstOrDefaultAsync(item => item.Id == id);
         if (entity == null)
         {
             return new StockTradeResult
             {
                 Success = false,
-                Message = $"未找到 ID 为 {id} 的交易记录"
+                Message = $"未找到 ID 为 {id} 的交易记录",
+                ErrorCode = "not_found"
             };
         }
 
@@ -322,15 +404,16 @@ public class StockTradeService : IStockTradeService
     /// <summary>
     /// 单条详情
     /// </summary>
-    public async Task<StockTradeResult> GetByIdAsync(int id)
+    public async Task<StockTradeResult> GetByIdAsync(int userId, int id)
     {
-        var response = await BuildCorrectedResponseAsync(id);
+        var response = await BuildCorrectedResponseAsync(userId, id);
         if (response == null)
         {
             return new StockTradeResult
             {
                 Success = false,
-                Message = $"未找到 ID 为 {id} 的交易记录"
+                Message = $"未找到 ID 为 {id} 的交易记录",
+                ErrorCode = "not_found"
             };
         }
 
@@ -345,9 +428,9 @@ public class StockTradeService : IStockTradeService
     /// <summary>
     /// 多条件筛选查询（分页）
     /// </summary>
-    public async Task<PagedResult<StockTradeResponse>> QueryAsync(TradeQueryRequest request)
+    public async Task<PagedResult<StockTradeResponse>> QueryAsync(int userId, TradeQueryRequest request)
     {
-        var historyQuery = _db.StockTrades.AsNoTracking();
+        var historyQuery = UserTradesQuery(userId).AsNoTracking();
         DateTime? start = null;
         DateTime? end = null;
 
@@ -407,10 +490,10 @@ public class StockTradeService : IStockTradeService
     /// <summary>
     /// 统计汇总（按日期范围、心魔、板块统计盈亏）
     /// </summary>
-    public async Task<TradeSummaryResponse> GetSummaryAsync(TradeSummaryRequest request)
+    public async Task<TradeSummaryResponse> GetSummaryAsync(int userId, TradeSummaryRequest request)
     {
-        var historyQuery = _db.StockTrades.AsNoTracking();
-        var bankFlowQuery = _db.BankFlows.AsNoTracking();
+        var historyQuery = UserTradesQuery(userId).AsNoTracking();
+        var bankFlowQuery = UserBankFlowsQuery(userId).AsNoTracking();
         DateTime? start = null;
         DateTime? end = null;
 
@@ -454,7 +537,7 @@ public class StockTradeService : IStockTradeService
                 group => group.Sum(flow => string.Equals(flow.FlowType, "转入", StringComparison.Ordinal)
                     ? flow.Amount
                     : -flow.Amount));
-        var accountRecords = await BuildAccountAnalysisRecordsAsync(start, end);
+        var accountRecords = await BuildAccountAnalysisRecordsAsync(userId, start, end);
 
         var stockAggregates = correctedRecords
             .GroupBy(snapshot => new { snapshot.Trade.StockCode, snapshot.Trade.StockName, snapshot.Trade.Board })
@@ -636,7 +719,7 @@ public class StockTradeService : IStockTradeService
         var totalBankOutflow = bankFlowRecords
             .Where(flow => string.Equals(flow.FlowType, "转出", StringComparison.Ordinal))
             .Sum(flow => flow.Amount);
-        var currentTotalAmount = await _db.AccountDailies
+        var currentTotalAmount = await UserAccountsQuery(userId)
             .AsNoTracking()
             .OrderByDescending(item => item.Date)
             .Select(item => (decimal?)item.TotalAssets)
@@ -846,9 +929,9 @@ public class StockTradeService : IStockTradeService
         return TradeMetricsCalculator.Recalculate(historyRecords).ToList();
     }
 
-    private async Task<List<AccountAnalysisRecord>> BuildAccountAnalysisRecordsAsync(DateTime? startDate, DateTime? endDate)
+    private async Task<List<AccountAnalysisRecord>> BuildAccountAnalysisRecordsAsync(int userId, DateTime? startDate, DateTime? endDate)
     {
-        var query = _db.AccountDailies.AsNoTracking();
+        var query = UserAccountsQuery(userId).AsNoTracking();
 
         if (startDate.HasValue)
         {
@@ -877,9 +960,9 @@ public class StockTradeService : IStockTradeService
         return TradeMetricsCalculator.IsHoldingClosed(trade);
     }
 
-    private async Task<StockTradeResponse?> BuildCorrectedResponseAsync(int id)
+    private async Task<StockTradeResponse?> BuildCorrectedResponseAsync(int userId, int id)
     {
-        var entity = await _db.StockTrades
+        var entity = await UserTradesQuery(userId)
             .AsNoTracking()
             .FirstOrDefaultAsync(trade => trade.Id == id);
 
@@ -889,7 +972,7 @@ public class StockTradeService : IStockTradeService
         }
 
         var correctedSnapshots = await BuildCorrectedSnapshotsAsync(
-            _db.StockTrades
+            UserTradesQuery(userId)
                 .AsNoTracking()
                 .Where(trade => trade.StockCode == entity.StockCode)
                 .Where(trade => trade.TradeDate < entity.TradeDate

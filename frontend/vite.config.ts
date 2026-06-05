@@ -10,13 +10,15 @@ const allowedHosts = [
     .filter(Boolean)),
 ];
 
+const devApiTarget = process.env.SERVER_HTTPS || process.env.SERVER_HTTP || 'http://localhost:5515';
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['github.svg', 'Lise.png', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+      includeAssets: ['github.svg', 'Lise.png', 'brand-mark.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         id: '/',
         name: '心魔录',
@@ -61,9 +63,9 @@ export default defineConfig({
     proxy: {
       // Proxy API calls to the app service
       '/api': {
-        target: process.env.SERVER_HTTPS || process.env.SERVER_HTTP,
-        changeOrigin: true
-      }
+        target: devApiTarget,
+        changeOrigin: true,
+      },
     }
   }
 });

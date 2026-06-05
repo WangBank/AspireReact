@@ -15,6 +15,7 @@ public interface IAuthService
     Task<UserProfileResponse?> GetProfileAsync(int userId);
     Task<UpdateProfileResponse> UpdateProfileAsync(int userId, UpdateProfileRequest request);
     Task<UpdateProfileResponse> ChangePasswordAsync(int userId, ChangePasswordRequest request);
+    Task<UserProfileResponse?> UpdateAvatarAsync(int userId, IFormFile file, CancellationToken cancellationToken = default);
 }
 
 public class UpdateProfileResponse
@@ -29,17 +30,39 @@ public class AuthService : IAuthService
 {
     private readonly AppDbContext _db;
     private readonly ICaptchaService _captchaService;
+    private readonly ISensitiveWordService _sensitiveWordService;
     private readonly IConfiguration _configuration;
+    private readonly IWebHostEnvironment _environment;
 
-    public AuthService(AppDbContext db, ICaptchaService captchaService, IConfiguration configuration)
+    public AuthService(
+        AppDbContext db,
+        ICaptchaService captchaService,
+        ISensitiveWordService sensitiveWordService,
+        IConfiguration configuration,
+        IWebHostEnvironment environment)
     {
         _db = db;
         _captchaService = captchaService;
+        _sensitiveWordService = sensitiveWordService;
         _configuration = configuration;
+        _environment = environment;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request)
     {
+        var validation = await _sensitiveWordService.ValidateAsync(
+        [
+            new SensitiveWordInput("用户名", request.Username)
+        ]);
+        if (!validation.IsValid)
+        {
+            return new AuthResponse
+            {
+                Success = false,
+                Message = validation.Message
+            };
+        }
+
         // 验证验证码
         var captchaValid = await _captchaService.ValidateCaptchaAsync(request.CaptchaId, request.CaptchaCode);
         if (!captchaValid)
@@ -82,7 +105,10 @@ public class AuthService : IAuthService
             Success = true,
             Message = "注册成功",
             Token = token,
-            Username = user.Username
+            Username = user.Username,
+            Role = user.Role,
+            IsAdmin = IsAdmin(user),
+            AvatarUrl = NormalizeAssetUrl(user.AvatarPath)
         };
     }
 
@@ -115,7 +141,10 @@ public class AuthService : IAuthService
             Success = true,
             Message = "登录成功",
             Token = token,
-            Username = user.Username
+            Username = user.Username,
+            Role = user.Role,
+            IsAdmin = IsAdmin(user),
+            AvatarUrl = NormalizeAssetUrl(user.AvatarPath)
         };
     }
 
@@ -132,6 +161,7 @@ public class AuthService : IAuthService
         {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, user.Username),
+            new Claim(ClaimTypes.Role, user.Role),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
         };
@@ -158,6 +188,9 @@ public class AuthService : IAuthService
             Id = user.Id,
             Username = user.Username,
             Email = user.Email,
+            Role = user.Role,
+            IsAdmin = IsAdmin(user),
+            AvatarUrl = NormalizeAssetUrl(user.AvatarPath),
             CreatedAt = user.CreatedAt,
             LastLoginAt = user.LastLoginAt
         };
@@ -168,6 +201,19 @@ public class AuthService : IAuthService
         var user = await _db.Users.FindAsync(userId);
         if (user == null || !user.IsActive)
             return new UpdateProfileResponse { Success = false, Message = "用户不存在或已被禁用" };
+
+        var validation = await _sensitiveWordService.ValidateAsync(
+        [
+            new SensitiveWordInput("用户名", request.Username)
+        ]);
+        if (!validation.IsValid)
+        {
+            return new UpdateProfileResponse
+            {
+                Success = false,
+                Message = validation.Message
+            };
+        }
 
         // 检查用户名是否被其他用户占用
         var existingUsername = await _db.Users
@@ -208,5 +254,73 @@ public class AuthService : IAuthService
         await _db.SaveChangesAsync();
 
         return new UpdateProfileResponse { Success = true, Message = "密码修改成功" };
+    }
+
+    public async Task<UserProfileResponse?> UpdateAvatarAsync(int userId, IFormFile file, CancellationToken cancellationToken = default)
+    {
+        var user = await _db.Users.FindAsync([userId], cancellationToken);
+        if (user == null || !user.IsActive)
+        {
+            return null;
+        }
+
+        var extension = Path.GetExtension(file.FileName);
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            extension = ".png";
+        }
+
+        var avatarsRoot = Path.Combine(
+            _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot"),
+            "uploads",
+            "avatars");
+        Directory.CreateDirectory(avatarsRoot);
+
+        var fileName = $"user-{user.Id}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}{extension.ToLowerInvariant()}";
+        var absoluteFilePath = Path.Combine(avatarsRoot, fileName);
+
+        await using (var stream = File.Create(absoluteFilePath))
+        {
+            await file.CopyToAsync(stream, cancellationToken);
+        }
+
+        DeleteAvatarFileIfExists(user.AvatarPath);
+        user.AvatarPath = $"/uploads/avatars/{fileName}";
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return await GetProfileAsync(userId);
+    }
+
+    private void DeleteAvatarFileIfExists(string? relativeAvatarPath)
+    {
+        if (string.IsNullOrWhiteSpace(relativeAvatarPath))
+        {
+            return;
+        }
+
+        var normalized = relativeAvatarPath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
+        var absolutePath = Path.Combine(
+            _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot"),
+            normalized);
+
+        if (File.Exists(absolutePath))
+        {
+            File.Delete(absolutePath);
+        }
+    }
+
+    private static string? NormalizeAssetUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.StartsWith('/') ? value : $"/{value}";
+    }
+
+    private static bool IsAdmin(User user)
+    {
+        return string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase);
     }
 }
