@@ -3,6 +3,7 @@ using Lies.Server.Infrastructure;
 using Lies.Server.Middlewares;
 using Lies.Server.Services;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry;
@@ -125,6 +126,39 @@ static RateLimitPartition<string> CreateApiRateLimitPartition(HttpContext contex
                 AutoReplenishment = true
             })
     };
+}
+
+static void ApplyStaticAssetCacheHeaders(StaticFileResponseContext context)
+{
+    var path = context.Context.Request.Path.Value ?? string.Empty;
+    var fileName = Path.GetFileName(path);
+    var headers = context.Context.Response.Headers;
+
+    if (string.Equals(fileName, "sw.js", StringComparison.OrdinalIgnoreCase))
+    {
+        headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+        headers["Pragma"] = "no-cache";
+        headers["Expires"] = "0";
+        headers["Service-Worker-Allowed"] = "/";
+        return;
+    }
+
+    if (string.Equals(fileName, "manifest.webmanifest", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(fileName, "index.html", StringComparison.OrdinalIgnoreCase))
+    {
+        headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+        headers["Pragma"] = "no-cache";
+        headers["Expires"] = "0";
+        return;
+    }
+
+    if (path.Contains("/assets/", StringComparison.OrdinalIgnoreCase)
+        || fileName.StartsWith("workbox-", StringComparison.OrdinalIgnoreCase)
+        || fileName.EndsWith(".js", StringComparison.OrdinalIgnoreCase)
+        || fileName.EndsWith(".css", StringComparison.OrdinalIgnoreCase))
+    {
+        headers["Cache-Control"] = "public, max-age=31536000, immutable";
+    }
 }
 
 Log.Logger = new LoggerConfiguration()
@@ -359,8 +393,19 @@ try
 
     app.MapDefaultEndpoints();
 
-    app.UseFileServer();
-    app.MapFallbackToFile("index.html");
+    var staticFileOptions = new StaticFileOptions
+    {
+        OnPrepareResponse = ApplyStaticAssetCacheHeaders
+    };
+
+    app.UseFileServer(new FileServerOptions
+    {
+        StaticFileOptions =
+        {
+            OnPrepareResponse = ApplyStaticAssetCacheHeaders
+        }
+    });
+    app.MapFallbackToFile("index.html", staticFileOptions);
 
     await app.RunAsync();
 }

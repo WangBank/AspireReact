@@ -13,7 +13,7 @@ const allowedHosts = [
 const devApiTarget = process.env.SERVER_HTTPS || process.env.SERVER_HTTP || 'http://localhost:5515';
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     VitePWA({
@@ -52,9 +52,12 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webp,json}'],
       },
+      // VSCode/AppHost 本地开发使用的是 Vite dev server，
+      // 这里必须启用 dev PWA，否则 manifest 与 sw.js 会回退成 index.html。
       devOptions: {
-        enabled: false,
+        enabled: command === 'serve',
         type: 'module',
+        suppressWarnings: true,
       },
     }),
   ],
@@ -68,4 +71,4 @@ export default defineConfig({
       },
     }
   }
-});
+}));
