@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [string]$BaseUrl,
     [string]$ZoneId,
@@ -8,6 +6,8 @@ param(
     [switch]$PurgeEverything,
     [switch]$SkipValidation
 )
+
+$ErrorActionPreference = "Stop"
 
 function Import-EnvFile {
     param(

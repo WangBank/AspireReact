@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [switch]$SkipPurge,
     [switch]$PurgeEverything,
@@ -9,6 +7,8 @@ param(
     [string]$ApiToken,
     [string]$ExtraUrls
 )
+
+$ErrorActionPreference = "Stop"
 
 $RootDir = Split-Path -Parent $PSScriptRoot
 $DeployScript = Join-Path $PSScriptRoot "aspire-docker-up.ps1"
