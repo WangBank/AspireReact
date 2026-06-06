@@ -273,7 +273,63 @@ dotnet tool install --global Aspire.Cli --prerelease
 cp .env.aspire-docker.example .env.aspire-docker
 ```
 
-然后启动：
+如果生产前面挂了 Cloudflare，再把下面几项补到 `.env.aspire-docker`：
+
+```env
+CLOUDFLARE_BASE_URL=https://lies.wangbank.top
+CLOUDFLARE_ZONE_ID=你的_zone_id
+CLOUDFLARE_API_TOKEN=你的_api_token
+CLOUDFLARE_EXTRA_PURGE_URLS=/notes/global,/notes/stock,/notes/reflection
+CLOUDFLARE_PURGE_EVERYTHING=false
+```
+
+一键生产发布并清理 Cloudflare 缓存：
+
+- macOS / Linux
+
+```bash
+bash scripts/release-prod.sh
+```
+
+- Windows PowerShell
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\release-prod.ps1
+```
+
+这套命令内部会先执行 `aspire-docker-up`，然后调用 Cloudflare Purge API 清理缓存，并回显 `sw.js` / `manifest.webmanifest` 的响应头，方便确认 PWA 相关缓存已经刷新。
+
+如果只想部署，不想清缓存：
+
+- macOS / Linux
+
+```bash
+bash scripts/release-prod.sh --skip-purge
+```
+
+- Windows PowerShell
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\release-prod.ps1 -SkipPurge
+```
+
+如果这个子域名只跑这个站点，建议把 `.env.aspire-docker` 里的 `CLOUDFLARE_PURGE_EVERYTHING=true`，这样最稳，不需要维护额外路由列表。
+
+如果只想单独清缓存：
+
+- macOS / Linux
+
+```bash
+bash scripts/cloudflare-purge.sh
+```
+
+- Windows PowerShell
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\cloudflare-purge.ps1
+```
+
+仍然保留原始发布命令：
 
 - macOS / Linux
 
@@ -307,6 +363,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\aspire-docker-up.ps1
 bash scripts/aspire-docker-down.sh
 aspire publish --non-interactive --nologo --output-path ./.aspire-output/docker-compose
 ```
+
+Cloudflare API Token 最少需要对应 Zone 的缓存清理权限；如果脚本提示缺少配置，优先检查 `.env.aspire-docker` 里的 `CLOUDFLARE_*` 项。
 
 ## 日常使用流程
 
