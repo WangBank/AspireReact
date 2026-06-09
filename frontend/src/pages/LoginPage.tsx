@@ -1,10 +1,24 @@
 import { observer } from 'mobx-react-lite';
 import { useState, useEffect } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Container,
+  IconButton,
+  InputAdornment,
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded';
+import { alpha, useTheme } from '@mui/material/styles';
 import { useStore } from '../stores/StoreProvider';
-import './LoginPage.css';
 
 const LoginPage = observer(() => {
   const { authStore } = useStore();
+  const theme = useTheme();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -73,7 +87,7 @@ const LoginPage = observer(() => {
         password,
         confirmPassword,
         authStore.captcha?.captchaId ?? '',
-        captchaCode
+        captchaCode,
       );
     } else {
       await authStore.login(username.trim(), password);
@@ -90,140 +104,231 @@ const LoginPage = observer(() => {
     : null;
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <h1 className="login-title">心魔录</h1>
-        <p className="login-subtitle">{isRegister ? '创建新账户' : '请登录您的账户'}</p>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        py: { xs: 4, md: 6 },
+      }}
+    >
+      <Container maxWidth="sm">
+        <Paper
+          elevation={0}
+          sx={{
+            overflow: 'hidden',
+            borderRadius: { xs: 4, md: 5 },
+          }}
+        >
+          <Box
+            sx={{
+              px: { xs: 2.5, sm: 4 },
+              pt: { xs: 2.75, sm: 3.5 },
+              pb: 2.5,
+              background: [
+                `radial-gradient(circle at top right, ${alpha(theme.palette.secondary.main, 0.14)}, transparent 26%)`,
+                `radial-gradient(circle at top left, ${alpha(theme.palette.primary.main, 0.16)}, transparent 28%)`,
+                'linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%)',
+              ].join(','),
+              borderBottom: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+            }}
+          >
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+              <Box
+                sx={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                  boxShadow: '0 12px 24px rgba(9, 105, 218, 0.16)',
+                }}
+              >
+                <Box
+                  component="img"
+                  src="/brand-mark.svg"
+                  alt="心魔录"
+                  sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              </Box>
+              <Box>
+                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                  心魔录
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {isRegister ? '创建新账户，开始统一记录交易复盘。' : '登录后继续录入、统计和复盘。'}
+                </Typography>
+              </Box>
+            </Stack>
+          </Box>
 
-        <form className="login-form" onSubmit={handleSubmit} noValidate>
-          {authStore.error && (
-            <div className="login-error-banner" role="alert">
-              {authStore.error}
-            </div>
-          )}
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+            noValidate
+            sx={{
+              px: { xs: 2.5, sm: 4 },
+              py: { xs: 2.5, sm: 3.25 },
+            }}
+          >
+            <Stack spacing={2}>
+              {authStore.error && (
+                <Alert severity="error" variant="filled">
+                  {authStore.error}
+                </Alert>
+              )}
 
-          {isRegister && (
-            <div className="form-group">
-              <label htmlFor="email" className="form-label">邮箱</label>
-              <input
-                id="email"
-                type="email"
-                className={`form-input ${errors.email ? 'form-input-error' : ''}`}
-                placeholder="请输入邮箱"
-                value={email}
-                onChange={(e) => { setEmail(e.target.value); setErrors((prev) => ({ ...prev, email: '' })); }}
-                autoComplete="email"
-              />
-              {errors.email && <span className="form-error">{errors.email}</span>}
-            </div>
-          )}
+              {isRegister && (
+                <TextField
+                  label="邮箱"
+                  type="email"
+                  placeholder="请输入邮箱"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setErrors((prev) => ({ ...prev, email: '' }));
+                  }}
+                  autoComplete="email"
+                  error={Boolean(errors.email)}
+                  helperText={errors.email || '用于找回密码和接收通知'}
+                  fullWidth
+                />
+              )}
 
-          <div className="form-group">
-            <label htmlFor="username" className="form-label">用户名</label>
-            <input
-              id="username"
-              type="text"
-              className={`form-input ${errors.username ? 'form-input-error' : ''}`}
-              placeholder="请输入用户名"
-              value={username}
-              onChange={(e) => { setUsername(e.target.value); setErrors((prev) => ({ ...prev, username: '' })); }}
-              autoComplete="username"
-              autoFocus
-            />
-            {errors.username && <span className="form-error">{errors.username}</span>}
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="password" className="form-label">密码</label>
-            <input
-              id="password"
-              type="password"
-              className={`form-input ${errors.password ? 'form-input-error' : ''}`}
-              placeholder="请输入密码"
-              value={password}
-              onChange={(e) => { setPassword(e.target.value); setErrors((prev) => ({ ...prev, password: '' })); }}
-              autoComplete={isRegister ? 'new-password' : 'current-password'}
-            />
-            {errors.password && <span className="form-error">{errors.password}</span>}
-          </div>
-
-          {isRegister && (
-            <div className="form-group">
-              <label htmlFor="confirmPassword" className="form-label">确认密码</label>
-              <input
-                id="confirmPassword"
-                type="password"
-                className={`form-input ${errors.confirmPassword ? 'form-input-error' : ''}`}
-                placeholder="请再次输入密码"
-                value={confirmPassword}
-                onChange={(e) => { setConfirmPassword(e.target.value); setErrors((prev) => ({ ...prev, confirmPassword: '' })); }}
-                autoComplete="new-password"
-              />
-              {errors.confirmPassword && <span className="form-error">{errors.confirmPassword}</span>}
-            </div>
-          )}
-
-          <div className="form-group">
-            <label htmlFor="captcha" className="form-label">验证码</label>
-            <div className="captcha-row">
-              <input
-                id="captcha"
+              <TextField
+                label="用户名"
                 type="text"
-                className={`form-input captcha-input ${errors.captcha ? 'form-input-error' : ''}`}
-                placeholder="4位数字"
+                placeholder="请输入用户名"
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setErrors((prev) => ({ ...prev, username: '' }));
+                }}
+                autoComplete="username"
+                autoFocus
+                error={Boolean(errors.username)}
+                helperText={errors.username || '至少 3 个字符'}
+                fullWidth
+              />
+
+              <TextField
+                label="密码"
+                type="password"
+                placeholder="请输入密码"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setErrors((prev) => ({ ...prev, password: '' }));
+                }}
+                autoComplete={isRegister ? 'new-password' : 'current-password'}
+                error={Boolean(errors.password)}
+                helperText={errors.password || '至少 6 个字符'}
+                fullWidth
+              />
+
+              {isRegister && (
+                <TextField
+                  label="确认密码"
+                  type="password"
+                  placeholder="请再次输入密码"
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    setErrors((prev) => ({ ...prev, confirmPassword: '' }));
+                  }}
+                  autoComplete="new-password"
+                  error={Boolean(errors.confirmPassword)}
+                  helperText={errors.confirmPassword || '再次确认本次注册密码'}
+                  fullWidth
+                />
+              )}
+
+              <TextField
+                label="验证码"
+                placeholder="请输入 4 位数字"
                 value={captchaCode}
                 onChange={(e) => {
                   const val = e.target.value.replace(/\D/g, '').slice(0, 4);
                   setCaptchaCode(val);
                   setErrors((prev) => ({ ...prev, captcha: '' }));
                 }}
-                maxLength={4}
+                slotProps={{
+                  htmlInput: { maxLength: 4, inputMode: 'numeric' },
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end" sx={{ ml: 1 }}>
+                        {captchaSvg ? (
+                          <Button
+                            type="button"
+                            onClick={handleRefreshCaptcha}
+                            sx={{
+                              minWidth: 128,
+                              height: 48,
+                              p: 0,
+                              overflow: 'hidden',
+                              borderRadius: 2,
+                              border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+                            }}
+                          >
+                            <Box
+                              component="img"
+                              src={captchaSvg}
+                              alt="验证码"
+                              sx={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                                display: 'block',
+                              }}
+                            />
+                          </Button>
+                        ) : (
+                          <IconButton onClick={handleRefreshCaptcha} color="primary">
+                            <RefreshRoundedIcon />
+                          </IconButton>
+                        )}
+                      </InputAdornment>
+                    ),
+                  },
+                }}
                 autoComplete="off"
+                error={Boolean(errors.captcha)}
+                helperText={errors.captcha || '点击右侧验证码可以刷新'}
+                fullWidth
               />
-              {captchaSvg ? (
-                <button
-                  type="button"
-                  className="captcha-img-btn"
-                  onClick={handleRefreshCaptcha}
-                  title="点击刷新验证码"
-                >
-                  <img
-                    src={captchaSvg}
-                    alt="验证码"
-                    className="captcha-img"
-                  />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="captcha-refresh-btn"
-                  onClick={handleRefreshCaptcha}
-                >
-                  获取验证码
-                </button>
-              )}
-            </div>
-            {errors.captcha && <span className="form-error">{errors.captcha}</span>}
-          </div>
 
-          <button
-            type="submit"
-            className="login-submit"
-            disabled={authStore.loading}
-          >
-            {authStore.loading
-              ? (isRegister ? '注册中...' : '登录中...')
-              : (isRegister ? '注 册' : '登 录')}
-          </button>
+              <Button
+                type="submit"
+                variant="contained"
+                size="large"
+                disabled={authStore.loading}
+                sx={{ mt: 0.5, minHeight: 48 }}
+              >
+                {authStore.loading
+                  ? (isRegister ? '注册中...' : '登录中...')
+                  : (isRegister ? '注册账号' : '登录系统')}
+              </Button>
 
-          <div className="mode-toggle">
-            <button type="button" className="toggle-link" onClick={toggleMode}>
-              {isRegister ? '已有账户？去登录' : '没有账户？去注册'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1}
+                sx={{
+                  pt: 0.5,
+                  alignItems: { xs: 'stretch', sm: 'center' },
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  {isRegister ? '已经有账户了？' : '还没有账户？'}
+                </Typography>
+                <Button variant="text" onClick={toggleMode} sx={{ alignSelf: { xs: 'flex-start', sm: 'auto' } }}>
+                  {isRegister ? '返回登录' : '立即注册'}
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+        </Paper>
+      </Container>
+    </Box>
   );
 });
 

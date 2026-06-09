@@ -1,27 +1,28 @@
 import { observer } from 'mobx-react-lite';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useStore } from './stores/StoreProvider';
 import GlobalLoadingMask from './components/GlobalLoadingMask';
 import Layout from './components/Layout';
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import UnifiedEntryPage from './pages/UnifiedEntryPage';
-import AccountEntryPage from './pages/AccountEntryPage';
-import BankFlowEntryPage from './pages/BankFlowEntryPage';
-import TradeEntryPage from './pages/TradeEntryPage';
-import AccountListPage from './pages/AccountListPage';
-import BankFlowListPage from './pages/BankFlowListPage';
-import TradeListPage from './pages/TradeListPage';
-import StatisticsPage from './pages/StatisticsPage';
-import GlobalNotesPage from './pages/GlobalNotesPage';
-import StockNotesPage from './pages/StockNotesPage';
-import ReflectionPage from './pages/ReflectionPage';
-import ProfilePage from './pages/ProfilePage';
-import UnifiedListPage from './pages/UnifiedListPage';
-import StockHistoryPage from './pages/StockHistoryPage';
-import AdminPage from './pages/AdminPage';
-import './App.css';
+import RouteLoadingFallback from './components/Page/RouteLoadingFallback';
+
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const UnifiedEntryPage = lazy(() => import('./pages/UnifiedEntryPage'));
+const AccountEntryPage = lazy(() => import('./pages/AccountEntryPage'));
+const BankFlowEntryPage = lazy(() => import('./pages/BankFlowEntryPage'));
+const TradeEntryPage = lazy(() => import('./pages/TradeEntryPage'));
+const AccountListPage = lazy(() => import('./pages/AccountListPage'));
+const BankFlowListPage = lazy(() => import('./pages/BankFlowListPage'));
+const TradeListPage = lazy(() => import('./pages/TradeListPage'));
+const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
+const GlobalNotesPage = lazy(() => import('./pages/GlobalNotesPage'));
+const StockNotesPage = lazy(() => import('./pages/StockNotesPage'));
+const ReflectionPage = lazy(() => import('./pages/ReflectionPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const UnifiedListPage = lazy(() => import('./pages/UnifiedListPage'));
+const StockHistoryPage = lazy(() => import('./pages/StockHistoryPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
 
 const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) => {
   const { authStore } = useStore();
@@ -59,6 +60,20 @@ const AdminRoute = observer(({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 });
 
+const renderLazyPage = (page: ReactNode, withLayout = true) => {
+  const content = (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      {page}
+    </Suspense>
+  );
+
+  if (!withLayout) {
+    return content;
+  }
+
+  return <Layout>{content}</Layout>;
+};
+
 const App = observer(() => {
   const { authStore } = useStore();
 
@@ -77,16 +92,14 @@ const App = observer(() => {
           element={
             authStore.isAuthenticated
               ? <Navigate to={authStore.isAdmin ? '/admin' : '/dashboard'} replace />
-              : <LoginPage />
+              : renderLazyPage(<LoginPage />, false)
           }
         />
         <Route
           path="/dashboard"
           element={
             <UserRoute>
-              <Layout>
-                <DashboardPage />
-              </Layout>
+              {renderLazyPage(<DashboardPage />)}
             </UserRoute>
           }
         />
@@ -94,9 +107,7 @@ const App = observer(() => {
           path="/entry/account"
           element={
             <UserRoute>
-              <Layout>
-                <AccountEntryPage />
-              </Layout>
+              {renderLazyPage(<AccountEntryPage />)}
             </UserRoute>
           }
         />
@@ -104,9 +115,7 @@ const App = observer(() => {
           path="/entry/bankflow"
           element={
             <UserRoute>
-              <Layout>
-                <BankFlowEntryPage />
-              </Layout>
+              {renderLazyPage(<BankFlowEntryPage />)}
             </UserRoute>
           }
         />
@@ -114,9 +123,7 @@ const App = observer(() => {
           path="/entry/trade"
           element={
             <UserRoute>
-              <Layout>
-                <TradeEntryPage />
-              </Layout>
+              {renderLazyPage(<TradeEntryPage />)}
             </UserRoute>
           }
         />
@@ -124,9 +131,7 @@ const App = observer(() => {
           path="/entry/unified/:id?"
           element={
             <UserRoute>
-              <Layout>
-                <UnifiedEntryPage />
-              </Layout>
+              {renderLazyPage(<UnifiedEntryPage />)}
             </UserRoute>
           }
         />
@@ -134,9 +139,7 @@ const App = observer(() => {
           path="/list/account"
           element={
             <UserRoute>
-              <Layout>
-                <AccountListPage />
-              </Layout>
+              {renderLazyPage(<AccountListPage />)}
             </UserRoute>
           }
         />
@@ -144,9 +147,7 @@ const App = observer(() => {
           path="/list/bankflow"
           element={
             <UserRoute>
-              <Layout>
-                <BankFlowListPage />
-              </Layout>
+              {renderLazyPage(<BankFlowListPage />)}
             </UserRoute>
           }
         />
@@ -154,9 +155,7 @@ const App = observer(() => {
           path="/list/trade"
           element={
             <UserRoute>
-              <Layout>
-                <TradeListPage />
-              </Layout>
+              {renderLazyPage(<TradeListPage />)}
             </UserRoute>
           }
         />
@@ -164,9 +163,7 @@ const App = observer(() => {
           path="/list/unified"
           element={
             <UserRoute>
-              <Layout>
-                <UnifiedListPage />
-              </Layout>
+              {renderLazyPage(<UnifiedListPage />)}
             </UserRoute>
           }
         />
@@ -174,9 +171,7 @@ const App = observer(() => {
           path="/statistics"
           element={
             <UserRoute>
-              <Layout>
-                <StatisticsPage />
-              </Layout>
+              {renderLazyPage(<StatisticsPage />)}
             </UserRoute>
           }
         />
@@ -184,9 +179,7 @@ const App = observer(() => {
           path="/admin"
           element={
             <AdminRoute>
-              <Layout>
-                <AdminPage />
-              </Layout>
+              {renderLazyPage(<AdminPage />)}
             </AdminRoute>
           }
         />
@@ -202,9 +195,7 @@ const App = observer(() => {
           path="/notes/global"
           element={
             <UserRoute>
-              <Layout>
-                <GlobalNotesPage />
-              </Layout>
+              {renderLazyPage(<GlobalNotesPage />)}
             </UserRoute>
           }
         />
@@ -212,9 +203,7 @@ const App = observer(() => {
           path="/notes/stock"
           element={
             <UserRoute>
-              <Layout>
-                <StockNotesPage />
-              </Layout>
+              {renderLazyPage(<StockNotesPage />)}
             </UserRoute>
           }
         />
@@ -222,9 +211,7 @@ const App = observer(() => {
           path="/notes/reflection"
           element={
             <UserRoute>
-              <Layout>
-                <ReflectionPage />
-              </Layout>
+              {renderLazyPage(<ReflectionPage />)}
             </UserRoute>
           }
         />
@@ -248,9 +235,7 @@ const App = observer(() => {
           path="/profile"
           element={
             <ProtectedRoute>
-              <Layout>
-                <ProfilePage />
-              </Layout>
+              {renderLazyPage(<ProfilePage />)}
             </ProtectedRoute>
           }
         />
@@ -258,9 +243,7 @@ const App = observer(() => {
           path="/stocks/:stockCode/history"
           element={
             <UserRoute>
-              <Layout>
-                <StockHistoryPage />
-              </Layout>
+              {renderLazyPage(<StockHistoryPage />)}
             </UserRoute>
           }
         />

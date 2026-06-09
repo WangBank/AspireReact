@@ -178,15 +178,23 @@ function Show-CacheHeaders {
 }
 
 $RootDir = Split-Path -Parent $PSScriptRoot
-$EnvFile = Join-Path $RootDir ".env.aspire-docker"
-$ExampleFile = Join-Path $RootDir ".env.aspire-docker.example"
+$PrimaryEnvFile = Join-Path $RootDir ".env.aspire-docker"
+$PrimaryExampleFile = Join-Path $RootDir ".env.aspire-docker.example"
+$FallbackEnvFile = Join-Path $RootDir ".env.docker"
+$FallbackExampleFile = Join-Path $RootDir ".env.docker.example"
 
-if (-not (Test-Path $EnvFile) -and (Test-Path $ExampleFile)) {
-    Copy-Item $ExampleFile $EnvFile
-    Write-Host "Created $EnvFile. Fill in the Cloudflare values before running again."
+if (-not (Test-Path $PrimaryEnvFile) -and (Test-Path $PrimaryExampleFile)) {
+    Copy-Item $PrimaryExampleFile $PrimaryEnvFile
+    Write-Host "Created $PrimaryEnvFile."
 }
 
-Import-EnvFile -Path $EnvFile
+Import-EnvFile -Path $FallbackEnvFile
+Import-EnvFile -Path $PrimaryEnvFile
+
+if ((-not (Test-Path $PrimaryEnvFile)) -and (-not (Test-Path $FallbackEnvFile)) -and (Test-Path $FallbackExampleFile)) {
+    Copy-Item $FallbackExampleFile $FallbackEnvFile
+    Write-Host "Created $FallbackEnvFile. Fill in the Cloudflare values before running again."
+}
 
 if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
     $BaseUrl = Get-ConfigValue @("CLOUDFLARE_BASE_URL", "Cloudflare__BaseUrl")

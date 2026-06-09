@@ -1,5 +1,7 @@
 import { observer } from 'mobx-react-lite';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Alert, Box, Button, Chip, CircularProgress, Stack, TextField } from '@mui/material';
+import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded';
 import { useStore } from '../stores/StoreProvider';
 import type {
   CycleDetailItem,
@@ -9,16 +11,24 @@ import type {
   TradeBehaviorSummaryItem,
 } from '../services/StatisticsService';
 import type { StatisticsSortField } from '../stores/StatisticsStore';
-import PnLCalendarExplorer from '../components/PnLCalendarExplorer';
 import SectionJumpNav, { type SectionJumpItem } from '../components/SectionJumpNav';
 import SortableHeader from '../components/Table/SortableHeader';
 import TablePagination from '../components/Table/TablePagination';
-import StockPnLLeaderboard from '../components/StockPnLLeaderboard';
+import {
+  FilterToolbar,
+  PageHeader,
+  ResponsiveTableShell,
+  RouteLoadingFallback,
+  SectionCard,
+} from '../components/Page';
 import StockLink from '../components/StockLink';
 import StockHistoryLink from '../components/StockHistoryLink';
 import { extractDatePart } from '../utils/date';
 import { nextSortState, sortItemsBy, type SortOrder } from '../utils/table';
 import './StatisticsPage.css';
+
+const PnLCalendarExplorer = lazy(() => import('../components/PnLCalendarExplorer'));
+const StockPnLLeaderboard = lazy(() => import('../components/StockPnLLeaderboard'));
 
 const DATE_FILTERS = [
   { key: 'today', label: '今日' },
@@ -91,6 +101,14 @@ const StatisticsPage = observer(() => {
     setCyclePage(1);
     setTTradePage(1);
   }, [store.data]);
+
+  const sectionFallback = (
+    <RouteLoadingFallback
+      label="统计模块加载中..."
+      minHeight={220}
+      compact
+    />
+  );
 
   const handleCycleSort = (field: CycleSortField) => {
     const defaultOrder: SortOrder = field === 'stockCode' || field === 'stockName' || field === 'board' ? 'asc' : 'desc';
@@ -220,13 +238,12 @@ const StatisticsPage = observer(() => {
     ];
 
     return (
-      <section id="stats-overview" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">核心指标</p>
-            <p className="sp-section-caption">先看整体盈亏、净入金修正收益率和账户资金状态</p>
-          </div>
-        </div>
+      <SectionCard
+        id="stats-overview"
+        className="section-jump-anchor"
+        title="核心指标"
+        description="先看整体盈亏、净入金修正收益率和账户资金状态"
+      >
         <div className="sp-cards sp-cards--inside">
           {cards.map((card) => (
             <article className="sp-card" key={card.label}>
@@ -236,7 +253,7 @@ const StatisticsPage = observer(() => {
             </article>
           ))}
         </div>
-      </section>
+      </SectionCard>
     );
   };
 
@@ -253,13 +270,12 @@ const StatisticsPage = observer(() => {
     ];
 
     return (
-      <section id="stats-cycles" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">交易周期统计</p>
-            <p className="sp-section-caption">按一轮建仓到清仓的周期口径统计，不再按单日拆碎</p>
-          </div>
-        </div>
+      <SectionCard
+        id="stats-cycles"
+        className="section-jump-anchor"
+        title="交易周期统计"
+        description="按一轮建仓到清仓的周期口径统计，不再按单日拆碎"
+      >
         <div className="sp-analysis-grid">
           {cards.map((card) => (
             <article className="sp-analysis-card" key={card.label}>
@@ -269,7 +285,7 @@ const StatisticsPage = observer(() => {
             </article>
           ))}
         </div>
-      </section>
+      </SectionCard>
     );
   };
 
@@ -327,59 +343,66 @@ const StatisticsPage = observer(() => {
     const pagedCycleDetails = paginateLocalList(sortedCycleDetails, currentCyclePage, CYCLE_PAGE_SIZE);
 
     return (
-      <section id="stats-cycle-details" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">交易周期明细</p>
-            <p className="sp-section-caption">把每一轮建仓到清仓拉直看，方便你复盘哪一轮做对了，哪一轮拖泥带水。</p>
-          </div>
-        </div>
-        <div className="sp-section-toolbar">
-          <div className="sp-chip-groups">
-            <div className="sp-chip-group">
-              <span className="sp-chip-group__label">状态</span>
-              <div className="sp-chip-list">
-                {CYCLE_STATUS_FILTERS.map((filter) => (
-                  <button
-                    key={`cycle-status-${filter.key}`}
-                    type="button"
-                    className={`sp-chip ${cycleStatusFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
-                    onClick={() => {
-                      setCycleStatusFilter(filter.key);
-                      setCyclePage(1);
-                    }}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
+      <ResponsiveTableShell
+        id="stats-cycle-details"
+        className="section-jump-anchor"
+        title="交易周期明细"
+        description="把每一轮建仓到清仓拉直看，方便你复盘哪一轮做对了，哪一轮拖泥带水。"
+        toolbar={(
+          <div className="sp-section-toolbar">
+            <div className="sp-chip-groups">
+              <div className="sp-chip-group">
+                <span className="sp-chip-group__label">状态</span>
+                <div className="sp-chip-list">
+                  {CYCLE_STATUS_FILTERS.map((filter) => (
+                    <button
+                      key={`cycle-status-${filter.key}`}
+                      type="button"
+                      className={`sp-chip ${cycleStatusFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                      onClick={() => {
+                        setCycleStatusFilter(filter.key);
+                        setCyclePage(1);
+                      }}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="sp-chip-group">
+                <span className="sp-chip-group__label">盈亏</span>
+                <div className="sp-chip-list">
+                  {PNL_FILTERS.map((filter) => (
+                    <button
+                      key={`cycle-pnl-${filter.key}`}
+                      type="button"
+                      className={`sp-chip ${cyclePnLFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                      onClick={() => {
+                        setCyclePnLFilter(filter.key);
+                        setCyclePage(1);
+                      }}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="sp-chip-group">
-              <span className="sp-chip-group__label">盈亏</span>
-              <div className="sp-chip-list">
-                {PNL_FILTERS.map((filter) => (
-                  <button
-                    key={`cycle-pnl-${filter.key}`}
-                    type="button"
-                    className={`sp-chip ${cyclePnLFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
-                    onClick={() => {
-                      setCyclePnLFilter(filter.key);
-                      setCyclePage(1);
-                    }}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <div className="sp-section-meta">当前 {sortedCycleDetails.length} / {store.data.cycleDetails.length} 个周期</div>
           </div>
-          <div className="sp-section-meta">当前 {sortedCycleDetails.length} / {store.data.cycleDetails.length} 个周期</div>
-        </div>
+        )}
+        footer={sortedCycleDetails.length === 0 ? undefined : (
+          <TablePagination
+            page={currentCyclePage}
+            totalPages={cycleTotalPages}
+            totalItems={sortedCycleDetails.length}
+            onPageChange={setCyclePage}
+          />
+        )}
+      >
         {sortedCycleDetails.length === 0 ? (
           <p className="sp-empty sp-empty--compact">当前筛选条件下没有周期记录。</p>
         ) : (
-          <>
-        <div className="sp-table-wrap">
           <table className="sp-table">
             <thead>
               <tr>
@@ -434,16 +457,8 @@ const StatisticsPage = observer(() => {
               ))}
             </tbody>
           </table>
-        </div>
-        <TablePagination
-          page={currentCyclePage}
-          totalPages={cycleTotalPages}
-          totalItems={sortedCycleDetails.length}
-          onPageChange={setCyclePage}
-        />
-          </>
         )}
-      </section>
+      </ResponsiveTableShell>
     );
   };
 
@@ -458,13 +473,12 @@ const StatisticsPage = observer(() => {
     ];
 
     return (
-      <section id="stats-ttrade" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">做T专项分析</p>
-            <p className="sp-section-caption">统计所有同日买卖的记录表现</p>
-          </div>
-        </div>
+      <SectionCard
+        id="stats-ttrade"
+        className="section-jump-anchor"
+        title="做T专项分析"
+        description="统计所有同日买卖的记录表现"
+      >
         <div className="sp-mini-grid">
           {cards.map((card) => (
             <article className="sp-mini-card" key={card.label}>
@@ -474,7 +488,7 @@ const StatisticsPage = observer(() => {
             </article>
           ))}
         </div>
-      </section>
+      </SectionCard>
     );
   };
 
@@ -538,59 +552,66 @@ const StatisticsPage = observer(() => {
     const pagedTTradeDetails = paginateLocalList(sortedTTradeDetails, currentPage, T_TRADE_PAGE_SIZE);
 
     return (
-      <section id="stats-ttrade-details" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">做T明细</p>
-            <p className="sp-section-caption">按单日做T记录逐条展开，回看哪些日内动作真正改善了收益，哪些只是增加了波动。</p>
-          </div>
-        </div>
-        <div className="sp-section-toolbar">
-          <div className="sp-chip-groups">
-            <div className="sp-chip-group">
-              <span className="sp-chip-group__label">状态</span>
-              <div className="sp-chip-list">
-                {T_TRADE_STATUS_FILTERS.map((filter) => (
-                  <button
-                    key={`ttrade-status-${filter.key}`}
-                    type="button"
-                    className={`sp-chip ${tTradeStatusFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
-                    onClick={() => {
-                      setTTradeStatusFilter(filter.key);
-                      setTTradePage(1);
-                    }}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
+      <ResponsiveTableShell
+        id="stats-ttrade-details"
+        className="section-jump-anchor"
+        title="做T明细"
+        description="按单日做T记录逐条展开，回看哪些日内动作真正改善了收益，哪些只是增加了波动。"
+        toolbar={(
+          <div className="sp-section-toolbar">
+            <div className="sp-chip-groups">
+              <div className="sp-chip-group">
+                <span className="sp-chip-group__label">状态</span>
+                <div className="sp-chip-list">
+                  {T_TRADE_STATUS_FILTERS.map((filter) => (
+                    <button
+                      key={`ttrade-status-${filter.key}`}
+                      type="button"
+                      className={`sp-chip ${tTradeStatusFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                      onClick={() => {
+                        setTTradeStatusFilter(filter.key);
+                        setTTradePage(1);
+                      }}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="sp-chip-group">
+                <span className="sp-chip-group__label">盈亏</span>
+                <div className="sp-chip-list">
+                  {PNL_FILTERS.map((filter) => (
+                    <button
+                      key={`ttrade-pnl-${filter.key}`}
+                      type="button"
+                      className={`sp-chip ${tTradePnLFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                      onClick={() => {
+                        setTTradePnLFilter(filter.key);
+                        setTTradePage(1);
+                      }}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            <div className="sp-chip-group">
-              <span className="sp-chip-group__label">盈亏</span>
-              <div className="sp-chip-list">
-                {PNL_FILTERS.map((filter) => (
-                  <button
-                    key={`ttrade-pnl-${filter.key}`}
-                    type="button"
-                    className={`sp-chip ${tTradePnLFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
-                    onClick={() => {
-                      setTTradePnLFilter(filter.key);
-                      setTTradePage(1);
-                    }}
-                  >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <div className="sp-section-meta">当前 {sortedTTradeDetails.length} / {store.data.tTradeDetails.length} 条做T</div>
           </div>
-          <div className="sp-section-meta">当前 {sortedTTradeDetails.length} / {store.data.tTradeDetails.length} 条做T</div>
-        </div>
+        )}
+        footer={sortedTTradeDetails.length === 0 ? undefined : (
+          <TablePagination
+            page={currentPage}
+            totalPages={totalPages}
+            totalItems={sortedTTradeDetails.length}
+            onPageChange={setTTradePage}
+          />
+        )}
+      >
         {sortedTTradeDetails.length === 0 ? (
           <p className="sp-empty sp-empty--compact">当前筛选条件下没有做T记录。</p>
         ) : (
-          <>
-        <div className="sp-table-wrap">
           <table className="sp-table">
             <thead>
               <tr>
@@ -649,16 +670,8 @@ const StatisticsPage = observer(() => {
               ))}
             </tbody>
           </table>
-        </div>
-        <TablePagination
-          page={currentPage}
-          totalPages={totalPages}
-          totalItems={sortedTTradeDetails.length}
-          onPageChange={setTTradePage}
-        />
-          </>
         )}
-      </section>
+      </ResponsiveTableShell>
     );
   };
 
@@ -672,28 +685,25 @@ const StatisticsPage = observer(() => {
   ) => {
     if (list.length === 0) {
       return (
-        <section id={sectionId} className="sp-section section-jump-anchor">
-          <div className="sp-section-heading">
-            <div>
-              <p className="sp-section-title">{title}</p>
-              <p className="sp-section-caption">{caption}</p>
-            </div>
-          </div>
+        <SectionCard
+          id={sectionId}
+          className="section-jump-anchor"
+          title={title}
+          description={caption}
+        >
           <p className="sp-empty">{emptyText}</p>
-        </section>
+        </SectionCard>
       );
     }
 
     return (
-      <section id={sectionId} className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">{title}</p>
-            <p className="sp-section-caption">{caption}</p>
-          </div>
-        </div>
-        <div className="sp-table-wrap">
-          <table className="sp-table">
+      <ResponsiveTableShell
+        id={sectionId}
+        className="section-jump-anchor"
+        title={title}
+        description={caption}
+      >
+        <table className="sp-table">
             <thead>
               <tr>
                 <th>{labelHeader}</th>
@@ -721,8 +731,7 @@ const StatisticsPage = observer(() => {
               ))}
             </tbody>
           </table>
-        </div>
-      </section>
+      </ResponsiveTableShell>
     );
   };
 
@@ -763,13 +772,12 @@ const StatisticsPage = observer(() => {
     ];
 
     return (
-      <section id="stats-day-pattern" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">日度节奏</p>
-            <p className="sp-section-caption">看哪几天在赚钱，哪几天更容易失控</p>
-          </div>
-        </div>
+      <SectionCard
+        id="stats-day-pattern"
+        className="section-jump-anchor"
+        title="日度节奏"
+        description="看哪几天在赚钱，哪几天更容易失控"
+      >
         <div className="sp-mini-grid">
           {cards.map((card) => (
             <article className="sp-mini-card" key={card.label}>
@@ -779,7 +787,7 @@ const StatisticsPage = observer(() => {
             </article>
           ))}
         </div>
-      </section>
+      </SectionCard>
     );
   };
 
@@ -840,13 +848,12 @@ const StatisticsPage = observer(() => {
     ];
 
     return (
-      <section id="stats-analysis" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">胜率与回撤</p>
-            <p className="sp-section-caption">按当前统计区间的交易日和账户曲线自动计算</p>
-          </div>
-        </div>
+      <SectionCard
+        id="stats-analysis"
+        className="section-jump-anchor"
+        title="胜率与回撤"
+        description="按当前统计区间的交易日和账户曲线自动计算"
+      >
         <div className="sp-analysis-grid">
           {cards.map((card) => (
             <article className="sp-analysis-card" key={card.label}>
@@ -857,7 +864,7 @@ const StatisticsPage = observer(() => {
             </article>
           ))}
         </div>
-      </section>
+      </SectionCard>
     );
   };
 
@@ -865,13 +872,15 @@ const StatisticsPage = observer(() => {
     if (!store.data || store.data.dailyPnLHeatmap.length === 0) return null;
 
     return (
-      <section id="stats-heatmap" className="sp-section section-jump-anchor">
-        <PnLCalendarExplorer
-          title="收益日历 / 热力图"
-          caption="支持按月、按年、按日切换，红色表示盈利，绿色表示亏损"
-          items={store.data.dailyPnLHeatmap}
-          dayPageSize={30}
-        />
+      <section id="stats-heatmap" className="section-jump-anchor">
+        <Suspense fallback={sectionFallback}>
+          <PnLCalendarExplorer
+            title="收益日历 / 热力图"
+            caption="支持按月、按年、按日切换，红色表示盈利，绿色表示亏损"
+            items={store.data.dailyPnLHeatmap}
+            dayPageSize={30}
+          />
+        </Suspense>
       </section>
     );
   };
@@ -1041,23 +1050,32 @@ const StatisticsPage = observer(() => {
     const list = store.pagedByStock;
     if (list.length === 0) {
       return (
-        <section id="stats-by-stock" className="sp-section section-jump-anchor">
-          <p className="sp-section-title">按心魔汇总</p>
+        <SectionCard
+          id="stats-by-stock"
+          className="section-jump-anchor"
+          title="按心魔汇总"
+        >
           <p className="sp-empty">暂无数据</p>
-        </section>
+        </SectionCard>
       );
     }
 
     return (
-      <section id="stats-by-stock" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">按心魔汇总</p>
-            <p className="sp-section-caption">这里同时看累计盈亏和单票贡献度</p>
-          </div>
-        </div>
-        <div className="sp-table-wrap">
-          <table className="sp-table">
+      <ResponsiveTableShell
+        id="stats-by-stock"
+        className="section-jump-anchor"
+        title="按心魔汇总"
+        description="这里同时看累计盈亏和单票贡献度"
+        footer={(
+          <TablePagination
+            page={store.stockPage}
+            totalPages={store.byStockTotalPages}
+            totalItems={store.filteredByStock.length}
+            onPageChange={store.setStockPage}
+          />
+        )}
+      >
+        <table className="sp-table">
             <thead>
               <tr>
                 <SortableHeader field={'stockCode' as StatisticsSortField} currentField={store.stockSortField} currentOrder={store.stockSortOrder} onSort={store.toggleStockSort}>
@@ -1102,97 +1120,125 @@ const StatisticsPage = observer(() => {
               ))}
             </tbody>
           </table>
-        </div>
-        <TablePagination
-          page={store.stockPage}
-          totalPages={store.byStockTotalPages}
-          totalItems={store.filteredByStock.length}
-          onPageChange={store.setStockPage}
-        />
-      </section>
+      </ResponsiveTableShell>
     );
   };
 
   return (
     <div className="sp-container">
       <div className="sp-header">
-        <div>
-          <p className="sp-title">统计汇总</p>
-          <p className="sp-subtitle">{dateRangeText}</p>
-        </div>
-        <button
-          className="sp-refresh-btn"
-          onClick={handleRefresh}
-          disabled={store.loading}
-        >
-          刷新数据
-        </button>
+        <PageHeader
+          title="统计汇总"
+          subtitle={dateRangeText}
+          actions={(
+            <Button
+              onClick={handleRefresh}
+              disabled={store.loading}
+              type="button"
+              variant="contained"
+              startIcon={store.loading ? <CircularProgress size={16} color="inherit" /> : <RefreshRoundedIcon />}
+              sx={{ minWidth: 132 }}
+            >
+              刷新数据
+            </Button>
+          )}
+        />
       </div>
 
       <div className="sp-filter-bar">
-        <label>时间：</label>
-        <div className="sp-date-tabs">
-          {DATE_FILTERS.map((f) => (
-            <button
-              key={f.key}
-              className={`sp-date-tab ${store.dateFilterType === f.key ? 'sp-date-tab--active' : ''}`}
-              onClick={() => handleDateFilterClick(f.key)}
+        <FilterToolbar
+          title="统计筛选"
+          description="先确定统计时间，再按盈亏方向缩小观察范围。自定义时间会直接回刷整页数据。"
+        >
+          <Stack spacing={2}>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1.25}
+              sx={{ alignItems: { xs: 'stretch', md: 'center' } }}
             >
-              {f.label}
-            </button>
-          ))}
-        </div>
+              <Box sx={{ color: 'text.secondary', fontSize: 13, fontWeight: 700 }}>时间</Box>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                {DATE_FILTERS.map((filter) => (
+                  <Chip
+                    key={filter.key}
+                    label={filter.label}
+                    clickable
+                    color={store.dateFilterType === filter.key ? 'primary' : 'default'}
+                    variant={store.dateFilterType === filter.key ? 'filled' : 'outlined'}
+                    onClick={() => handleDateFilterClick(filter.key)}
+                  />
+                ))}
+              </Stack>
+            </Stack>
 
-        {store.dateFilterType === 'custom' && (
-          <>
-            <input
-              type="date"
-              className="sp-input-date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              placeholder="开始日期"
-            />
-            <span style={{ color: '#9ca3af', fontSize: '0.85rem' }}>~</span>
-            <input
-              type="date"
-              className="sp-input-date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              placeholder="结束日期"
-            />
-            <button className="sp-btn-primary" onClick={handleCustomSearch}>
-              查询
-            </button>
-          </>
-        )}
+            {store.dateFilterType === 'custom' ? (
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1.5}
+                sx={{ alignItems: { xs: 'stretch', md: 'center' } }}
+              >
+                <TextField
+                  type="date"
+                  label="开始日期"
+                  size="small"
+                  value={customStart}
+                  onChange={(event) => setCustomStart(event.target.value)}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                />
+                <TextField
+                  type="date"
+                  label="结束日期"
+                  size="small"
+                  value={customEnd}
+                  onChange={(event) => setCustomEnd(event.target.value)}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                />
+                <Button variant="contained" onClick={handleCustomSearch}>
+                  查询
+                </Button>
+              </Stack>
+            ) : null}
 
-        <label style={{ marginLeft: '12px' }}>盈亏：</label>
-        <div className="sp-pnl-tabs">
-          {PNL_FILTERS.map((f) => (
-            <button
-              key={f.key}
-              className={`sp-pnl-tab ${store.pnlFilter === f.key ? 'sp-pnl-tab--active' : ''}`}
-              onClick={() => handlePnlFilterClick(f.key)}
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1.25}
+              sx={{ alignItems: { xs: 'stretch', md: 'center' } }}
             >
-              {f.label}
-            </button>
-          ))}
-        </div>
+              <Box sx={{ color: 'text.secondary', fontSize: 13, fontWeight: 700 }}>盈亏</Box>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                {PNL_FILTERS.map((filter) => (
+                  <Chip
+                    key={filter.key}
+                    label={filter.label}
+                    clickable
+                    color={store.pnlFilter === filter.key ? 'primary' : 'default'}
+                    variant={store.pnlFilter === filter.key ? 'filled' : 'outlined'}
+                    onClick={() => handlePnlFilterClick(filter.key)}
+                  />
+                ))}
+              </Stack>
+            </Stack>
+          </Stack>
+        </FilterToolbar>
       </div>
 
       <div className="sp-main">
         {store.loading && (
-          <div className="sp-status">
-            <div className="sp-spinner" />
-            <span>加载中...</span>
-          </div>
+          <RouteLoadingFallback label="统计数据加载中..." minHeight={240} compact />
         )}
 
         {store.error && !store.loading && (
-          <div className="sp-error">
-            <span>{store.error}</span>
-            <button onClick={handleRefresh}>重试</button>
-          </div>
+          <Alert
+            severity="error"
+            action={(
+              <Button color="inherit" size="small" onClick={handleRefresh}>
+                重试
+              </Button>
+            )}
+            sx={{ mb: 3 }}
+          >
+            {store.error}
+          </Alert>
         )}
 
         {!store.loading && !store.error && store.data && (
@@ -1240,12 +1286,16 @@ const StatisticsPage = observer(() => {
         {!store.loading && !store.error && store.data && renderByStockTable()}
         {!store.loading && !store.error && (
           <section id="stats-leaderboard" className="section-jump-anchor">
-            <StockPnLLeaderboard />
+            <Suspense fallback={sectionFallback}>
+              <StockPnLLeaderboard />
+            </Suspense>
           </section>
         )}
 
         {!store.loading && !store.error && !store.data && (
-          <p className="sp-empty">请选择筛选条件后点击「刷新数据」</p>
+          <SectionCard title="暂无统计结果" description="请选择筛选条件后点击刷新数据。">
+            <p className="sp-empty">请选择筛选条件后点击「刷新数据」</p>
+          </SectionCard>
         )}
       </div>
     </div>

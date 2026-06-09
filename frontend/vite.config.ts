@@ -61,6 +61,31 @@ export default defineConfig(({ command }) => ({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined;
+          }
+
+          if (id.includes('@mui') || id.includes('@emotion') || id.includes('@fontsource')) {
+            return 'vendor-mui';
+          }
+
+          if (id.includes('react-router') || id.includes('/react/') || id.includes('/react-dom/')) {
+            return 'vendor-react';
+          }
+
+          if (id.includes('mobx')) {
+            return 'vendor-mobx';
+          }
+
+          return 'vendor';
+        },
+      },
+    },
+  },
   server: {
     allowedHosts,
     proxy: {

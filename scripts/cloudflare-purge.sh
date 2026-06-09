@@ -42,19 +42,33 @@ while (($# > 0)); do
 done
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$ROOT_DIR/.env.aspire-docker"
-EXAMPLE_FILE="$ROOT_DIR/.env.aspire-docker.example"
+PRIMARY_ENV_FILE="$ROOT_DIR/.env.aspire-docker"
+PRIMARY_EXAMPLE_FILE="$ROOT_DIR/.env.aspire-docker.example"
+FALLBACK_ENV_FILE="$ROOT_DIR/.env.docker"
+FALLBACK_EXAMPLE_FILE="$ROOT_DIR/.env.docker.example"
 
-if [[ ! -f "$ENV_FILE" && -f "$EXAMPLE_FILE" ]]; then
-  cp "$EXAMPLE_FILE" "$ENV_FILE"
-  echo "Created $ENV_FILE. Fill in the Cloudflare values before running again."
+if [[ ! -f "$PRIMARY_ENV_FILE" && -f "$PRIMARY_EXAMPLE_FILE" ]]; then
+  cp "$PRIMARY_EXAMPLE_FILE" "$PRIMARY_ENV_FILE"
+  echo "Created $PRIMARY_ENV_FILE."
 fi
 
-if [[ -f "$ENV_FILE" ]]; then
+if [[ -f "$FALLBACK_ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090
-  source "$ENV_FILE"
+  source "$FALLBACK_ENV_FILE"
   set +a
+fi
+
+if [[ -f "$PRIMARY_ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$PRIMARY_ENV_FILE"
+  set +a
+fi
+
+if [[ ! -f "$PRIMARY_ENV_FILE" && ! -f "$FALLBACK_ENV_FILE" && -f "$FALLBACK_EXAMPLE_FILE" ]]; then
+  cp "$FALLBACK_EXAMPLE_FILE" "$FALLBACK_ENV_FILE"
+  echo "Created $FALLBACK_ENV_FILE. Fill in the Cloudflare values before running again."
 fi
 
 BASE_URL="${BASE_URL:-${CLOUDFLARE_BASE_URL:-}}"

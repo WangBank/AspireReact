@@ -1,32 +1,71 @@
-import { useState, useCallback, useEffect } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { useState, useCallback, useEffect, type MouseEvent as ReactMouseEvent } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { observer } from 'mobx-react-lite';
+import {
+  Alert,
+  AppBar,
+  Avatar,
+  Box,
+  Button,
+  Chip,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Drawer,
+  Fab,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Paper,
+  Snackbar,
+  Stack,
+  Toolbar,
+  Tooltip,
+  Typography,
+  useMediaQuery,
+} from '@mui/material';
+import AddRoundedIcon from '@mui/icons-material/AddRounded';
+import AdminPanelSettingsRoundedIcon from '@mui/icons-material/AdminPanelSettingsRounded';
+import ArrowDropDownRoundedIcon from '@mui/icons-material/ArrowDropDownRounded';
+import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
+import DownloadRoundedIcon from '@mui/icons-material/DownloadRounded';
+import LogoutRoundedIcon from '@mui/icons-material/LogoutRounded';
+import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
+import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
+import { alpha, useTheme } from '@mui/material/styles';
 import { useStore } from '../../stores/StoreProvider';
-import './Layout.css';
 
 interface NavLinkItem {
   label: string;
   path: string;
-  type: 'link';
 }
 
 const BASE_NAV_ITEMS: NavLinkItem[] = [
-  { label: '首页', path: '/dashboard', type: 'link' },
-  { label: '录入', path: '/entry/unified', type: 'link' },
-  { label: '数据列表', path: '/list/unified', type: 'link' },
-  { label: '统计', path: '/statistics', type: 'link' },
-  { label: '全局笔记', path: '/notes/global', type: 'link' },
-  { label: '心魔笔记', path: '/notes/stock', type: 'link' },
-  { label: '吾日三省吾身', path: '/notes/reflection', type: 'link' },
+  { label: '首页', path: '/dashboard' },
+  { label: '录入', path: '/entry/unified' },
+  { label: '数据列表', path: '/list/unified' },
+  { label: '统计', path: '/statistics' },
+  { label: '全局笔记', path: '/notes/global' },
+  { label: '心魔笔记', path: '/notes/stock' },
+  { label: '吾日三省吾身', path: '/notes/reflection' },
 ];
+
 const ADMIN_NAV_ITEMS: NavLinkItem[] = [
-  { label: '管理员后台', path: '/admin', type: 'link' },
+  { label: '管理员后台', path: '/admin' },
 ];
 
 const QUICK_ENTRY_PATH = '/entry/unified';
+
 const isStandaloneDisplayMode = () =>
   window.matchMedia('(display-mode: standalone)').matches
   || ((window.navigator as Navigator & { standalone?: boolean }).standalone ?? false);
+
 const isIosDevice = () => /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 const isInstallPromptSupported = () => 'BeforeInstallPromptEvent' in window;
 
@@ -39,7 +78,10 @@ interface InstallGuideContent {
 const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const { authStore } = useStore();
   const location = useLocation();
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [userMenuAnchor, setUserMenuAnchor] = useState<HTMLElement | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [installHint, setInstallHint] = useState('');
@@ -47,6 +89,8 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const [installCopyNotice, setInstallCopyNotice] = useState('');
   const [isStandaloneApp, setIsStandaloneApp] = useState(() => isStandaloneDisplayMode());
   const [isIosInstallTarget] = useState(() => isIosDevice());
+
+  const userMenuOpen = Boolean(userMenuAnchor);
   const homePath = authStore.isAdmin ? '/admin' : '/dashboard';
   const isEntryRoute = location.pathname.startsWith('/entry');
   const showTradingNavigation = !authStore.isAdmin;
@@ -54,31 +98,19 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const showInstallAction = !isStandaloneApp;
   const navItems = authStore.isAdmin ? ADMIN_NAV_ITEMS : BASE_NAV_ITEMS;
 
+  const closeUserMenu = useCallback(() => setUserMenuAnchor(null), []);
+
   const handleLogout = useCallback(() => {
     authStore.logout();
-    setUserMenuOpen(false);
+    closeUserMenu();
     setMobileMenuOpen(false);
-    window.location.href = '/login';
-  }, [authStore]);
+    navigate('/login', { replace: true });
+  }, [authStore, closeUserMenu, navigate]);
 
   useEffect(() => {
-    if (!userMenuOpen) return;
-
-    const handler = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.navbar-user')) {
-        setUserMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [userMenuOpen]);
-
-  useEffect(() => {
-    setUserMenuOpen(false);
+    closeUserMenu();
     setMobileMenuOpen(false);
-  }, [location.pathname]);
+  }, [closeUserMenu, location.pathname]);
 
   useEffect(() => {
     if (!installCopyNotice) {
@@ -91,6 +123,18 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
 
     return () => window.clearTimeout(timer);
   }, [installCopyNotice]);
+
+  useEffect(() => {
+    if (!installHint) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setInstallHint('');
+    }, 3200);
+
+    return () => window.clearTimeout(timer);
+  }, [installHint]);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (event: Event) => {
@@ -203,7 +247,7 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
 
     openInstallGuide({
       title: '当前环境不支持直接安装',
-      description: '像 Codex 内置浏览器这类嵌入式浏览器，通常不会触发 PWA 的系统安装提示，所以看起来会像“没反应”。',
+      description: '像内置浏览器这类嵌入式环境，通常不会触发 PWA 的系统安装提示，所以看起来会像“没反应”。',
       steps: [
         '先复制当前地址。',
         '再用系统 Chrome、Edge 或 Safari 打开这个地址。',
@@ -212,317 +256,468 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
     });
   }, [installPromptEvent, isIosInstallTarget, isStandaloneApp, openInstallGuide]);
 
+  const isNavActive = (path: string) => {
+    if (path === '/entry/unified') return location.pathname.startsWith('/entry');
+    if (path === '/list/unified') return location.pathname.startsWith('/list');
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
+  };
+
   const avatarLetter = (authStore.username ?? '?').charAt(0).toUpperCase();
   const roleLabel = authStore.isAdmin ? '管理员' : '普通用户';
 
-  return (
-    <div className="layout-container">
-      <nav className="navbar">
-        <div className="navbar-main">
-          <NavLink to={homePath} className="navbar-brand">
-            <div className="navbar-brand__icon">
-              <img src="/brand-mark.svg" alt="心魔录" className="navbar-brand__icon-image" />
-            </div>
-            <span className="navbar-brand__text">心魔录</span>
-          </NavLink>
-
-          <ul className="navbar-links">
-            {navItems.map((item) => (
-              <li key={item.path}>
-                <NavLink
-                  to={item.path}
-                  className={({ isActive }) =>
-                    `navbar-link${isActive ? ' navbar-link--active' : ''}`
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="navbar-actions">
-          {showTradingNavigation && (
-            <NavLink
-              to={QUICK_ENTRY_PATH}
-              className={`navbar-entry-cta${isEntryRoute ? ' navbar-entry-cta--active' : ''}`}
-            >
-              <span className="navbar-entry-cta__icon" aria-hidden="true">
-                +
-              </span>
-              <span className="navbar-entry-cta__body">
-                <span className="navbar-entry-cta__title">快捷录入</span>
-                <span className="navbar-entry-cta__meta">OCR / 手动一体</span>
-              </span>
-            </NavLink>
-          )}
-
-          {showInstallAction && (
-            <button
-              type="button"
-              className="navbar-install-cta"
-              onClick={handleInstallApp}
-              title="安装心魔录到桌面"
-            >
-              <span className="navbar-install-cta__icon" aria-hidden="true">
-                ↓
-              </span>
-              <span className="navbar-install-cta__body">
-                <span className="navbar-install-cta__title">安装应用</span>
-                <span className="navbar-install-cta__meta">桌面直达 / 离线可开</span>
-              </span>
-            </button>
-          )}
-
-          <div className="navbar-user">
-            <button
-              className="navbar-user__trigger"
-              onClick={() => setUserMenuOpen((value) => !value)}
-              type="button"
-              aria-haspopup="true"
-              aria-expanded={userMenuOpen}
-            >
-              <div className="navbar-user__avatar">
-                {authStore.avatarUrl ? (
-                  <img
-                    src={authStore.avatarUrl}
-                    alt={`${authStore.username ?? '用户'}头像`}
-                    className="navbar-user__avatar-image"
-                  />
-                ) : (
-                  avatarLetter
-                )}
-              </div>
-              <span className="navbar-user__name">{authStore.username ?? '用户'}</span>
-              {authStore.isAdmin && <span className="navbar-user__role">Admin</span>}
-              <span className={`navbar-user__arrow${userMenuOpen ? ' navbar-user__arrow--open' : ''}`}>▾</span>
-            </button>
-
-            {userMenuOpen && (
-              <div className="navbar-user__menu">
-                <button
-                  className="navbar-user__menu-item"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    window.location.href = '/profile';
-                  }}
-                  type="button"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  个人信息
-                </button>
-                {authStore.isAdmin && (
-                  <button
-                    className="navbar-user__menu-item"
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      window.location.href = '/admin';
-                    }}
-                    type="button"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    管理员后台
-                  </button>
-                )}
-                <div className="navbar-user__menu-divider" />
-                <button
-                  className="navbar-user__menu-item navbar-user__menu-item--danger"
-                  onClick={handleLogout}
-                  type="button"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                  退出登录
-                </button>
-              </div>
-            )}
-          </div>
-
-          <button
-            className={`navbar-mobile-toggle${mobileMenuOpen ? ' navbar-mobile-toggle--active' : ''}`}
-            onClick={() => setMobileMenuOpen((value) => !value)}
-            type="button"
-            aria-label="打开导航菜单"
-            aria-expanded={mobileMenuOpen}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
-        </div>
-      </nav>
-
-      <button
-        className={`navbar-mobile-backdrop${mobileMenuOpen ? ' navbar-mobile-backdrop--visible' : ''}`}
-        onClick={() => setMobileMenuOpen(false)}
-        type="button"
-        aria-label="关闭导航遮罩"
-      />
-
-      <aside className={`navbar-mobile-drawer${mobileMenuOpen ? ' navbar-mobile-drawer--open' : ''}`}>
-        <div className="navbar-mobile-drawer__header">
-          <div>
-            <div className="navbar-mobile-drawer__title">心魔录</div>
-            <div className="navbar-mobile-drawer__subtitle">欢迎回来，{authStore.username ?? '用户'} · {roleLabel}</div>
-          </div>
-          <button
-            className="navbar-mobile-drawer__close"
-            onClick={() => setMobileMenuOpen(false)}
-            type="button"
-            aria-label="关闭导航菜单"
-          >
-            ×
-          </button>
-        </div>
-
-        <div className="navbar-mobile-drawer__content">
-          {showTradingNavigation && (
-            <NavLink
-              to={QUICK_ENTRY_PATH}
-              className={`navbar-mobile-entry${isEntryRoute ? ' navbar-mobile-entry--active' : ''}`}
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              <span className="navbar-mobile-entry__icon" aria-hidden="true">
-                +
-              </span>
-              <span className="navbar-mobile-entry__body">
-                <span className="navbar-mobile-entry__title">快捷录入</span>
-                <span className="navbar-mobile-entry__meta">直接进入统一录入页</span>
-              </span>
-            </NavLink>
-          )}
-
-          {showInstallAction && (
-            <button
-              type="button"
-              className="navbar-mobile-install"
-              onClick={handleInstallApp}
-            >
-              <span className="navbar-mobile-install__icon" aria-hidden="true">
-                ↓
-              </span>
-              <span className="navbar-mobile-install__body">
-                <span className="navbar-mobile-install__title">安装应用</span>
-                <span className="navbar-mobile-install__meta">把心魔录添加到桌面</span>
-              </span>
-            </button>
-          )}
-
-          {navItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) =>
-                `navbar-mobile-link${isActive ? ' navbar-mobile-link--active' : ''}`
-              }
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </div>
-
-        <div className="navbar-mobile-drawer__footer">
-          {installHint && <div className="navbar-install-hint navbar-install-hint--mobile">{installHint}</div>}
-          <button
-            className="navbar-mobile-action"
-            onClick={() => {
-              setMobileMenuOpen(false);
-              window.location.href = '/profile';
+  const renderDesktopNav = () => (
+    <Stack
+      direction="row"
+      spacing={0.75}
+      sx={{
+        display: { xs: 'none', md: 'flex' },
+        alignItems: 'center',
+        flexWrap: 'wrap',
+      }}
+    >
+      {navItems.map((item) => {
+        const active = isNavActive(item.path);
+        return (
+          <Button
+            key={item.path}
+            component={NavLink}
+            to={item.path}
+            color="inherit"
+            variant={active ? 'contained' : 'text'}
+            sx={{
+              minHeight: 38,
+              px: 1.6,
+              color: active ? 'primary.main' : 'text.secondary',
+              bgcolor: active ? alpha(theme.palette.primary.main, 0.12) : 'transparent',
+              '&:hover': {
+                bgcolor: active ? alpha(theme.palette.primary.main, 0.16) : alpha(theme.palette.primary.main, 0.06),
+              },
             }}
-            type="button"
           >
-            个人信息
-          </button>
-          <button
-            className="navbar-mobile-action navbar-mobile-action--danger"
-            onClick={handleLogout}
-            type="button"
-          >
-            退出登录
-          </button>
-        </div>
-      </aside>
+            {item.label}
+          </Button>
+        );
+      })}
+    </Stack>
+  );
 
-      {installHint && <div className="navbar-install-hint">{installHint}</div>}
+  const renderQuickEntryButton = (mobile = false) => (
+    <Button
+      component={NavLink}
+      to={QUICK_ENTRY_PATH}
+      variant="contained"
+      color="warning"
+      startIcon={<AddRoundedIcon />}
+      onClick={() => mobile && setMobileMenuOpen(false)}
+      sx={{
+        justifyContent: 'flex-start',
+        minWidth: mobile ? '100%' : 0,
+        px: mobile ? 2 : 1.75,
+        py: mobile ? 1.4 : 1,
+        borderRadius: mobile ? 3 : 999,
+        color: '#7c2d12',
+        bgcolor: '#ffedd5',
+        boxShadow: '0 10px 24px rgba(249, 115, 22, 0.16)',
+        '&:hover': {
+          bgcolor: '#fed7aa',
+        },
+      }}
+    >
+      <Stack spacing={0.2} sx={{ alignItems: 'flex-start' }}>
+        <Typography variant="button" sx={{ color: 'inherit', lineHeight: 1.1 }}>
+          快捷录入
+        </Typography>
+        <Typography variant="caption" sx={{ color: alpha('#7c2d12', 0.78) }}>
+          OCR / 手动一体
+        </Typography>
+      </Stack>
+    </Button>
+  );
 
-      {installGuide && (
-        <>
-          <button
-            type="button"
-            className="install-guide-backdrop"
-            aria-label="关闭安装说明"
-            onClick={closeInstallGuide}
-          />
-          <section
-            className="install-guide-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="install-guide-title"
+  const renderInstallButton = (mobile = false) => (
+    <Button
+      variant={mobile ? 'contained' : 'outlined'}
+      onClick={handleInstallApp}
+      startIcon={<DownloadRoundedIcon />}
+      color="primary"
+      fullWidth={mobile}
+      sx={{
+        justifyContent: 'flex-start',
+        borderRadius: mobile ? 3 : 999,
+        px: mobile ? 2 : 1.5,
+        py: mobile ? 1.4 : 1,
+        bgcolor: mobile ? alpha(theme.palette.primary.main, 0.08) : alpha(theme.palette.primary.main, 0.03),
+        borderColor: alpha(theme.palette.primary.main, 0.18),
+      }}
+    >
+      <Stack spacing={0.2} sx={{ alignItems: 'flex-start' }}>
+        <Typography variant="button" sx={{ lineHeight: 1.1 }}>
+          安装应用
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          桌面直达 / 离线可开
+        </Typography>
+      </Stack>
+    </Button>
+  );
+
+  return (
+    <Box
+      sx={{
+        minHeight: '100vh',
+        '--app-navbar-height': '72px',
+        [theme.breakpoints.down('sm')]: {
+          '--app-navbar-height': '64px',
+        },
+      }}
+    >
+      <AppBar
+        position="fixed"
+        color="transparent"
+        sx={{
+          bgcolor: alpha('#ffffff', 0.84),
+          backdropFilter: 'blur(16px)',
+        }}
+      >
+        <Container maxWidth="xl" sx={{ px: { xs: 2, md: 3 } }}>
+          <Toolbar
+            disableGutters
+            sx={{
+              minHeight: 'var(--app-navbar-height)',
+              gap: 2,
+              justifyContent: 'space-between',
+            }}
           >
-            <div className="install-guide-modal__header">
-              <div>
-                <h2 id="install-guide-title" className="install-guide-modal__title">{installGuide.title}</h2>
-                <p className="install-guide-modal__desc">{installGuide.description}</p>
-              </div>
-              <button
-                type="button"
-                className="install-guide-modal__close"
-                onClick={closeInstallGuide}
-                aria-label="关闭安装说明"
+            <Stack direction="row" spacing={2} sx={{ alignItems: 'center', minWidth: 0 }}>
+              <Button
+                component={NavLink}
+                to={homePath}
+                color="inherit"
+                sx={{
+                  minWidth: 0,
+                  p: 0.5,
+                  pr: 1.25,
+                  borderRadius: 999,
+                  color: 'text.primary',
+                }}
               >
-                ×
-              </button>
-            </div>
+                <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', minWidth: 0 }}>
+                  <Box
+                    sx={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 2.5,
+                      overflow: 'hidden',
+                      boxShadow: '0 12px 24px rgba(9, 105, 218, 0.22)',
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src="/brand-mark.svg"
+                      alt="心魔录"
+                      sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  </Box>
+                  <Stack spacing={0} sx={{ alignItems: 'flex-start', minWidth: 0 }}>
+                    <Typography variant="subtitle1" noWrap sx={{ fontWeight: 700 }}>
+                      心魔录
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" noWrap>
+                      交易复盘与画像
+                    </Typography>
+                  </Stack>
+                </Stack>
+              </Button>
 
-            <ol className="install-guide-modal__steps">
-              {installGuide.steps.map((step) => (
-                <li key={step}>{step}</li>
+              {renderDesktopNav()}
+            </Stack>
+
+            <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              {showTradingNavigation && (
+                <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+                  {renderQuickEntryButton()}
+                </Box>
+              )}
+
+              {showInstallAction && (
+                <Box sx={{ display: { xs: 'none', lg: 'block' } }}>
+                  {renderInstallButton()}
+                </Box>
+              )}
+
+              <Button
+                color="inherit"
+                onClick={(event: ReactMouseEvent<HTMLElement>) => setUserMenuAnchor(event.currentTarget)}
+                endIcon={<ArrowDropDownRoundedIcon />}
+                sx={{
+                  minWidth: 0,
+                  borderRadius: 999,
+                  border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+                  px: { xs: 0.75, sm: 1.1 },
+                  py: 0.5,
+                  color: 'text.primary',
+                }}
+              >
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                  <Avatar
+                    src={authStore.avatarUrl || undefined}
+                    alt={`${authStore.username ?? '用户'}头像`}
+                    sx={{ width: 34, height: 34, bgcolor: 'primary.main', fontSize: 14 }}
+                  >
+                    {avatarLetter}
+                  </Avatar>
+                  <Box sx={{ display: { xs: 'none', sm: 'block' }, textAlign: 'left' }}>
+                    <Typography variant="body2" noWrap sx={{ fontWeight: 600, maxWidth: 120 }}>
+                      {authStore.username ?? '用户'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {roleLabel}
+                    </Typography>
+                  </Box>
+                  {authStore.isAdmin && (
+                    <Chip
+                      label="Admin"
+                      size="small"
+                      color="warning"
+                      sx={{ display: { xs: 'none', md: 'inline-flex' }, fontWeight: 700 }}
+                    />
+                  )}
+                </Stack>
+              </Button>
+
+              <Tooltip title="菜单">
+                <IconButton
+                  onClick={() => setMobileMenuOpen(true)}
+                  sx={{ display: { xs: 'inline-flex', md: 'none' } }}
+                >
+                  <MenuRoundedIcon />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+          </Toolbar>
+        </Container>
+      </AppBar>
+
+      <Menu
+        anchorEl={userMenuAnchor}
+        open={userMenuOpen}
+        onClose={closeUserMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem
+          onClick={() => {
+            closeUserMenu();
+            navigate('/profile');
+          }}
+        >
+          <PersonRoundedIcon fontSize="small" sx={{ mr: 1.25 }} />
+          个人信息
+        </MenuItem>
+        {authStore.isAdmin && (
+          <MenuItem
+            onClick={() => {
+              closeUserMenu();
+              navigate('/admin');
+            }}
+          >
+            <AdminPanelSettingsRoundedIcon fontSize="small" sx={{ mr: 1.25 }} />
+            管理员后台
+          </MenuItem>
+        )}
+        <Divider />
+        <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>
+          <LogoutRoundedIcon fontSize="small" sx={{ mr: 1.25 }} />
+          退出登录
+        </MenuItem>
+      </Menu>
+
+      <Drawer
+        anchor="right"
+        open={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        slotProps={{
+          paper: {
+            sx: {
+              width: 'min(88vw, 340px)',
+              p: 1.75,
+              borderLeft: `1px solid ${alpha(theme.palette.divider, 0.92)}`,
+            },
+          },
+        }}
+      >
+        <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              心魔录
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              欢迎回来，{authStore.username ?? '用户'} · {roleLabel}
+            </Typography>
+          </Box>
+          <IconButton onClick={() => setMobileMenuOpen(false)}>
+            <CloseRoundedIcon />
+          </IconButton>
+        </Stack>
+
+        <Stack spacing={1.2}>
+          {showTradingNavigation && renderQuickEntryButton(true)}
+          {showInstallAction && renderInstallButton(true)}
+
+          <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 3 }}>
+            <List disablePadding>
+              {navItems.map((item, index) => (
+                <Box key={item.path}>
+                  {index > 0 && <Divider />}
+                  <ListItemButton
+                    component={NavLink}
+                    to={item.path}
+                    selected={isNavActive(item.path)}
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <ListItemText primary={<Typography sx={{ fontWeight: 600 }}>{item.label}</Typography>} />
+                  </ListItemButton>
+                </Box>
               ))}
-            </ol>
+            </List>
+          </Paper>
 
-            <div className="install-guide-modal__url">
-              <span className="install-guide-modal__url-label">当前地址</span>
-              <code className="install-guide-modal__url-value">{window.location.href}</code>
-            </div>
-
-            {installCopyNotice && (
-              <div className="install-guide-modal__notice">{installCopyNotice}</div>
-            )}
-
-            <div className="install-guide-modal__actions">
-              <button
-                type="button"
-                className="install-guide-modal__primary"
-                onClick={copyInstallLink}
+          <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
+            <List disablePadding>
+              <ListItemButton
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigate('/profile');
+                }}
               >
-                复制当前地址
-              </button>
-              <button
-                type="button"
-                className="install-guide-modal__secondary"
-                onClick={closeInstallGuide}
-              >
-                我知道了
-              </button>
-            </div>
-          </section>
-        </>
-      )}
+                <ListItemText primary={<Typography sx={{ fontWeight: 600 }}>个人信息</Typography>} />
+              </ListItemButton>
+              <Divider />
+              <ListItemButton onClick={handleLogout}>
+                <ListItemText
+                  primary={<Typography sx={{ fontWeight: 600, color: 'error.main' }}>退出登录</Typography>}
+                />
+              </ListItemButton>
+            </List>
+          </Paper>
+        </Stack>
+      </Drawer>
 
-      <main className="layout-content">
+      <Snackbar
+        open={Boolean(installHint)}
+        autoHideDuration={3200}
+        onClose={() => setInstallHint('')}
+        anchorOrigin={{ vertical: 'top', horizontal: isMobile ? 'center' : 'right' }}
+      >
+        <Alert
+          onClose={() => setInstallHint('')}
+          severity="info"
+          variant="filled"
+          sx={{ alignItems: 'center' }}
+        >
+          {installHint}
+        </Alert>
+      </Snackbar>
+
+      <Dialog
+        open={Boolean(installGuide)}
+        onClose={closeInstallGuide}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          {installGuide?.title}
+        </DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.8 }}>
+            {installGuide?.description}
+          </Typography>
+
+          <Box component="ol" sx={{ pl: 2.5, my: 2.25 }}>
+            {installGuide?.steps.map((step) => (
+              <Typography component="li" key={step} variant="body2" sx={{ mb: 1.1, lineHeight: 1.8 }}>
+                {step}
+              </Typography>
+            ))}
+          </Box>
+
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 1.6,
+              borderRadius: 3,
+              bgcolor: alpha(theme.palette.primary.main, 0.03),
+            }}
+          >
+            <Typography variant="caption" color="text.secondary">
+              当前地址
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                mt: 0.5,
+                overflowWrap: 'anywhere',
+                color: 'primary.main',
+              }}
+            >
+              {window.location.href}
+            </Typography>
+          </Paper>
+
+          {installCopyNotice && (
+            <Alert severity="success" sx={{ mt: 2 }}>
+              {installCopyNotice}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={closeInstallGuide} color="inherit">
+            我知道了
+          </Button>
+          <Button onClick={copyInstallLink} variant="contained">
+            复制当前地址
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Box
+        component="main"
+        className="layout-content"
+        sx={{
+          minHeight: '100vh',
+          pt: 'calc(var(--app-navbar-height) + 16px)',
+          pb: { xs: 3, md: 4 },
+        }}
+      >
         {children}
-      </main>
+      </Box>
 
       {showFloatingEntry && (
-        <NavLink to={QUICK_ENTRY_PATH} className="floating-entry-button" aria-label="进入快捷录入页面">
-          <span className="floating-entry-button__icon" aria-hidden="true">
-            +
-          </span>
-          <span className="floating-entry-button__text">快捷录入</span>
-        </NavLink>
+        <Fab
+          component={NavLink}
+          to={QUICK_ENTRY_PATH}
+          color="warning"
+          variant="extended"
+          aria-label="进入快捷录入页面"
+          sx={{
+            display: { xs: 'inline-flex', md: 'none' },
+            position: 'fixed',
+            right: 16,
+            bottom: 'max(16px, calc(env(safe-area-inset-bottom) + 12px))',
+            zIndex: theme.zIndex.appBar - 1,
+            color: '#7c2d12',
+            bgcolor: '#ffedd5',
+            boxShadow: '0 16px 36px rgba(249, 115, 22, 0.24)',
+            '&:hover': {
+              bgcolor: '#fed7aa',
+            },
+          }}
+        >
+          <AddRoundedIcon sx={{ mr: 0.75 }} />
+          快捷录入
+        </Fab>
       )}
-    </div>
+    </Box>
   );
 });
 

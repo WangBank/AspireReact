@@ -1,5 +1,14 @@
 import { observer } from 'mobx-react-lite';
 import { useEffect, useRef, useState } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Checkbox,
+  FormControlLabel,
+  Paper,
+  Stack,
+} from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../stores/StoreProvider';
 import { accountService } from '../services/AccountService';
@@ -15,6 +24,7 @@ import StockSearchInput from '../components/StockSearchInput';
 import StockHistoryLink from '../components/StockHistoryLink';
 import SingleChoiceEditor from '../components/SingleChoiceEditor';
 import TradeTagsEditor from '../components/TradeTagsEditor';
+import { PageHeader, SectionCard } from '../components/Page';
 import { EMOTION_TAG_OPTIONS, SELL_REASON_OPTIONS } from '../constants/tradeBehavior';
 import { formatLocalDate } from '../utils/date';
 import './AccountEntryPage.css';
@@ -788,14 +798,27 @@ const UnifiedEntryPage = observer(() => {
 
   return (
     <div className="unified-entry-container">
-      <h1 className="entry-page-title">{pageTitle}</h1>
-      <p className="entry-page-subtitle">{pageSubtitle}</p>
-      <section className="entry-insight-bar">
-        <div className="entry-insight-card">
+      <PageHeader
+        title={pageTitle}
+        subtitle={pageSubtitle}
+        actions={(
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+            <Button variant="outlined" onClick={resetAll}>
+              重置
+            </Button>
+            <Button variant="contained" onClick={() => navigate('/list/unified')}>
+              返回列表
+            </Button>
+          </Stack>
+        )}
+      />
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2.5 }}>
+        <Paper className="entry-insight-card" elevation={0} sx={{ px: 2, py: 1.5, flex: 1 }}>
           <span className="entry-insight-label">{shouldShowDraftInsight ? '当前录入日期' : '最近交易日期'}</span>
           <span className="entry-insight-value">{currentRecordDateText}</span>
-        </div>
-        <div className="entry-insight-card">
+        </Paper>
+        <Paper className="entry-insight-card" elevation={0} sx={{ px: 2, py: 1.5, flex: 1 }}>
           <span className="entry-insight-label">当日盈亏</span>
           <span
             className={`entry-insight-value ${
@@ -808,44 +831,47 @@ const UnifiedEntryPage = observer(() => {
           >
             {displayedDailyPnLText}
           </span>
-        </div>
-      </section>
+        </Paper>
+      </Stack>
 
       {!isEditMode && (
-        <section className="image-import-panel">
-          <div className="image-import-panel__header">
-            <div>
-              <h2 className="image-import-panel__title">图片识别导入</h2>
-              <p className="image-import-panel__subtitle">上传券商持仓页、当日流水表，或包含左侧账户日汇总与右侧流水的组合截图，自动回填账户、银证转账和心魔明细</p>
-            </div>
-            {(lastImportResult || importFile || importWarnings.length > 0) && (
-              <div className="image-import-panel__header-actions">
-                <button
+        <SectionCard
+          title="图片识别导入"
+          description="上传券商持仓页、当日流水表，或包含左侧账户日汇总与右侧流水的组合截图，自动回填账户、银证转账和心魔明细。"
+          actions={(lastImportResult || importFile || importWarnings.length > 0) ? (
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+              <Button
+                type="button"
+                variant="outlined"
+                color="warning"
+                onClick={() => clearImportedBackfill({
+                  preserveImportDate: true,
+                  clearStoreMessages: false,
+                  notice: '已清空识别回填数据',
+                })}
+                disabled={store.loading || isImportingImage}
+              >
+                清空识别回填
+              </Button>
+              {lastImportResult ? (
+                <Button
                   type="button"
-                  className="image-import-panel__clear"
-                  onClick={() => clearImportedBackfill({
-                    preserveImportDate: true,
-                    clearStoreMessages: false,
-                    notice: '已清空识别回填数据',
-                  })}
-                  disabled={store.loading || isImportingImage}
+                  variant="contained"
+                  color="success"
+                  onClick={handleSaveImportedData}
+                  disabled={store.loading || isImportingImage || hasImportCriticalIssues}
+                  title={hasImportCriticalIssues ? '当前截图缺少关键字段，暂不能保存' : undefined}
                 >
-                  清空识别回填
-                </button>
-                {lastImportResult && (
-                  <button
-                    type="button"
-                    className="image-import-panel__save"
-                    onClick={handleSaveImportedData}
-                    disabled={store.loading || isImportingImage || hasImportCriticalIssues}
-                    title={hasImportCriticalIssues ? '当前截图缺少关键字段，暂不能保存' : undefined}
-                  >
-                    {store.loading ? '保存中...' : '一键保存识别结果'}
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+                  {store.loading ? '保存中...' : '一键保存识别结果'}
+                </Button>
+              ) : null}
+            </Stack>
+          ) : undefined}
+          sx={{
+            background: 'linear-gradient(180deg, #fffdf7 0%, #ffffff 100%)',
+            borderColor: '#fde7c2',
+          }}
+        >
 
           <div className="image-import-panel__grid">
             <div className="form-group form-group-half">
@@ -897,8 +923,8 @@ const UnifiedEntryPage = observer(() => {
             当前版本支持同花顺手机端持仓页整屏截图、你这次这种窄长手机持仓截图、包含“当日买入/当日卖出/买入均价/卖出均价/收盘价”的当日流水表截图，以及左侧包含日期/总资产/净流入、右侧显示当日明细的组合截图。系统会优先根据图片长宽比和表头结构区分新旧格式，避免影响之前已经可用的识别结果。识别结果会先回填到统一录入表单，确认后再保存入库。历史手工录入的数据不需要补图片，图片审计只从当前这类 OCR 导入开始记录。
           </p>
 
-          {importError && <div className="entry-error-banner">{importError}</div>}
-          {importNotice && <div className="entry-success-banner">{importNotice}</div>}
+          {importError && <Alert severity="error">{importError}</Alert>}
+          {importNotice && <Alert severity="success">{importNotice}</Alert>}
 
           {lastImportResult && (
             <>
@@ -935,7 +961,7 @@ const UnifiedEntryPage = observer(() => {
           )}
 
           {hasImportCriticalIssues && (
-            <div className="image-import-panel__blocking">
+            <Box className="image-import-panel__blocking">
               <p className="image-import-panel__blocking-title">当前截图缺少关键字段，暂不能保存</p>
               <p className="image-import-panel__blocking-desc">
                 以下字段没有稳定识别出来，继续保存很容易把错误数据写进库里。请重新上传包含完整参数的截图。
@@ -945,36 +971,38 @@ const UnifiedEntryPage = observer(() => {
                   <li key={`${issue}-${index}`}>{issue}</li>
                 ))}
               </ul>
-            </div>
+            </Box>
           )}
 
           {importWarnings.length > 0 && (
-            <div className="image-import-panel__warnings">
+            <Box className="image-import-panel__warnings">
               <p className="image-import-panel__warnings-title">识别提醒</p>
               <ul className="image-import-panel__warnings-list">
                 {importWarnings.map((warning, index) => (
                   <li key={`${warning}-${index}`}>{warning}</li>
                 ))}
               </ul>
-            </div>
+            </Box>
           )}
-        </section>
+        </SectionCard>
       )}
 
       {store.error && (
-        <div className="entry-error-banner" role="alert">{store.error}</div>
+        <Alert severity="error" sx={{ mb: 2 }} role="alert">{store.error}</Alert>
       )}
       {store.successMessage && (
-        <div className="entry-success-banner" role="status">{store.successMessage}</div>
+        <Alert severity="success" sx={{ mb: 2 }} role="status">{store.successMessage}</Alert>
       )}
       {errors.submitAll && (
-        <div className="entry-error-banner">{errors.submitAll}</div>
+        <Alert severity="error" sx={{ mb: 2 }}>{errors.submitAll}</Alert>
       )}
 
       {/* ── 账户资金 ── */}
       {showAccountSection && (
-        <section className="unified-section">
-          <h2 className="unified-section-title">账户资金</h2>
+        <SectionCard
+          title="账户资金"
+          description="录入当天的总资产、持仓市值、可用资金和账户当日盈亏。"
+        >
           <form className="entry-form" onSubmit={handleSubmitAccount} noValidate>
             <div className="form-group">
               <label htmlFor="ue-ac-date" className="form-label">日期 <span className="required-star">*</span></label>
@@ -1029,13 +1057,15 @@ const UnifiedEntryPage = observer(() => {
               {store.loading ? '提交中...' : isEditMode ? '保存修改' : '保存账户资金'}
             </button>
           </form>
-        </section>
+        </SectionCard>
       )}
 
       {/* ── 银证流水 ── */}
       {showBankFlowSection && (
-        <section className="unified-section">
-          <h2 className="unified-section-title">银证流水</h2>
+        <SectionCard
+          title="银证流水"
+          description="记录银证转入或转出，后续统计会自动纳入净入金修正收益率。"
+        >
           <form className="entry-form" onSubmit={handleSubmitBankFlow} noValidate>
             <div className="form-group">
               <label htmlFor="ue-bf-date" className="form-label">日期 <span className="required-star">*</span></label>
@@ -1071,13 +1101,15 @@ const UnifiedEntryPage = observer(() => {
               {store.loading ? '提交中...' : isEditMode ? '保存修改' : '保存银证流水'}
             </button>
           </form>
-        </section>
+        </SectionCard>
       )}
 
       {/* ── 交易持仓 ── */}
       {showTradeSection && (
-        <section className="unified-section">
-          <h2 className="unified-section-title">交易持仓录入</h2>
+        <SectionCard
+          title="交易持仓录入"
+          description="支持多只股票同日录入，也支持 OCR 回填后逐行核对再保存。"
+        >
           <form className="entry-form" onSubmit={handleSubmitTrades} noValidate>
             <div className="form-group">
               <label htmlFor="ue-trade-date" className="form-label">持仓日期 <span className="required-star">*</span></label>
@@ -1090,7 +1122,7 @@ const UnifiedEntryPage = observer(() => {
               />
             </div>
 
-            {errors.trade && <div className="entry-error-banner">{errors.trade}</div>}
+            {errors.trade && <Alert severity="error">{errors.trade}</Alert>}
 
             {tradeRows.map((row, idx) => (
               <div key={row.id} className="trade-row-card">
@@ -1155,14 +1187,16 @@ const UnifiedEntryPage = observer(() => {
                 </div>
 
                 <div className="form-row">
-                  <label className="form-label">
-                    <input
-                      type="checkbox"
-                      checked={row.isLiquidated}
-                      onChange={e => updateTradeRow(row.id, 'isLiquidated', e.target.checked)}
-                    />
-                    清仓（只记录盈亏，不记录持仓）
-                  </label>
+                  <FormControlLabel
+                    control={(
+                      <Checkbox
+                        checked={row.isLiquidated}
+                        onChange={e => updateTradeRow(row.id, 'isLiquidated', e.target.checked)}
+                      />
+                    )}
+                    label="清仓（只记录盈亏，不记录持仓）"
+                    sx={{ m: 0 }}
+                  />
                 </div>
 
                 <div className="form-group">
@@ -1215,25 +1249,29 @@ const UnifiedEntryPage = observer(() => {
             <button type="button" className="entry-add-row-btn" onClick={addTradeRow}>+ 添加心魔</button>
 
             {store.batchResult && store.batchResult.errors && store.batchResult.errors.length > 0 && (
-              <div className="entry-error-banner">
+              <Alert severity="error">
                 {store.batchResult.errors.map((err: string, i: number) => (
                   <div key={i}>{err}</div>
                 ))}
-              </div>
+              </Alert>
             )}
 
             <button type="submit" className="entry-submit-btn" disabled={store.loading}>
               {store.loading ? '提交中...' : isEditMode ? '保存修改' : `保存持仓（${tradeRows.filter(r => r.stockCode).length}只心魔）`}
             </button>
           </form>
-        </section>
+        </SectionCard>
       )}
 
       {/* ── 重置按钮 ── */}
-      <div className="unified-submit-all">
-        <button type="button" className="entry-reset-btn" onClick={resetAll}>重置</button>
-        <button type="button" className="entry-cancel-btn" onClick={() => navigate('/list/unified')}>返回列表</button>
-      </div>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        spacing={1.25}
+        sx={{ justifyContent: 'flex-end' }}
+      >
+        <Button type="button" variant="outlined" onClick={resetAll}>重置</Button>
+        <Button type="button" variant="contained" onClick={() => navigate('/list/unified')}>返回列表</Button>
+      </Stack>
     </div>
   );
 });

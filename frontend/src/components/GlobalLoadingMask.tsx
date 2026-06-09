@@ -1,4 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { alpha } from '@mui/material/styles';
+import { Backdrop, CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import { networkActivity } from '../utils/networkActivity';
 
 const GlobalLoadingMask = () => {
@@ -29,15 +31,38 @@ const GlobalLoadingMask = () => {
   }
 
   return (
-    <div className="global-loading-mask" aria-live="polite" aria-busy="true">
-      <div className="global-loading-mask__panel">
-        <div className="global-loading-mask__spinner" />
-        <div className="global-loading-mask__text">
-          <strong>正在同步数据</strong>
-          <span>请求处理中，请稍候…</span>
-        </div>
-      </div>
-    </div>
+    <Backdrop
+      open
+      aria-live="polite"
+      aria-busy="true"
+      sx={{
+        zIndex: (theme) => theme.zIndex.modal + 10,
+        backgroundColor: alpha('#0f172a', 0.24),
+        backdropFilter: 'blur(6px)',
+      }}
+    >
+      <Paper
+        elevation={0}
+        sx={{
+          px: 2.25,
+          py: 1.8,
+          borderRadius: 4,
+          minWidth: 220,
+        }}
+      >
+        <Stack direction="row" spacing={1.75} sx={{ alignItems: 'center' }}>
+          <CircularProgress size={26} thickness={4.6} />
+          <Stack spacing={0.35}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+              正在同步数据
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              请求处理中，请稍候…
+            </Typography>
+          </Stack>
+        </Stack>
+      </Paper>
+    </Backdrop>
   );
 };
 
