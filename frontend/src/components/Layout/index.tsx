@@ -66,8 +66,27 @@ const isStandaloneDisplayMode = () =>
   window.matchMedia('(display-mode: standalone)').matches
   || ((window.navigator as Navigator & { standalone?: boolean }).standalone ?? false);
 
-const isIosDevice = () => /iphone|ipad|ipod/i.test(window.navigator.userAgent);
-const isInstallPromptSupported = () => 'BeforeInstallPromptEvent' in window;
+const getUserAgent = () => window.navigator.userAgent;
+const isIosDevice = () => /iphone|ipad|ipod/i.test(getUserAgent());
+const isAndroidDevice = () => /android/i.test(getUserAgent());
+const isChromeFamilyBrowser = () => /chrome|crios|edg|opr/i.test(getUserAgent());
+const isAndroidChromeBrowser = () =>
+  isAndroidDevice()
+  && /chrome/i.test(getUserAgent())
+  && !/edg|opr|qqbrowser|ucbrowser|samsungbrowser/i.test(getUserAgent());
+const supportsInstallPromptApi = () =>
+  'onbeforeinstallprompt' in window || 'BeforeInstallPromptEvent' in window;
+
+interface InstallDebugInfo {
+  isSecureContext: boolean;
+  isStandalone: boolean;
+  isIos: boolean;
+  isAndroid: boolean;
+  isAndroidChrome: boolean;
+  isChromeFamily: boolean;
+  supportsInstallPromptApi: boolean;
+  hasInstallPromptEvent: boolean;
+}
 
 interface InstallGuideContent {
   title: string;
@@ -89,6 +108,18 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const [installCopyNotice, setInstallCopyNotice] = useState('');
   const [isStandaloneApp, setIsStandaloneApp] = useState(() => isStandaloneDisplayMode());
   const [isIosInstallTarget] = useState(() => isIosDevice());
+  const [isAndroidInstallTarget] = useState(() => isAndroidDevice());
+  const [isAndroidChromeInstallTarget] = useState(() => isAndroidChromeBrowser());
+  const [installDebugInfo, setInstallDebugInfo] = useState<InstallDebugInfo>(() => ({
+    isSecureContext: window.isSecureContext,
+    isStandalone: isStandaloneDisplayMode(),
+    isIos: isIosDevice(),
+    isAndroid: isAndroidDevice(),
+    isAndroidChrome: isAndroidChromeBrowser(),
+    isChromeFamily: isChromeFamilyBrowser(),
+    supportsInstallPromptApi: supportsInstallPromptApi(),
+    hasInstallPromptEvent: false,
+  }));
 
   const userMenuOpen = Boolean(userMenuAnchor);
   const homePath = authStore.isAdmin ? '/admin' : '/dashboard';
@@ -142,17 +173,30 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
       promptEvent.preventDefault();
       setInstallPromptEvent(promptEvent);
       setInstallHint('');
+      setInstallDebugInfo((current) => ({
+        ...current,
+        hasInstallPromptEvent: true,
+      }));
     };
 
     const handleAppInstalled = () => {
       setInstallPromptEvent(null);
       setInstallHint('应用已经安装到桌面，可以像原生应用一样直接打开。');
       setIsStandaloneApp(true);
+      setInstallDebugInfo((current) => ({
+        ...current,
+        isStandalone: true,
+      }));
     };
 
     const mediaQuery = window.matchMedia('(display-mode: standalone)');
     const handleDisplayModeChange = () => {
-      setIsStandaloneApp(isStandaloneDisplayMode());
+      const standalone = isStandaloneDisplayMode();
+      setIsStandaloneApp(standalone);
+      setInstallDebugInfo((current) => ({
+        ...current,
+        isStandalone: standalone,
+      }));
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -165,6 +209,25 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
       mediaQuery.removeEventListener('change', handleDisplayModeChange);
     };
   }, []);
+
+  useEffect(() => {
+    setInstallDebugInfo({
+      isSecureContext: window.isSecureContext,
+      isStandalone: isStandaloneApp,
+      isIos: isIosInstallTarget,
+      isAndroid: isAndroidInstallTarget,
+      isAndroidChrome: isAndroidChromeInstallTarget,
+      isChromeFamily: isChromeFamilyBrowser(),
+      supportsInstallPromptApi: supportsInstallPromptApi(),
+      hasInstallPromptEvent: installPromptEvent != null,
+    });
+  }, [
+    installPromptEvent,
+    isAndroidChromeInstallTarget,
+    isAndroidInstallTarget,
+    isIosInstallTarget,
+    isStandaloneApp,
+  ]);
 
   const openInstallGuide = useCallback((content: InstallGuideContent) => {
     setInstallGuide(content);
@@ -232,14 +295,28 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    if (window.isSecureContext && isInstallPromptSupported()) {
+    if (isAndroidChromeInstallTarget) {
       openInstallGuide({
-        title: '当前浏览器没有弹出安装窗口',
-        description: '这通常发生在嵌入式浏览器、受限 WebView，或者浏览器暂时没有把当前站点判断为可安装时。',
+        title: '请从当前 Chrome 菜单安装',
+        description: 'Android Chrome 并不保证一定弹出安装窗口。即使站点已经满足 PWA 条件，也可能只在浏览器菜单里显示“安装应用”或“添加到主屏幕”。',
         steps: [
-          '先复制当前地址。',
-          '再用系统 Chrome 或 Edge 打开这个地址。',
-          '从地址栏右侧或浏览器菜单里选择“安装应用”或“添加到桌面”。',
+          '先刷新当前页面一次，并停留几秒。',
+          '点击右上角菜单。',
+          '优先查找“安装应用”；如果没有，就查找“添加到主屏幕”。',
+          '如果你之前点过取消，Chrome 可能会暂时压制再次弹窗，这时仍然可以从菜单手动安装。',
+        ],
+      });
+      return;
+    }
+
+    if (window.isSecureContext && supportsInstallPromptApi()) {
+      openInstallGuide({
+        title: '浏览器暂时没有下发安装事件',
+        description: '根据 Chromium / MDN 的说明，beforeinstallprompt 没有保证固定触发时机。当前环境如果没有弹窗，不代表站点完全不支持 PWA，很多时候仍需要从浏览器菜单手动安装。',
+        steps: [
+          '刷新页面后再停留几秒。',
+          '打开当前浏览器菜单，查找“安装应用”或“添加到主屏幕”。',
+          '如果是 iPhone，请改用 Safari 安装；如果是 Android，请优先使用系统 Chrome。',
         ],
       });
       return;
@@ -254,7 +331,7 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
         '在浏览器菜单里选择“安装应用”或“添加到主屏幕”。',
       ],
     });
-  }, [installPromptEvent, isIosInstallTarget, isStandaloneApp, openInstallGuide]);
+  }, [installPromptEvent, isAndroidChromeInstallTarget, isIosInstallTarget, isStandaloneApp, openInstallGuide]);
 
   const isNavActive = (path: string) => {
     if (path === '/entry/unified') return location.pathname.startsWith('/entry');
@@ -352,10 +429,16 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
     >
       <Stack spacing={0.2} sx={{ alignItems: 'flex-start' }}>
         <Typography variant="button" sx={{ lineHeight: 1.1 }}>
-          安装应用
+          {installPromptEvent ? '立即安装' : '安装应用'}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          桌面直达 / 离线可开
+          {installPromptEvent
+            ? '浏览器已允许弹出安装框'
+            : isIosInstallTarget
+              ? '需 Safari 添加到主屏幕'
+              : isAndroidChromeInstallTarget
+                ? 'Chrome 可能需要菜单手动安装'
+                : '桌面直达 / 离线可开'}
         </Typography>
       </Stack>
     </Button>
@@ -414,13 +497,13 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
                     <Box
                       component="img"
                       src="/brand-mark.svg"
-                      alt="心魔录"
+                      alt="Lies"
                       sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                     />
                   </Box>
                   <Stack spacing={0} sx={{ alignItems: 'flex-start', minWidth: 0 }}>
                     <Typography variant="subtitle1" noWrap sx={{ fontWeight: 700 }}>
-                      心魔录
+                      Lies
                     </Typography>
                     <Typography variant="caption" color="text.secondary" noWrap>
                       交易复盘与画像
@@ -549,7 +632,7 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
         <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              心魔录
+              Lies
             </Typography>
             <Typography variant="body2" color="text.secondary">
               欢迎回来，{authStore.username ?? '用户'} · {roleLabel}
@@ -663,6 +746,26 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
               {window.location.href}
             </Typography>
           </Paper>
+
+          <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', mt: 2 }}>
+            <Chip
+              size="small"
+              label={installDebugInfo.isSecureContext ? 'HTTPS 正常' : '非 HTTPS'}
+              color={installDebugInfo.isSecureContext ? 'success' : 'warning'}
+              variant={installDebugInfo.isSecureContext ? 'filled' : 'outlined'}
+            />
+            <Chip
+              size="small"
+              label={installDebugInfo.hasInstallPromptEvent ? '已收到安装事件' : '未收到安装事件'}
+              color={installDebugInfo.hasInstallPromptEvent ? 'success' : 'default'}
+              variant={installDebugInfo.hasInstallPromptEvent ? 'filled' : 'outlined'}
+            />
+            <Chip
+              size="small"
+              label={installDebugInfo.isAndroidChrome ? 'Android Chrome' : installDebugInfo.isIos ? 'iOS 浏览器' : '其他浏览器'}
+              variant="outlined"
+            />
+          </Stack>
 
           {installCopyNotice && (
             <Alert severity="success" sx={{ mt: 2 }}>

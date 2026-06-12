@@ -91,6 +91,14 @@ const parseOptionalNumber = (value: string): number | null => {
   return Number.isNaN(parsed) ? null : parsed;
 };
 
+const getPnLSignClassName = (value: number | null | undefined) => {
+  if (value == null || Number.isNaN(value) || value === 0) {
+    return '';
+  }
+
+  return value > 0 ? 'entry-insight-value--positive' : 'entry-insight-value--negative';
+};
+
 const buildImportCriticalTradeIssues = (rows: TradeRow[]): string[] => {
   const issues: string[] = [];
 
@@ -821,13 +829,7 @@ const UnifiedEntryPage = observer(() => {
         <Paper className="entry-insight-card" elevation={0} sx={{ px: 2, py: 1.5, flex: 1 }}>
           <span className="entry-insight-label">当日盈亏</span>
           <span
-            className={`entry-insight-value ${
-              displayedDailyPnL != null
-                ? dashboardStore.isPnLPositive(displayedDailyPnL)
-                  ? 'entry-insight-value--positive'
-                  : 'entry-insight-value--negative'
-                : ''
-            }`}
+            className={`entry-insight-value ${getPnLSignClassName(displayedDailyPnL)}`.trim()}
           >
             {displayedDailyPnLText}
           </span>
@@ -1043,7 +1045,15 @@ const UnifiedEntryPage = observer(() => {
               </div>
               <div className="form-group form-group-half">
                 <label htmlFor="ue-ac-pnl" className="form-label">当日盈亏（元）<span className="required-star">*</span></label>
-                <input id="ue-ac-pnl" type="number" step="0.01" className={`form-input ${errors.acDailyPnL ? 'form-input-error' : ''}`} placeholder="0.00" value={acDailyPnL} onChange={e => { setAcDailyPnL(e.target.value); setErrors(p => ({ ...p, acDailyPnL: '' })); }} />
+                <input
+                  id="ue-ac-pnl"
+                  type="number"
+                  step="0.01"
+                  className={`form-input ${getPnLSignClassName(parseOptionalNumber(acDailyPnL))} ${errors.acDailyPnL ? 'form-input-error' : ''}`.trim()}
+                  placeholder="0.00"
+                  value={acDailyPnL}
+                  onChange={e => { setAcDailyPnL(e.target.value); setErrors(p => ({ ...p, acDailyPnL: '' })); }}
+                />
                 {errors.acDailyPnL && <span className="form-error">{errors.acDailyPnL}</span>}
               </div>
             </div>
@@ -1236,7 +1246,14 @@ const UnifiedEntryPage = observer(() => {
                 <div className="form-row">
                   <div className="form-group form-group-half">
                     <label className="form-label">当日盈亏（元）</label>
-                    <input type="number" step="0.01" className="form-input" placeholder="0.00" value={row.dailyPnL} onChange={e => updateTradeRow(row.id, 'dailyPnL', e.target.value)} />
+                    <input
+                      type="number"
+                      step="0.01"
+                      className={`form-input ${getPnLSignClassName(parseOptionalNumber(row.dailyPnL))}`.trim()}
+                      placeholder="0.00"
+                      value={row.dailyPnL}
+                      onChange={e => updateTradeRow(row.id, 'dailyPnL', e.target.value)}
+                    />
                   </div>
                   <div className="form-group form-group-half">
                     <label className="form-label">总盈亏（元）</label>

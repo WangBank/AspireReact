@@ -45,6 +45,16 @@
   color: #16a34a;
 }
 
+.form-input.entry-insight-value--positive {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.form-input.entry-insight-value--negative {
+  color: #16a34a;
+  font-weight: 700;
+}
+
 .image-import-panel {
   background: linear-gradient(180deg, #fffdf7 0%, #fff 100%);
   border: 1px solid #fde7c2;

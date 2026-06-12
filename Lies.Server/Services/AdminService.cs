@@ -282,6 +282,7 @@ public class AdminService : IAdminService
         }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
+        await RevokeQuickLoginTokensAsync(userId, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -312,6 +313,7 @@ public class AdminService : IAdminService
             user.PasswordHash = passwordHash;
         }
 
+        await RevokeQuickLoginTokensAsync(normalizedIds, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
 
         return new AdminBatchOperationResultResponse
@@ -319,6 +321,31 @@ public class AdminService : IAdminService
             UpdatedCount = users.Count,
             UserIds = users.Select(user => user.Id).OrderBy(id => id).ToList()
         };
+    }
+
+    private async Task RevokeQuickLoginTokensAsync(int userId, CancellationToken cancellationToken)
+    {
+        await RevokeQuickLoginTokensAsync([userId], cancellationToken);
+    }
+
+    private async Task RevokeQuickLoginTokensAsync(IReadOnlyCollection<int> userIds, CancellationToken cancellationToken)
+    {
+        var normalizedIds = NormalizeUserIds(userIds);
+        if (normalizedIds.Count == 0)
+        {
+            return;
+        }
+
+        var quickLoginTokens = await _db.QuickLoginTokens
+            .Where(item => normalizedIds.Contains(item.UserId))
+            .ToListAsync(cancellationToken);
+
+        if (quickLoginTokens.Count == 0)
+        {
+            return;
+        }
+
+        _db.QuickLoginTokens.RemoveRange(quickLoginTokens);
     }
 
     public async Task<DatabaseExportResult> ExportDatabaseSnapshotAsync(CancellationToken cancellationToken = default)

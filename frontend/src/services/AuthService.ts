@@ -7,6 +7,12 @@ export interface CaptchaData {
   captchaImage: string;
 }
 
+export interface QuickLoginTokenPayload {
+  selector: string;
+  validator: string;
+  expiresAt: string;
+}
+
 export interface AuthResponse {
   success: boolean;
   message: string;
@@ -16,6 +22,7 @@ export interface AuthResponse {
     role: string;
     isAdmin: boolean;
     avatarUrl: string | null;
+    quickLogin: QuickLoginTokenPayload | null;
   };
 }
 
@@ -51,6 +58,11 @@ export interface ChangePasswordRequest {
   currentPassword: string;
   newPassword: string;
   confirmPassword: string;
+}
+
+export interface QuickLoginRequest {
+  selector: string;
+  validator: string;
 }
 
 export interface UpdateProfileResponse {
@@ -90,6 +102,24 @@ export class AuthService {
 
     if (!response.ok || !json.success) {
       throw new Error(json.message || '登录失败');
+    }
+
+    return json;
+  }
+
+  async quickLogin(data: QuickLoginRequest): Promise<AuthResponse> {
+    const response = await fetch(`${API_BASE}/quick-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    const json: AuthResponse = await response.json();
+
+    if (!response.ok || !json.success) {
+      const error = new Error(json.message || '快速登录失败') as Error & { status?: number };
+      error.status = response.status;
+      throw error;
     }
 
     return json;

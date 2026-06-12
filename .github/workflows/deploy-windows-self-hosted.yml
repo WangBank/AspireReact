@@ -1,0 +1,97 @@
+name: Deploy Production (Windows Self-Hosted)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      skip_purge:
+        description: Skip Cloudflare cache purge
+        required: false
+        default: false
+        type: boolean
+      purge_everything:
+        description: Purge all Cloudflare cache entries for the site
+        required: false
+        default: false
+        type: boolean
+      skip_validation:
+        description: Skip Cloudflare URL validation before purge
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Windows host
+    runs-on: [self-hosted, Windows, X64, lies-prod]
+    timeout-minutes: 90
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Mark workspace as safe for Git
+        shell: pwsh
+        run: |
+          git config --global --add safe.directory "$env:GITHUB_WORKSPACE"
+
+      - name: Validate required tools
+        shell: pwsh
+        run: |
+          $requiredCommands = @("git", "docker", "dotnet", "aspire")
+          $missingCommands = @()
+
+          foreach ($command in $requiredCommands) {
+            if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
+              $missingCommands += $command
+            }
+          }
+
+          if ($missingCommands.Count -gt 0) {
+            throw "Missing required commands on runner: $($missingCommands -join ', ')"
+          }
+
+      - name: Write production env file
+        shell: pwsh
+        env:
+          ASPIRE_DOCKER_ENV_FILE: ${{ secrets.ASPIRE_DOCKER_ENV_FILE }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ASPIRE_DOCKER_ENV_FILE)) {
+            throw "Missing repository/environment secret ASPIRE_DOCKER_ENV_FILE"
+          }
+
+          $envFilePath = Join-Path $env:GITHUB_WORKSPACE ".env.aspire-docker"
+          [System.IO.File]::WriteAllText($envFilePath, $env:ASPIRE_DOCKER_ENV_FILE.Trim())
+          Write-Host "Wrote production env file to $envFilePath"
+
+      - name: Deploy production stack
+        shell: pwsh
+        run: |
+          $arguments = @()
+
+          if ("${{ github.event.inputs.skip_purge }}" -eq "true") {
+            $arguments += "-SkipPurge"
+          }
+
+          if ("${{ github.event.inputs.purge_everything }}" -eq "true") {
+            $arguments += "-PurgeEverything"
+          }
+
+          if ("${{ github.event.inputs.skip_validation }}" -eq "true") {
+            $arguments += "-SkipValidation"
+          }
+
+          & "$env:GITHUB_WORKSPACE\scripts\release-prod.ps1" @arguments
+

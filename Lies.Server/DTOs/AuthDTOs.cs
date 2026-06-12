@@ -39,6 +39,22 @@ public class LoginRequest
     public string Password { get; set; } = string.Empty;
 }
 
+public class QuickLoginRequest
+{
+    [Required(ErrorMessage = "快速登录标识不能为空")]
+    public string Selector { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "快速登录凭据不能为空")]
+    public string Validator { get; set; } = string.Empty;
+}
+
+public class QuickLoginTokenResponse
+{
+    public string Selector { get; set; } = string.Empty;
+    public string Validator { get; set; } = string.Empty;
+    public DateTime ExpiresAt { get; set; }
+}
+
 public class AuthResponse
 {
     public bool Success { get; set; }
@@ -48,6 +64,7 @@ public class AuthResponse
     public string? Role { get; set; }
     public bool IsAdmin { get; set; }
     public string? AvatarUrl { get; set; }
+    public QuickLoginTokenResponse? QuickLogin { get; set; }
 }
 
 public class CaptchaResponse

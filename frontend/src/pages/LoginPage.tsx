@@ -2,9 +2,12 @@ import { observer } from 'mobx-react-lite';
 import { useState, useEffect } from 'react';
 import {
   Alert,
+  Avatar,
   Box,
   Button,
+  Chip,
   Container,
+  Divider,
   IconButton,
   InputAdornment,
   Paper,
@@ -12,9 +15,25 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded';
 import { alpha, useTheme } from '@mui/material/styles';
 import { useStore } from '../stores/StoreProvider';
+import type { RecentQuickLoginAccount } from '../utils/recentQuickLogins';
+
+const formatRecentLoginTime = (value: string): string => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '刚刚';
+  }
+
+  return parsed.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
 
 const LoginPage = observer(() => {
   const { authStore } = useStore();
@@ -28,11 +47,14 @@ const LoginPage = observer(() => {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    authStore.fetchCaptcha();
-    return () => {
-      authStore.clearError();
-    };
+    return () => authStore.clearError();
   }, [authStore]);
+
+  useEffect(() => {
+    if (isRegister) {
+      void authStore.fetchCaptcha();
+    }
+  }, [authStore, isRegister]);
 
   const toggleMode = () => {
     setIsRegister((prev) => !prev);
@@ -67,9 +89,9 @@ const LoginPage = observer(() => {
     } else if (isRegister && password !== confirmPassword) {
       newErrors.confirmPassword = '两次密码输入不一致';
     }
-    if (!captchaCode.trim()) {
+    if (isRegister && !captchaCode.trim()) {
       newErrors.captcha = '请输入验证码';
-    } else if (captchaCode.length !== 4 || !/^\d{4}$/.test(captchaCode)) {
+    } else if (isRegister && (captchaCode.length !== 4 || !/^\d{4}$/.test(captchaCode))) {
       newErrors.captcha = '验证码为4位数字';
     }
     setErrors(newErrors);
@@ -97,6 +119,14 @@ const LoginPage = observer(() => {
   const handleRefreshCaptcha = () => {
     setCaptchaCode('');
     authStore.fetchCaptcha();
+  };
+
+  const handleQuickLogin = async (account: RecentQuickLoginAccount) => {
+    try {
+      await authStore.quickLogin(account);
+    } catch {
+      // 错误信息已写入 store，这里不重复处理。
+    }
   };
 
   const captchaSvg = authStore.captcha
@@ -177,6 +207,80 @@ const LoginPage = observer(() => {
                 </Alert>
               )}
 
+              {!isRegister && authStore.recentQuickLoginAccounts.length > 0 && (
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    borderRadius: 3,
+                    backgroundColor: alpha(theme.palette.primary.main, 0.035),
+                    borderColor: alpha(theme.palette.primary.main, 0.16),
+                  }}
+                >
+                  <Stack spacing={1.25}>
+                    <Box>
+                      <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                        最近成功登录
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        仅保存在当前浏览器，点击账户可直接登录，无需再次输入验证码。
+                      </Typography>
+                    </Box>
+
+                    {authStore.recentQuickLoginAccounts.map((account, index) => (
+                      <Box key={account.username}>
+                        {index > 0 && <Divider sx={{ mb: 1.25 }} />}
+                        <Stack
+                          direction={{ xs: 'column', sm: 'row' }}
+                          spacing={1.25}
+                          sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}
+                        >
+                          <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', flex: 1, minWidth: 0 }}>
+                            <Avatar src={account.avatarUrl ?? undefined} alt={account.username}>
+                              {account.username.slice(0, 1).toUpperCase()}
+                            </Avatar>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                              <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
+                                  {account.username}
+                                </Typography>
+                                <Chip
+                                  size="small"
+                                  label={account.isAdmin ? '管理员' : account.role || '普通用户'}
+                                  color={account.isAdmin ? 'warning' : 'default'}
+                                  variant={account.isAdmin ? 'filled' : 'outlined'}
+                                />
+                              </Stack>
+                              <Typography variant="body2" color="text.secondary">
+                                最近登录 {formatRecentLoginTime(account.lastUsedAt)}
+                              </Typography>
+                            </Box>
+                          </Stack>
+
+                          <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+                            <Button
+                              type="button"
+                              variant="contained"
+                              onClick={() => void handleQuickLogin(account)}
+                              disabled={authStore.loading}
+                            >
+                              点击登录
+                            </Button>
+                            <IconButton
+                              aria-label={`移除 ${account.username}`}
+                              onClick={() => authStore.forgetRecentQuickLogin(account.username)}
+                              disabled={authStore.loading}
+                            >
+                              <CloseRoundedIcon />
+                            </IconButton>
+                          </Stack>
+                        </Stack>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Paper>
+              )}
+
               {isRegister && (
                 <TextField
                   label="邮箱"
@@ -242,59 +346,61 @@ const LoginPage = observer(() => {
                 />
               )}
 
-              <TextField
-                label="验证码"
-                placeholder="请输入 4 位数字"
-                value={captchaCode}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '').slice(0, 4);
-                  setCaptchaCode(val);
-                  setErrors((prev) => ({ ...prev, captcha: '' }));
-                }}
-                slotProps={{
-                  htmlInput: { maxLength: 4, inputMode: 'numeric' },
-                  input: {
-                    endAdornment: (
-                      <InputAdornment position="end" sx={{ ml: 1 }}>
-                        {captchaSvg ? (
-                          <Button
-                            type="button"
-                            onClick={handleRefreshCaptcha}
-                            sx={{
-                              minWidth: 128,
-                              height: 48,
-                              p: 0,
-                              overflow: 'hidden',
-                              borderRadius: 2,
-                              border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
-                            }}
-                          >
-                            <Box
-                              component="img"
-                              src={captchaSvg}
-                              alt="验证码"
+              {isRegister && (
+                <TextField
+                  label="验证码"
+                  placeholder="请输入 4 位数字"
+                  value={captchaCode}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                    setCaptchaCode(val);
+                    setErrors((prev) => ({ ...prev, captcha: '' }));
+                  }}
+                  slotProps={{
+                    htmlInput: { maxLength: 4, inputMode: 'numeric' },
+                    input: {
+                      endAdornment: (
+                        <InputAdornment position="end" sx={{ ml: 1 }}>
+                          {captchaSvg ? (
+                            <Button
+                              type="button"
+                              onClick={handleRefreshCaptcha}
                               sx={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'cover',
-                                display: 'block',
+                                minWidth: 128,
+                                height: 48,
+                                p: 0,
+                                overflow: 'hidden',
+                                borderRadius: 2,
+                                border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
                               }}
-                            />
-                          </Button>
-                        ) : (
-                          <IconButton onClick={handleRefreshCaptcha} color="primary">
-                            <RefreshRoundedIcon />
-                          </IconButton>
-                        )}
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-                autoComplete="off"
-                error={Boolean(errors.captcha)}
-                helperText={errors.captcha || '点击右侧验证码可以刷新'}
-                fullWidth
-              />
+                            >
+                              <Box
+                                component="img"
+                                src={captchaSvg}
+                                alt="验证码"
+                                sx={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover',
+                                  display: 'block',
+                                }}
+                              />
+                            </Button>
+                          ) : (
+                            <IconButton onClick={handleRefreshCaptcha} color="primary">
+                              <RefreshRoundedIcon />
+                            </IconButton>
+                          )}
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                  autoComplete="off"
+                  error={Boolean(errors.captcha)}
+                  helperText={errors.captcha || '点击右侧验证码可以刷新'}
+                  fullWidth
+                />
+              )}
 
               <Button
                 type="submit"

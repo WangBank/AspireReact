@@ -12,6 +12,7 @@ public class AppDbContext : DbContext
     public DbSet<StockTrade> StockTrades { get; set; }
     public DbSet<TradeNote> TradeNotes { get; set; }
     public DbSet<PortfolioImportAudit> PortfolioImportAudits { get; set; }
+    public DbSet<QuickLoginToken> QuickLoginTokens { get; set; }
     public DbSet<StockBasic> StockBasics { get; set; }
     public DbSet<User> Users { get; set; }
     public DbSet<SystemSetting> SystemSettings { get; set; }
@@ -46,6 +47,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PortfolioImportAudit>().HasIndex(a => a.CreatedAt);
         modelBuilder.Entity<PortfolioImportAudit>().HasIndex(a => a.ImportDate);
         modelBuilder.Entity<PortfolioImportAudit>().HasIndex(a => a.SaveStatus);
+        modelBuilder.Entity<QuickLoginToken>().HasIndex(t => t.Selector).IsUnique();
+        modelBuilder.Entity<QuickLoginToken>().HasIndex(t => new { t.UserId, t.ExpiresAt });
         modelBuilder.Entity<SystemSetting>().HasIndex(s => s.SettingKey).IsUnique();
         
         // StockBasic 配置
@@ -94,6 +97,12 @@ public class AppDbContext : DbContext
             .WithMany(u => u.PortfolioImportAudits)
             .HasForeignKey(a => a.UserId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<QuickLoginToken>()
+            .HasOne(t => t.User)
+            .WithMany(u => u.QuickLoginTokens)
+            .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<SystemSetting>()
             .HasOne(s => s.UpdatedByUser)

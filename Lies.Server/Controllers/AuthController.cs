@@ -79,7 +79,8 @@ public class AuthController : ControllerBase
                 username = result.Username,
                 role = result.Role,
                 isAdmin = result.IsAdmin,
-                avatarUrl = result.AvatarUrl
+                avatarUrl = result.AvatarUrl,
+                quickLogin = result.QuickLogin
             },
             message = result.Message
         });
@@ -113,7 +114,42 @@ public class AuthController : ControllerBase
                 username = result.Username,
                 role = result.Role,
                 isAdmin = result.IsAdmin,
-                avatarUrl = result.AvatarUrl
+                avatarUrl = result.AvatarUrl,
+                quickLogin = result.QuickLogin
+            },
+            message = result.Message
+        });
+    }
+
+    /// <summary>
+    /// 使用设备快速登录票据换取新的登录态
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("quick-login")]
+    public async Task<IActionResult> QuickLogin([FromBody] QuickLoginRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new { success = false, message = "参数验证失败", errors = ModelState });
+        }
+
+        var result = await _authService.QuickLoginAsync(request);
+        if (!result.Success)
+        {
+            return Unauthorized(new { success = false, message = result.Message });
+        }
+
+        return Ok(new
+        {
+            success = true,
+            data = new
+            {
+                token = result.Token,
+                username = result.Username,
+                role = result.Role,
+                isAdmin = result.IsAdmin,
+                avatarUrl = result.AvatarUrl,
+                quickLogin = result.QuickLogin
             },
             message = result.Message
         });

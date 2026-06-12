@@ -71,6 +71,7 @@ static RateLimitPartition<string> CreateApiRateLimitPartition(HttpContext contex
                     AutoReplenishment = true
                 }),
         var p when p.StartsWith("/api/auth/login", StringComparison.OrdinalIgnoreCase)
+                 || p.StartsWith("/api/auth/quick-login", StringComparison.OrdinalIgnoreCase)
                  || p.StartsWith("/api/auth/register", StringComparison.OrdinalIgnoreCase)
             => RateLimitPartition.GetFixedWindowLimiter(
                 $"{identity}:auth-write",

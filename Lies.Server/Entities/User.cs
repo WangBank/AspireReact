@@ -51,5 +51,6 @@ public class User
     public virtual ICollection<BankFlow>? BankFlows { get; set; }
     public virtual ICollection<TradeNote>? TradeNotes { get; set; }
     public virtual ICollection<PortfolioImportAudit>? PortfolioImportAudits { get; set; }
+    public virtual ICollection<QuickLoginToken>? QuickLoginTokens { get; set; }
     public virtual ICollection<SystemSetting>? UpdatedSystemSettings { get; set; }
 }

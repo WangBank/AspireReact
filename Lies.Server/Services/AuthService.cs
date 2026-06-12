@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Lies.Server.Data;
 using Lies.Server.DTOs;
 using Lies.Server.Entities;
@@ -12,6 +13,7 @@ public interface IAuthService
 {
     Task<AuthResponse> RegisterAsync(RegisterRequest request);
     Task<AuthResponse> LoginAsync(LoginRequest request);
+    Task<AuthResponse> QuickLoginAsync(QuickLoginRequest request);
     Task<UserProfileResponse?> GetProfileAsync(int userId);
     Task<UpdateProfileResponse> UpdateProfileAsync(int userId, UpdateProfileRequest request);
     Task<UpdateProfileResponse> ChangePasswordAsync(int userId, ChangePasswordRequest request);
@@ -28,6 +30,7 @@ public class UpdateProfileResponse
 
 public class AuthService : IAuthService
 {
+    private const int MaxQuickLoginTokensPerUser = 5;
     private readonly AppDbContext _db;
     private readonly ICaptchaService _captchaService;
     private readonly ISensitiveWordService _sensitiveWordService;
@@ -97,19 +100,7 @@ public class AuthService : IAuthService
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
 
-        // 生成JWT
-        var token = GenerateJwtToken(user);
-
-        return new AuthResponse
-        {
-            Success = true,
-            Message = "注册成功",
-            Token = token,
-            Username = user.Username,
-            Role = user.Role,
-            IsAdmin = IsAdmin(user),
-            AvatarUrl = NormalizeAssetUrl(user.AvatarPath)
-        };
+        return await FinalizeSignInAsync(user, "注册成功");
     }
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
@@ -130,22 +121,45 @@ public class AuthService : IAuthService
             return new AuthResponse { Success = false, Message = "用户名或密码错误" };
         }
 
-        // 更新最后登录时间
-        user.LastLoginAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync();
+        return await FinalizeSignInAsync(user, "登录成功");
+    }
 
-        var token = GenerateJwtToken(user);
+    public async Task<AuthResponse> QuickLoginAsync(QuickLoginRequest request)
+    {
+        var now = DateTime.UtcNow;
+        var selector = request.Selector.Trim();
+        var validator = request.Validator.Trim();
 
-        return new AuthResponse
+        if (string.IsNullOrWhiteSpace(selector) || string.IsNullOrWhiteSpace(validator))
         {
-            Success = true,
-            Message = "登录成功",
-            Token = token,
-            Username = user.Username,
-            Role = user.Role,
-            IsAdmin = IsAdmin(user),
-            AvatarUrl = NormalizeAssetUrl(user.AvatarPath)
-        };
+            return new AuthResponse { Success = false, Message = "快速登录凭据无效" };
+        }
+
+        var ticket = await _db.QuickLoginTokens
+            .Include(item => item.User)
+            .FirstOrDefaultAsync(item => item.Selector == selector);
+
+        if (ticket == null)
+        {
+            return new AuthResponse { Success = false, Message = "快速登录凭据已失效，请重新输入账号密码登录" };
+        }
+
+        if (ticket.ExpiresAt <= now || !VerifyQuickLoginValidator(ticket.ValidatorHash, validator))
+        {
+            _db.QuickLoginTokens.Remove(ticket);
+            await _db.SaveChangesAsync();
+            return new AuthResponse { Success = false, Message = "快速登录凭据已失效，请重新输入账号密码登录" };
+        }
+
+        var user = ticket.User;
+        if (user == null || !user.IsActive)
+        {
+            _db.QuickLoginTokens.Remove(ticket);
+            await _db.SaveChangesAsync();
+            return new AuthResponse { Success = false, Message = "账户不存在或已被禁用" };
+        }
+
+        return await FinalizeSignInAsync(user, "快速登录成功", ticket);
     }
 
     private string GenerateJwtToken(User user)
@@ -251,6 +265,7 @@ public class AuthService : IAuthService
             return new UpdateProfileResponse { Success = false, Message = "当前密码错误" };
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        await RevokeQuickLoginTokensAsync(user.Id);
         await _db.SaveChangesAsync();
 
         return new UpdateProfileResponse { Success = true, Message = "密码修改成功" };
@@ -289,6 +304,132 @@ public class AuthService : IAuthService
         await _db.SaveChangesAsync(cancellationToken);
 
         return await GetProfileAsync(userId);
+    }
+
+    private async Task<AuthResponse> FinalizeSignInAsync(
+        User user,
+        string message,
+        QuickLoginToken? rotatedToken = null,
+        CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        user.LastLoginAt = now;
+
+        if (rotatedToken != null)
+        {
+            _db.QuickLoginTokens.Remove(rotatedToken);
+        }
+
+        var issuedQuickLogin = CreateQuickLoginToken(user.Id, now);
+        _db.QuickLoginTokens.Add(issuedQuickLogin.Entity);
+        await _db.SaveChangesAsync(cancellationToken);
+        await TrimQuickLoginTokensAsync(user.Id, now, cancellationToken);
+
+        return new AuthResponse
+        {
+            Success = true,
+            Message = message,
+            Token = GenerateJwtToken(user),
+            Username = user.Username,
+            Role = user.Role,
+            IsAdmin = IsAdmin(user),
+            AvatarUrl = NormalizeAssetUrl(user.AvatarPath),
+            QuickLogin = new QuickLoginTokenResponse
+            {
+                Selector = issuedQuickLogin.Entity.Selector,
+                Validator = issuedQuickLogin.Validator,
+                ExpiresAt = issuedQuickLogin.Entity.ExpiresAt
+            }
+        };
+    }
+
+    private (QuickLoginToken Entity, string Validator) CreateQuickLoginToken(int userId, DateTime now)
+    {
+        var selector = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        var validator = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+
+        return (
+            new QuickLoginToken
+            {
+                UserId = userId,
+                Selector = selector,
+                ValidatorHash = HashQuickLoginValidator(validator),
+                CreatedAt = now,
+                LastUsedAt = now,
+                ExpiresAt = now.AddDays(GetQuickLoginExpiryDays())
+            },
+            validator
+        );
+    }
+
+    private int GetQuickLoginExpiryDays()
+    {
+        if (int.TryParse(_configuration["Auth:QuickLoginExpiryDays"], out var configuredDays))
+        {
+            return Math.Clamp(configuredDays, 1, 365);
+        }
+
+        return 30;
+    }
+
+    private async Task TrimQuickLoginTokensAsync(int userId, DateTime now, CancellationToken cancellationToken)
+    {
+        var tokens = await _db.QuickLoginTokens
+            .Where(item => item.UserId == userId)
+            .OrderByDescending(item => item.LastUsedAt)
+            .ThenByDescending(item => item.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var keepIds = tokens
+            .Where(item => item.ExpiresAt > now)
+            .Take(MaxQuickLoginTokensPerUser)
+            .Select(item => item.Id)
+            .ToHashSet();
+
+        var tokensToRemove = tokens
+            .Where(item => item.ExpiresAt <= now || !keepIds.Contains(item.Id))
+            .ToList();
+
+        if (tokensToRemove.Count == 0)
+        {
+            return;
+        }
+
+        _db.QuickLoginTokens.RemoveRange(tokensToRemove);
+        await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task RevokeQuickLoginTokensAsync(int userId, CancellationToken cancellationToken = default)
+    {
+        var tickets = await _db.QuickLoginTokens
+            .Where(item => item.UserId == userId)
+            .ToListAsync(cancellationToken);
+
+        if (tickets.Count == 0)
+        {
+            return;
+        }
+
+        _db.QuickLoginTokens.RemoveRange(tickets);
+    }
+
+    private static string HashQuickLoginValidator(string validator)
+    {
+        return Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(validator)));
+    }
+
+    private static bool VerifyQuickLoginValidator(string expectedHash, string validator)
+    {
+        try
+        {
+            var actualHashBytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(validator));
+            var expectedHashBytes = Convert.FromHexString(expectedHash);
+            return CryptographicOperations.FixedTimeEquals(expectedHashBytes, actualHashBytes);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
     }
 
     private void DeleteAvatarFileIfExists(string? relativeAvatarPath)

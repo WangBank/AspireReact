@@ -24,7 +24,7 @@ async function request(path, { method = 'GET', token, body, headers } = {}) {
   return { response, status: response.status, headers: response.headers, json };
 }
 
-async function login(username, password) {
+async function loginWithResponse(username, password) {
   const result = await request('/api/auth/login', {
     method: 'POST',
     body: { username, password },
@@ -34,7 +34,25 @@ async function login(username, password) {
     throw new Error(`登录失败 ${username}: ${result.status} ${JSON.stringify(result.json)}`);
   }
 
-  return result.json.data.token;
+  return result.json.data;
+}
+
+async function login(username, password) {
+  const data = await loginWithResponse(username, password);
+  return data.token;
+}
+
+async function quickLogin(payload) {
+  const result = await request('/api/auth/quick-login', {
+    method: 'POST',
+    body: payload,
+  });
+
+  if (result.status !== 200 || !result.json?.success || !result.json?.data?.token) {
+    throw new Error(`快速登录失败: ${result.status} ${JSON.stringify(result.json)}`);
+  }
+
+  return result.json.data;
 }
 
 function assert(condition, message, details = undefined) {
@@ -45,10 +63,25 @@ function assert(condition, message, details = undefined) {
 }
 
 async function main() {
-  const adminToken = await login('bank', 'Wq-.1997315421');
-  const user1Token = await login('老秦和小王', '123456');
-  const user2Token = await login('codex0529', '123456');
+  const adminLogin = await loginWithResponse('bank', 'Wq-.1997315421');
+  const user1Login = await loginWithResponse('老秦和小王', '123456');
+  const user2Login = await loginWithResponse('codex0529', '123456');
+  const adminToken = adminLogin.token;
+  const user1Token = user1Login.token;
+  const user2Token = user2Login.token;
   const runId = Date.now();
+
+  assert(user2Login.quickLogin?.selector && user2Login.quickLogin?.validator, '登录响应应包含快速登录票据', user2Login);
+
+  const user2QuickLogin = await quickLogin(user2Login.quickLogin);
+  assert(user2QuickLogin.username === 'codex0529', '快速登录应返回对应用户', user2QuickLogin);
+  assert(user2QuickLogin.quickLogin?.selector && user2QuickLogin.quickLogin?.validator, '快速登录后应返回轮换后的票据', user2QuickLogin);
+
+  const staleQuickLogin = await request('/api/auth/quick-login', {
+    method: 'POST',
+    body: user2Login.quickLogin,
+  });
+  assert(staleQuickLogin.status === 401, '旧快速登录票据轮换后应失效', staleQuickLogin.json);
 
   const unauthDashboard = await request('/api/dashboard');
   assert(unauthDashboard.status === 401, '未登录访问 dashboard 应返回 401', unauthDashboard.json);

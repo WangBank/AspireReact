@@ -201,7 +201,7 @@ const DashboardPage = observer(() => {
 
       <footer className="dashboard-footer">
         <Typography variant="caption" color="text.secondary">
-          心魔录 v1.0
+          Lies v1.1
         </Typography>
       </footer>
     </div>

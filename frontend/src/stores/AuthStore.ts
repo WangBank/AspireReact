@@ -1,7 +1,13 @@
 import { makeAutoObservable, runInAction } from 'mobx';
 import { authService } from '../services/AuthService';
-import type { CaptchaData, UserProfile } from '../services/AuthService';
+import type { AuthResponse, CaptchaData, UserProfile } from '../services/AuthService';
 import { hydrateAuthToken, setAuthToken } from '../utils/authToken';
+import {
+  readRecentQuickLogins,
+  removeRecentQuickLogin,
+  type RecentQuickLoginAccount,
+  upsertRecentQuickLogin,
+} from '../utils/recentQuickLogins';
 
 const USERNAME_KEY = 'auth_username';
 const ROLE_KEY = 'auth_role';
@@ -59,6 +65,7 @@ export class AuthStore {
   avatarUrl: string | null = null;
   profile: UserProfile | null = null;
   captcha: CaptchaData | null = null;
+  recentQuickLoginAccounts: RecentQuickLoginAccount[] = [];
   loading = false;
   error: string | null = null;
 
@@ -74,11 +81,13 @@ export class AuthStore {
       this.role = readStoredSessionValue(ROLE_KEY);
       this.isAdmin = readStoredSessionValue(IS_ADMIN_KEY) === 'true';
       this.avatarUrl = readStoredSessionValue(AVATAR_URL_KEY);
+      this.recentQuickLoginAccounts = readRecentQuickLogins();
     } catch {
       this.username = null;
       this.role = null;
       this.isAdmin = false;
       this.avatarUrl = null;
+      this.recentQuickLoginAccounts = [];
     }
   }
 
@@ -107,26 +116,75 @@ export class AuthStore {
     }
   };
 
+  private rememberRecentQuickLogin(data: AuthResponse['data']) {
+    if (!data.quickLogin) {
+      return;
+    }
+
+    this.recentQuickLoginAccounts = upsertRecentQuickLogin({
+      username: data.username,
+      role: data.role,
+      isAdmin: data.isAdmin,
+      avatarUrl: data.avatarUrl,
+      quickLogin: data.quickLogin,
+    });
+  }
+
+  private applyAuthenticatedSession(data: AuthResponse['data']) {
+    this.token = data.token;
+    this.username = data.username;
+    this.role = data.role;
+    this.isAdmin = data.isAdmin;
+    this.avatarUrl = data.avatarUrl;
+    setAuthToken(data.token);
+    this.persistSession();
+    this.rememberRecentQuickLogin(data);
+  }
+
   login = async (username: string, password: string) => {
     this.loading = true;
     this.error = null;
     try {
       const result = await authService.login(username, password);
       runInAction(() => {
-        this.token = result.data.token;
-        this.username = result.data.username;
-        this.role = result.data.role;
-        this.isAdmin = result.data.isAdmin;
-        this.avatarUrl = result.data.avatarUrl;
+        this.applyAuthenticatedSession(result.data);
         this.loading = false;
       });
-      setAuthToken(result.data.token);
-      this.persistSession();
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '登录失败';
         this.loading = false;
       });
+    }
+  };
+
+  quickLogin = async (account: RecentQuickLoginAccount) => {
+    this.loading = true;
+    this.error = null;
+    try {
+      const result = await authService.quickLogin({
+        selector: account.selector,
+        validator: account.validator,
+      });
+
+      runInAction(() => {
+        this.applyAuthenticatedSession(result.data);
+        this.loading = false;
+      });
+    } catch (err) {
+      runInAction(() => {
+        const status = typeof (err as { status?: number }).status === 'number'
+          ? (err as { status: number }).status
+          : null;
+
+        if (status === 401) {
+          this.recentQuickLoginAccounts = removeRecentQuickLogin(account.username);
+        }
+
+        this.error = err instanceof Error ? err.message : '快速登录失败';
+        this.loading = false;
+      });
+      throw err;
     }
   };
 
@@ -150,21 +208,19 @@ export class AuthStore {
         captchaCode
       );
       runInAction(() => {
-        this.token = result.data.token;
-        this.username = result.data.username;
-        this.role = result.data.role;
-        this.isAdmin = result.data.isAdmin;
-        this.avatarUrl = result.data.avatarUrl;
+        this.applyAuthenticatedSession(result.data);
         this.loading = false;
       });
-      setAuthToken(result.data.token);
-      this.persistSession();
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '注册失败';
         this.loading = false;
       });
     }
+  };
+
+  forgetRecentQuickLogin = (username: string) => {
+    this.recentQuickLoginAccounts = removeRecentQuickLogin(username);
   };
 
   fetchProfile = async () => {
