@@ -31,9 +31,12 @@ refresh_apphost_compose_file() {
   fi
 }
 
-get_existing_compose_services() {
+get_compose_services_from_containers() {
   local compose_file="$1"
   local env_file="${2:-}"
+  local include_all="${3:-false}"
+  shift 3 || true
+  local statuses=("$@")
 
   [[ -f "$compose_file" ]] || return 0
 
@@ -41,7 +44,14 @@ get_existing_compose_services() {
   if [[ -n "$env_file" && -f "$env_file" ]]; then
     compose_cmd+=(--env-file "$env_file")
   fi
-  compose_cmd+=(-f "$compose_file" config --services)
+  compose_cmd+=(-f "$compose_file" ps --services)
+  if [[ "$include_all" == "true" ]]; then
+    compose_cmd+=(--all)
+  fi
+  for status in "${statuses[@]}"; do
+    [[ -n "$status" ]] || continue
+    compose_cmd+=(--status "$status")
+  done
 
   "${compose_cmd[@]}" 2>/dev/null || true
 }
@@ -74,7 +84,9 @@ recreate_compose_services_if_present() {
   [[ -f "$compose_file" ]] || return 0
 
   local existing_services=""
-  existing_services="$(get_existing_compose_services "$compose_file" "$env_file")"
+  existing_services="$(get_compose_services_from_containers "$compose_file" "$env_file" true)"
+  local running_services=""
+  running_services="$(get_compose_services_from_containers "$compose_file" "$env_file" false running restarting paused)"
 
   local present_services=()
   for service in "${services[@]}"; do
@@ -85,15 +97,34 @@ recreate_compose_services_if_present() {
 
   (( ${#present_services[@]} > 0 )) || return 0
 
-  echo "Recreating existing $description services: ${present_services[*]}..."
+  echo "Restarting existing $description services: ${present_services[*]}..."
+
+  local present_running_services=()
+  for service in "${present_services[@]}"; do
+    if grep -qx "$service" <<< "$running_services"; then
+      present_running_services+=("$service")
+    fi
+  done
+
+  if (( ${#present_running_services[@]} > 0 )); then
+    echo "Stopping running $description services first: ${present_running_services[*]}..."
+
+    if [[ -n "$env_file" && -f "$env_file" ]]; then
+      docker compose --env-file "$env_file" -f "$compose_file" stop "${present_running_services[@]}" || \
+        echo "Skipping cleanup issue: docker compose stop for $description"
+    else
+      docker compose -f "$compose_file" stop "${present_running_services[@]}" || \
+        echo "Skipping cleanup issue: docker compose stop for $description"
+    fi
+  fi
 
   if [[ -n "$env_file" && -f "$env_file" ]]; then
-    docker compose --env-file "$env_file" -f "$compose_file" rm -f -s "${present_services[@]}" || \
+    docker compose --env-file "$env_file" -f "$compose_file" rm -f "${present_services[@]}" || \
       echo "Skipping cleanup issue: docker compose rm for $description"
     return 0
   fi
 
-  docker compose -f "$compose_file" rm -f -s "${present_services[@]}" || \
+  docker compose -f "$compose_file" rm -f "${present_services[@]}" || \
     echo "Skipping cleanup issue: docker compose rm for $description"
 }
 
@@ -107,7 +138,7 @@ remove_stopped_compose_services_if_present() {
   [[ -f "$compose_file" ]] || return 0
 
   local existing_services=""
-  existing_services="$(get_existing_compose_services "$compose_file" "$env_file")"
+  existing_services="$(get_compose_services_from_containers "$compose_file" "$env_file" true created exited dead)"
 
   local present_services=()
   for service in "${services[@]}"; do

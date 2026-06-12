@@ -42,12 +42,16 @@ function Get-FirstExistingPath {
     return $Paths | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 
-function Get-ExistingComposeServices {
+function Get-ComposeServicesFromContainers {
     param(
         [Parameter(Mandatory = $true)]
         [string]$ComposeFile,
 
-        [string]$EnvFile
+        [string]$EnvFile,
+
+        [switch]$IncludeAll,
+
+        [string[]]$Statuses = @()
     )
 
     if (-not (Test-Path $ComposeFile)) {
@@ -58,7 +62,15 @@ function Get-ExistingComposeServices {
     if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
         $composeArgs += @("--env-file", $EnvFile)
     }
-    $composeArgs += @("-f", $ComposeFile, "config", "--services")
+    $composeArgs += @("-f", $ComposeFile, "ps", "--services")
+    if ($IncludeAll) {
+        $composeArgs += "--all"
+    }
+    foreach ($status in $Statuses) {
+        if (-not [string]::IsNullOrWhiteSpace($status)) {
+            $composeArgs += @("--status", $status)
+        }
+    }
 
     try {
         $services = @(docker compose @composeArgs 2>$null)
@@ -89,7 +101,11 @@ function Remove-StoppedComposeServicesIfPresent {
         return
     }
 
-    $existingServices = Get-ExistingComposeServices -ComposeFile $ComposeFile -EnvFile $EnvFile
+    $existingServices = Get-ComposeServicesFromContainers `
+        -ComposeFile $ComposeFile `
+        -EnvFile $EnvFile `
+        -IncludeAll `
+        -Statuses @("created", "exited", "dead")
     $presentServices = @($Services | Where-Object { $_ -in $existingServices })
     if ($presentServices.Count -eq 0) {
         return
@@ -127,23 +143,43 @@ function Recreate-ComposeServicesIfPresent {
         return
     }
 
-    $existingServices = Get-ExistingComposeServices -ComposeFile $ComposeFile -EnvFile $EnvFile
+    $existingServices = Get-ComposeServicesFromContainers -ComposeFile $ComposeFile -EnvFile $EnvFile -IncludeAll
+    $runningServices = Get-ComposeServicesFromContainers `
+        -ComposeFile $ComposeFile `
+        -EnvFile $EnvFile `
+        -Statuses @("running", "restarting", "paused")
     $presentServices = @($Services | Where-Object { $_ -in $existingServices })
     if ($presentServices.Count -eq 0) {
         return
     }
 
-    Write-Host "Recreating existing $Description services: $($presentServices -join ', ')..."
+    Write-Host "Restarting existing $Description services: $($presentServices -join ', ')..."
+
+    $presentRunningServices = @($presentServices | Where-Object { $_ -in $runningServices })
+    if ($presentRunningServices.Count -gt 0) {
+        Write-Host "Stopping running $Description services first: $($presentRunningServices -join ', ')..."
+
+        if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
+            Invoke-BestEffortNativeCommand {
+                docker compose --env-file $EnvFile -f $ComposeFile stop $presentRunningServices
+            } "docker compose stop for $Description"
+        }
+        else {
+            Invoke-BestEffortNativeCommand {
+                docker compose -f $ComposeFile stop $presentRunningServices
+            } "docker compose stop for $Description"
+        }
+    }
 
     if (-not [string]::IsNullOrWhiteSpace($EnvFile) -and (Test-Path $EnvFile)) {
         Invoke-BestEffortNativeCommand {
-            docker compose --env-file $EnvFile -f $ComposeFile rm -f -s $presentServices
+            docker compose --env-file $EnvFile -f $ComposeFile rm -f $presentServices
         } "docker compose rm for $Description"
         return
     }
 
     Invoke-BestEffortNativeCommand {
-        docker compose -f $ComposeFile rm -f -s $presentServices
+        docker compose -f $ComposeFile rm -f $presentServices
     } "docker compose rm for $Description"
 }
 
