@@ -156,14 +156,16 @@ function Get-ManagedComposeContainers {
 
         [string[]]$ProjectNames = @(),
 
-        [string[]]$HostPorts = @()
+        [string[]]$HostPorts = @(),
+
+        [switch]$Emergency
     )
 
     $rootDirNormalized = Normalize-PathValue $RootDir
 
     try {
         $rawContainers = @(
-            docker ps -a --format '{{.ID}}|{{.Names}}|{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.service"}}|{{.Label "com.docker.compose.project.working_dir"}}|{{.Label "com.docker.compose.project.config_files"}}|{{.Ports}}' 2>$null
+            docker ps -a --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.service"}}|{{.Label "com.docker.compose.project.working_dir"}}|{{.Label "com.docker.compose.project.config_files"}}|{{.Ports}}' 2>$null
         )
         $global:LASTEXITCODE = 0
     }
@@ -177,18 +179,19 @@ function Get-ManagedComposeContainers {
             continue
         }
 
-        $parts = $line -split '\|', 7
-        if ($parts.Length -lt 7) {
+        $parts = $line -split '\|', 8
+        if ($parts.Length -lt 8) {
             continue
         }
 
         $containerId = $parts[0]
         $containerName = $parts[1]
-        $projectName = $parts[2]
-        $serviceName = $parts[3]
-        $workingDirectory = $parts[4]
-        $configFiles = $parts[5]
-        $publishedPorts = $parts[6]
+        $imageName = $parts[2]
+        $projectName = $parts[3]
+        $serviceName = $parts[4]
+        $workingDirectory = $parts[5]
+        $configFiles = $parts[6]
+        $publishedPorts = $parts[7]
 
         $matchesServiceLabel = $serviceName -in $Services
 
@@ -216,19 +219,31 @@ function Get-ManagedComposeContainers {
         $matchesAspireProject = -not [string]::IsNullOrWhiteSpace($projectName) -and $projectName.StartsWith("aspire-", [System.StringComparison]::OrdinalIgnoreCase)
         $matchesContainerName = Test-ContainerNameMatch -ContainerName $containerName -ServiceNames $Services
         $matchesPublishedPorts = Test-ContainerPortMatch -PublishedPorts $publishedPorts -HostPorts $HostPorts
+        $matchesKnownContainerPattern = $containerName -match '(?i)(aspire|lies|dashboard|monitor|compose|(^|[-_])app([-_]|$))'
+        $matchesKnownImagePattern = $imageName -match '(?i)(aspire|lies|dashboard|apphost-monitor|apphost|app:aspire-deploy|apphost-monitor:aspire-deploy)'
+        $matchesKnownProjectPattern = $projectName -match '(?i)(aspire|lies)'
+        $isInfrastructureContainer = $serviceName -in @("postgres", "redis") -or $containerName -match '(?i)(postgres|redis)' -or $imageName -match '(?i)(postgres|redis)'
         $matchesMetadata = $matchesServiceLabel -and ($matchesProject -or $matchesRootDirectory -or $matchesConfigFile -or $matchesAspireProject)
         $matchesFallback = ($matchesContainerName -and ($matchesAspireProject -or $matchesPublishedPorts -or $matchesServiceLabel)) -or
             ($matchesPublishedPorts -and ($matchesContainerName -or $matchesAspireProject -or $matchesServiceLabel))
+        $matchesEmergency = $Emergency -and -not $isInfrastructureContainer -and (
+            $matchesServiceLabel -or
+            $matchesAspireProject -or
+            $matchesContainerName -or
+            (($matchesKnownContainerPattern -or $matchesKnownImagePattern -or $matchesKnownProjectPattern) -and $matchesPublishedPorts)
+        )
 
-        if (-not ($matchesMetadata -or $matchesFallback)) {
+        if (-not ($matchesMetadata -or $matchesFallback -or $matchesEmergency)) {
             continue
         }
 
         [pscustomobject]@{
             Id = $containerId
             Name = $containerName
+            Image = $imageName
             Project = $projectName
             Service = $serviceName
+            Ports = $publishedPorts
         }
     }
 
@@ -248,24 +263,34 @@ function Remove-ManagedComposeContainersIfPresent {
 
         [string[]]$ProjectNames = @(),
 
-        [string[]]$HostPorts = @()
+        [string[]]$HostPorts = @(),
+
+        [switch]$Emergency
     )
 
     $containers = Get-ManagedComposeContainers `
         -RootDir $RootDir `
         -Services $Services `
         -ProjectNames $ProjectNames `
-        -HostPorts $HostPorts
+        -HostPorts $HostPorts `
+        -Emergency:$Emergency
     if ($containers.Count -eq 0) {
-        return
+        return 0
     }
 
     $containerDescriptions = $containers | ForEach-Object {
-        if ([string]::IsNullOrWhiteSpace($_.Project)) {
+        $identity = if ([string]::IsNullOrWhiteSpace($_.Project)) {
             "$($_.Name) [$($_.Service)]"
         }
         else {
             "$($_.Name) [$($_.Project)/$($_.Service)]"
+        }
+
+        if ([string]::IsNullOrWhiteSpace($_.Ports)) {
+            $identity
+        }
+        else {
+            "$identity {$($_.Ports)}"
         }
     }
 
@@ -273,8 +298,45 @@ function Remove-ManagedComposeContainersIfPresent {
 
     $containerIds = @($containers.Id | Select-Object -Unique)
     Invoke-BestEffortNativeCommand {
-        docker rm -f $containerIds
+        docker rm -f $containerIds | Out-Null
     } "docker rm -f for lingering $Description containers"
+
+    return $containerIds.Count
+}
+
+function Show-ManagedDockerDiagnostics {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RootDir,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Services,
+
+        [string[]]$ProjectNames = @(),
+
+        [string[]]$HostPorts = @()
+    )
+
+    $containers = Get-ManagedComposeContainers `
+        -RootDir $RootDir `
+        -Services $Services `
+        -ProjectNames $ProjectNames `
+        -HostPorts $HostPorts `
+        -Emergency
+
+    Write-Host ""
+    Write-Host "Managed container diagnostics:"
+    if ($containers.Count -eq 0) {
+        Write-Host "  No matching managed containers were discovered."
+    }
+    else {
+        foreach ($container in $containers) {
+            $projectDisplay = if ([string]::IsNullOrWhiteSpace($container.Project)) { "-" } else { $container.Project }
+            $serviceDisplay = if ([string]::IsNullOrWhiteSpace($container.Service)) { "-" } else { $container.Service }
+            $portsDisplay = if ([string]::IsNullOrWhiteSpace($container.Ports)) { "-" } else { $container.Ports }
+            Write-Host "  $($container.Name) | image=$($container.Image) | project=$projectDisplay | service=$serviceDisplay | ports=$portsDisplay"
+        }
+    }
 }
 
 function Get-ComposeServicesFromContainers {
@@ -475,12 +537,22 @@ if ([string]::IsNullOrWhiteSpace($frontendBuildImage)) {
     $frontendBuildImage = "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm"
 }
 
-Remove-ManagedComposeContainersIfPresent `
+$removedContainerCount = Remove-ManagedComposeContainersIfPresent `
     -Description "workspace non-data" `
     -RootDir $RootDir `
     -Services $restartServices `
     -ProjectNames $composeProjectNames `
     -HostPorts $managedPorts
+
+$removedEmergencyContainerCount = Remove-ManagedComposeContainersIfPresent `
+    -Description "workspace emergency non-data" `
+    -RootDir $RootDir `
+    -Services $restartServices `
+    -ProjectNames $composeProjectNames `
+    -HostPorts $managedPorts `
+    -Emergency
+
+Write-Host "Initial managed container cleanup removed: standard=$removedContainerCount, emergency=$removedEmergencyContainerCount"
 
 Write-Host "Pre-pulling frontend build image: $frontendBuildImage"
 Pull-DockerImageWithRetry -Image $frontendBuildImage
@@ -494,6 +566,7 @@ if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
 
 [System.Environment]::SetEnvironmentVariable("LIES_APPHOST_DISABLE_DASHBOARD", "true", "Process")
 
+$hasRetriedDeploy = $false
 try {
     Invoke-NativeCommand {
         aspire deploy --apphost $AppHostProject --output-path $OutputDir --non-interactive
@@ -502,6 +575,32 @@ try {
 catch {
     Write-Host ""
     Write-Host "Aspire Docker deployment failed."
+    Show-ManagedDockerDiagnostics `
+        -RootDir $RootDir `
+        -Services $restartServices `
+        -ProjectNames $composeProjectNames `
+        -HostPorts $managedPorts
+
+    if (-not $hasRetriedDeploy) {
+        $hasRetriedDeploy = $true
+        $retryRemovedCount = Remove-ManagedComposeContainersIfPresent `
+            -Description "workspace retry non-data" `
+            -RootDir $RootDir `
+            -Services $restartServices `
+            -ProjectNames $composeProjectNames `
+            -HostPorts $managedPorts `
+            -Emergency
+
+        if ($retryRemovedCount -gt 0) {
+            Write-Host ""
+            Write-Host "Emergency retry cleanup removed $retryRemovedCount container(s)."
+            Write-Host "Retrying Aspire Docker deployment after emergency cleanup..."
+            Invoke-NativeCommand {
+                aspire deploy --apphost $AppHostProject --output-path $OutputDir --non-interactive
+            } "Aspire Docker deployment failed after retry."
+        }
+    }
+
     Write-Host "If the error mentions a container name conflict or a port already in use,"
     Write-Host "stop the old stack first:"
     Write-Host "  AppHost stack: powershell -ExecutionPolicy Bypass -File .\scripts\aspire-docker-down.ps1"
