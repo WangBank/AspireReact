@@ -136,6 +136,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
     var postgresDbName = GetConfig(builder, "Deployment:Docker:PostgresDatabase", "lies");
     var rapidOcrAutoDownloadModels = GetConfig(builder, "Deployment:Docker:RapidOcrAutoDownloadModels", "true");
     var frontendBuildImage = GetConfig(builder, "Deployment:Docker:FrontendBuildImage", "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm");
+    var publicAppBaseUrl = GetPublicAppBaseUrl(builder, appPort);
     const int resourceServicePort = 20252;
 
     var postgresUser = builder.AddParameter(
@@ -231,8 +232,8 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
             "Monitoring__RedisConnectionString",
             ReferenceExpression.Create($"redis:6379,password={redisPassword}"))
         .WithEndpoint(targetPort: 17100, port: dashboardPort, scheme: "http", name: "dashboard", isExternal: true)
-        .WithEnvironment("Monitoring__ServerUrl", $"http://{publishedAppServiceName}:8080")
-        .WithEnvironment("Monitoring__FrontendUrl", $"http://{publishedAppServiceName}:8080")
+        .WithEnvironment("Monitoring__ServerUrl", publicAppBaseUrl)
+        .WithEnvironment("Monitoring__FrontendUrl", publicAppBaseUrl)
         .WithEnvironment("Monitoring__PostgresUrl", "http://postgres:5432")
         .WithEnvironment("Monitoring__RedisUrl", "http://redis:6379")
         .PublishAsDockerComposeService((_, service) =>
@@ -285,10 +286,10 @@ static void ConfigureDeploymentMonitoring(IDistributedApplicationBuilder builder
         redisService.WithHealthCheck("redis");
     }
 
-    builder.AddExternalService("server", GetUriConfig(builder, "Monitoring:ServerUrl", "http://lies-app:8080"))
+    builder.AddExternalService("server", GetUriConfig(builder, "Monitoring:ServerUrl", "http://localhost:5516"))
         .WithHttpHealthCheck("/health");
 
-    builder.AddExternalService("webfrontend", GetUriConfig(builder, "Monitoring:FrontendUrl", "http://lies-app:8080"))
+    builder.AddExternalService("webfrontend", GetUriConfig(builder, "Monitoring:FrontendUrl", "http://localhost:5516"))
         .WithHttpHealthCheck("/");
 }
 
@@ -338,6 +339,24 @@ static Uri GetUriConfig(IDistributedApplicationBuilder builder, string key, stri
     }
 
     throw new InvalidOperationException($"配置项 {key} 不是合法的绝对 URL：{value}");
+}
+
+static string GetPublicAppBaseUrl(IDistributedApplicationBuilder builder, int appPort)
+{
+    var configuredValue = GetOptionalConfig(
+        builder,
+        "Monitoring:PublicAppUrl",
+        "Monitoring:ServerUrl",
+        "Deployment:Docker:PublicAppUrl",
+        "Deployment:Docker:PublicBaseUrl",
+        "CLOUDFLARE_BASE_URL");
+
+    if (!string.IsNullOrWhiteSpace(configuredValue))
+    {
+        return configuredValue.Trim().TrimEnd('/');
+    }
+
+    return $"http://localhost:{appPort}";
 }
 
 static void BindServicePortToLoopback(Service service, int? hostPort, int containerPort)
