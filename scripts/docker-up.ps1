@@ -33,6 +33,33 @@ function Invoke-BestEffortNativeCommand {
     }
 }
 
+function Pull-DockerImageWithRetry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Image,
+
+        [int]$MaxAttempts = 3
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Image)) {
+        return
+    }
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        & docker pull $Image
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+
+        if ($attempt -eq $MaxAttempts) {
+            throw "Unable to pull Docker image '$Image' after $MaxAttempts attempts. Exit code: $LASTEXITCODE"
+        }
+
+        Write-Host "Retrying Docker image pull for $Image ($attempt/$MaxAttempts failed)..."
+        Start-Sleep -Seconds 5
+    }
+}
+
 function Get-FirstExistingPath {
     param(
         [Parameter(Mandatory = $true)]
@@ -109,6 +136,16 @@ if (-not (Test-Path $EnvFile)) {
     Copy-Item $ExampleFile $EnvFile
     Write-Host "Created $EnvFile. Update passwords and ports if needed."
 }
+
+$frontendBuildImage = "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm"
+Get-Content $EnvFile | ForEach-Object {
+    if ($_ -match '^FRONTEND_BUILD_IMAGE=(.+)$') {
+        $frontendBuildImage = $Matches[1]
+    }
+}
+
+Write-Host "Pre-pulling frontend build image: $frontendBuildImage"
+Pull-DockerImageWithRetry -Image $frontendBuildImage
 
 $cleanupServices = @("app", "lies-app", "apphost-monitor", "lies-apphost-monitor", "dashboard")
 $coreServices = @("lies-app")

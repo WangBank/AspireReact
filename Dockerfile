@@ -1,4 +1,5 @@
-FROM node:22-alpine AS frontend-build
+ARG FRONTEND_BUILD_IMAGE=mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm
+FROM ${FRONTEND_BUILD_IMAGE} AS frontend-build
 WORKDIR /src/frontend
 
 COPY frontend/package*.json ./

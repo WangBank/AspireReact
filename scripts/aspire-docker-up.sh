@@ -31,6 +31,28 @@ refresh_apphost_compose_file() {
   fi
 }
 
+pull_docker_image_with_retry() {
+  local image="$1"
+  local max_attempts="${2:-3}"
+  local attempt
+
+  [[ -n "$image" ]] || return 0
+
+  for ((attempt=1; attempt<=max_attempts; attempt++)); do
+    if docker pull "$image"; then
+      return 0
+    fi
+
+    if (( attempt == max_attempts )); then
+      echo "Unable to pull Docker image '$image' after $max_attempts attempts." >&2
+      return 1
+    fi
+
+    echo "Retrying Docker image pull for $image ($attempt/$max_attempts failed)..."
+    sleep 5
+  done
+}
+
 normalize_path() {
   local path="${1:-}"
   path="${path%/}"
@@ -322,7 +344,10 @@ remove_stopped_compose_services_if_present() {
 
 STALE_SERVICES=(postgres redis app lies-app apphost-monitor lies-apphost-monitor dashboard compose-dashboard lies-compose-dashboard)
 RESTART_SERVICES=(app lies-app apphost-monitor lies-apphost-monitor dashboard compose-dashboard lies-compose-dashboard)
+FRONTEND_BUILD_IMAGE="${Deployment__Docker__FrontendBuildImage:-mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm}"
 remove_managed_compose_containers_if_present "workspace non-data" "${RESTART_SERVICES[@]}"
+echo "Pre-pulling frontend build image: $FRONTEND_BUILD_IMAGE"
+pull_docker_image_with_retry "$FRONTEND_BUILD_IMAGE"
 remove_stopped_compose_services_if_present "legacy compose" "$LEGACY_COMPOSE_FILE" "$LEGACY_ENV_FILE" "${STALE_SERVICES[@]}"
 recreate_compose_services_if_present "legacy compose" "$LEGACY_COMPOSE_FILE" "$LEGACY_ENV_FILE" "${RESTART_SERVICES[@]}"
 if [[ -n "$APPHOST_COMPOSE_FILE" ]]; then

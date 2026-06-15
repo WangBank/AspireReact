@@ -135,6 +135,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
     var postgresImageTag = GetConfig(builder, "Deployment:Docker:PostgresImageTag", "latest");
     var postgresDbName = GetConfig(builder, "Deployment:Docker:PostgresDatabase", "lies");
     var rapidOcrAutoDownloadModels = GetConfig(builder, "Deployment:Docker:RapidOcrAutoDownloadModels", "true");
+    var frontendBuildImage = GetConfig(builder, "Deployment:Docker:FrontendBuildImage", "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm");
     const int resourceServicePort = 20252;
 
     var postgresUser = builder.AddParameter(
@@ -184,6 +185,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         });
 
     var app = builder.AddDockerfile("app", "..", "Dockerfile", "final")
+        .WithBuildArg("FRONTEND_BUILD_IMAGE", frontendBuildImage)
         .WithReference(postgresDb, "PostgreSQL")
         .WithReference(redis, "Redis")
         .WaitFor(postgres)
@@ -208,6 +210,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         });
 
     builder.AddDockerfile(publishedMonitorServiceName, "..", "Dockerfile", "apphost-monitor")
+        .WithBuildArg("FRONTEND_BUILD_IMAGE", frontendBuildImage)
         .WithReference(postgresDb, "PostgreSQL")
         .WithReference(redis, "Redis")
         .WaitFor(postgres)

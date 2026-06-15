@@ -51,9 +51,35 @@ show_compose_diagnostics() {
   done
 }
 
+pull_docker_image_with_retry() {
+  local image="$1"
+  local max_attempts="${2:-3}"
+  local attempt
+
+  [[ -n "$image" ]] || return 0
+
+  for ((attempt=1; attempt<=max_attempts; attempt++)); do
+    if docker pull "$image"; then
+      return 0
+    fi
+
+    if (( attempt == max_attempts )); then
+      echo "Unable to pull Docker image '$image' after $max_attempts attempts." >&2
+      return 1
+    fi
+
+    echo "Retrying Docker image pull for $image ($attempt/$max_attempts failed)..."
+    sleep 5
+  done
+}
+
 CLEANUP_SERVICES=(app lies-app apphost-monitor lies-apphost-monitor dashboard)
 CORE_SERVICES=(lies-app)
 MONITOR_SERVICES=(lies-apphost-monitor)
+FRONTEND_BUILD_IMAGE="$(grep '^FRONTEND_BUILD_IMAGE=' "$ENV_FILE" | cut -d'=' -f2- || true)"
+FRONTEND_BUILD_IMAGE="${FRONTEND_BUILD_IMAGE:-mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm}"
+echo "Pre-pulling frontend build image: $FRONTEND_BUILD_IMAGE"
+pull_docker_image_with_retry "$FRONTEND_BUILD_IMAGE"
 if [[ -n "$APPHOST_COMPOSE_FILE" ]]; then
   recreate_compose_services_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${CLEANUP_SERVICES[@]}"
 fi

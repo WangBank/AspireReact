@@ -33,6 +33,33 @@ function Invoke-BestEffortNativeCommand {
     }
 }
 
+function Pull-DockerImageWithRetry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Image,
+
+        [int]$MaxAttempts = 3
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Image)) {
+        return
+    }
+
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        & docker pull $Image
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+
+        if ($attempt -eq $MaxAttempts) {
+            throw "Unable to pull Docker image '$Image' after $MaxAttempts attempts. Exit code: $LASTEXITCODE"
+        }
+
+        Write-Host "Retrying Docker image pull for $Image ($attempt/$MaxAttempts failed)..."
+        Start-Sleep -Seconds 5
+    }
+}
+
 function Get-FirstExistingPath {
     param(
         [Parameter(Mandatory = $true)]
@@ -443,6 +470,10 @@ $managedPorts = @(
     "5516",
     "18888"
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -ne "0" } | Select-Object -Unique
+$frontendBuildImage = [System.Environment]::GetEnvironmentVariable("Deployment__Docker__FrontendBuildImage", "Process")
+if ([string]::IsNullOrWhiteSpace($frontendBuildImage)) {
+    $frontendBuildImage = "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm"
+}
 
 Remove-ManagedComposeContainersIfPresent `
     -Description "workspace non-data" `
@@ -450,6 +481,9 @@ Remove-ManagedComposeContainersIfPresent `
     -Services $restartServices `
     -ProjectNames $composeProjectNames `
     -HostPorts $managedPorts
+
+Write-Host "Pre-pulling frontend build image: $frontendBuildImage"
+Pull-DockerImageWithRetry -Image $frontendBuildImage
 
 Remove-StoppedComposeServicesIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile -Services $staleServices
 Recreate-ComposeServicesIfPresent -Description "legacy compose" -ComposeFile $LegacyComposeFile -EnvFile $LegacyEnvFile -Services $restartServices
