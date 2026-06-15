@@ -339,6 +339,134 @@ function Show-ManagedDockerDiagnostics {
     }
 }
 
+function Get-DockerContainersByPublishedPorts {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$HostPorts
+    )
+
+    try {
+        $rawContainers = @(
+            docker ps -a --format '{{.ID}}|{{.Names}}|{{.Image}}|{{.Label "com.docker.compose.project"}}|{{.Label "com.docker.compose.service"}}|{{.Ports}}' 2>$null
+        )
+        $global:LASTEXITCODE = 0
+    }
+    catch {
+        $global:LASTEXITCODE = 0
+        return @()
+    }
+
+    $containers = foreach ($line in $rawContainers) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+
+        $parts = $line -split '\|', 6
+        if ($parts.Length -lt 6) {
+            continue
+        }
+
+        $containerId = $parts[0]
+        $containerName = $parts[1]
+        $imageName = $parts[2]
+        $projectName = $parts[3]
+        $serviceName = $parts[4]
+        $publishedPorts = $parts[5]
+
+        if (-not (Test-ContainerPortMatch -PublishedPorts $publishedPorts -HostPorts $HostPorts)) {
+            continue
+        }
+
+        [pscustomobject]@{
+            Id = $containerId
+            Name = $containerName
+            Image = $imageName
+            Project = $projectName
+            Service = $serviceName
+            Ports = $publishedPorts
+        }
+    }
+
+    return @($containers | Sort-Object Name -Unique)
+}
+
+function Remove-InfrastructurePortOwnerContainersIfPresent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$HostPorts
+    )
+
+    $containers = Get-DockerContainersByPublishedPorts -HostPorts $HostPorts |
+        Where-Object {
+            $_.Service -match '(?i)^(postgres|redis)$' -or
+            $_.Project -match '(?i)(aspire|lies)' -or
+            $_.Name -match '(?i)(aspire|lies|postgres|redis)'
+        }
+
+    if ($containers.Count -eq 0) {
+        return 0
+    }
+
+    $containerDescriptions = $containers | ForEach-Object {
+        $projectDisplay = if ([string]::IsNullOrWhiteSpace($_.Project)) { "-" } else { $_.Project }
+        $serviceDisplay = if ([string]::IsNullOrWhiteSpace($_.Service)) { "-" } else { $_.Service }
+        "$($_.Name) <$($_.Image)> [project=$projectDisplay service=$serviceDisplay] {$($_.Ports)}"
+    }
+
+    Write-Host "Removing Docker infrastructure containers bound to managed ports: $($containerDescriptions -join ', ')..."
+
+    $containerIds = @($containers.Id | Select-Object -Unique)
+    Invoke-BestEffortNativeCommand {
+        docker rm -f $containerIds | Out-Null
+    } "docker rm -f for Docker infrastructure port owners"
+
+    return $containerIds.Count
+}
+
+function Show-PortOwnerDiagnostics {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$HostPorts
+    )
+
+    Write-Host ""
+    Write-Host "Published port diagnostics:"
+
+    $containers = Get-DockerContainersByPublishedPorts -HostPorts $HostPorts
+    if ($containers.Count -gt 0) {
+        foreach ($container in $containers) {
+            $projectDisplay = if ([string]::IsNullOrWhiteSpace($container.Project)) { "-" } else { $container.Project }
+            $serviceDisplay = if ([string]::IsNullOrWhiteSpace($container.Service)) { "-" } else { $container.Service }
+            Write-Host "  Docker container: $($container.Name) | image=$($container.Image) | project=$projectDisplay | service=$serviceDisplay | ports=$($container.Ports)"
+        }
+    }
+    else {
+        Write-Host "  No Docker containers found on managed ports."
+    }
+
+    if ($IsWindows) {
+        foreach ($port in $HostPorts) {
+            try {
+                $connections = @(Get-NetTCPConnection -State Listen -LocalPort ([int]$port) -ErrorAction Stop)
+            }
+            catch {
+                continue
+            }
+
+            foreach ($connection in $connections) {
+                $processName = "-"
+                try {
+                    $processName = (Get-Process -Id $connection.OwningProcess -ErrorAction Stop).ProcessName
+                }
+                catch {
+                }
+
+                Write-Host "  OS listener: port=$port | pid=$($connection.OwningProcess) | process=$processName"
+            }
+        }
+    }
+}
+
 function Get-ComposeServicesFromContainers {
     param(
         [Parameter(Mandatory = $true)]
@@ -523,6 +651,7 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $staleServices = @("postgres", "redis", "app", "lies-app", "apphost-monitor", "lies-apphost-monitor", "dashboard", "compose-dashboard", "lies-compose-dashboard")
 $restartServices = @("app", "lies-app", "apphost-monitor", "lies-apphost-monitor", "dashboard", "compose-dashboard", "lies-compose-dashboard")
+$infrastructureServices = @("postgres", "redis")
 $composeProjectNames = Get-ComposeProjectCandidates `
     -RootDir $RootDir `
     -ConfiguredProjectName ([System.Environment]::GetEnvironmentVariable("Deployment__Docker__ComposeProjectName", "Process"))
@@ -531,6 +660,12 @@ $managedPorts = @(
     [System.Environment]::GetEnvironmentVariable("Deployment__Docker__DashboardPort", "Process"),
     "5516",
     "18888"
+) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -ne "0" } | Select-Object -Unique
+$infrastructurePorts = @(
+    [System.Environment]::GetEnvironmentVariable("Deployment__Docker__PostgresPort", "Process"),
+    [System.Environment]::GetEnvironmentVariable("Deployment__Docker__RedisPort", "Process"),
+    "5432",
+    "6379"
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -ne "0" } | Select-Object -Unique
 $frontendBuildImage = [System.Environment]::GetEnvironmentVariable("Deployment__Docker__FrontendBuildImage", "Process")
 if ([string]::IsNullOrWhiteSpace($frontendBuildImage)) {
@@ -552,7 +687,25 @@ $removedEmergencyContainerCount = Remove-ManagedComposeContainersIfPresent `
     -HostPorts $managedPorts `
     -Emergency
 
-Write-Host "Initial managed container cleanup removed: standard=$removedContainerCount, emergency=$removedEmergencyContainerCount"
+$removedInfrastructureContainerCount = Remove-ManagedComposeContainersIfPresent `
+    -Description "workspace infrastructure" `
+    -RootDir $RootDir `
+    -Services $infrastructureServices `
+    -ProjectNames $composeProjectNames `
+    -HostPorts $infrastructurePorts
+
+$removedEmergencyInfrastructureContainerCount = Remove-ManagedComposeContainersIfPresent `
+    -Description "workspace emergency infrastructure" `
+    -RootDir $RootDir `
+    -Services $infrastructureServices `
+    -ProjectNames $composeProjectNames `
+    -HostPorts $infrastructurePorts `
+    -Emergency
+
+$removedPortOwnerInfrastructureContainerCount = Remove-InfrastructurePortOwnerContainersIfPresent `
+    -HostPorts $infrastructurePorts
+
+Write-Host "Initial managed container cleanup removed: standard=$removedContainerCount, emergency=$removedEmergencyContainerCount, infra=$removedInfrastructureContainerCount, infraEmergency=$removedEmergencyInfrastructureContainerCount, infraPortOwners=$removedPortOwnerInfrastructureContainerCount"
 
 Write-Host "Pre-pulling frontend build image: $frontendBuildImage"
 Pull-DockerImageWithRetry -Image $frontendBuildImage
@@ -577,9 +730,10 @@ catch {
     Write-Host "Aspire Docker deployment failed."
     Show-ManagedDockerDiagnostics `
         -RootDir $RootDir `
-        -Services $restartServices `
+        -Services ($restartServices + $infrastructureServices) `
         -ProjectNames $composeProjectNames `
-        -HostPorts $managedPorts
+        -HostPorts ($managedPorts + $infrastructurePorts | Select-Object -Unique)
+    Show-PortOwnerDiagnostics -HostPorts ($managedPorts + $infrastructurePorts | Select-Object -Unique)
 
     if (-not $hasRetriedDeploy) {
         $hasRetriedDeploy = $true
@@ -591,9 +745,20 @@ catch {
             -HostPorts $managedPorts `
             -Emergency
 
-        if ($retryRemovedCount -gt 0) {
+        $retryRemovedInfrastructureCount = Remove-ManagedComposeContainersIfPresent `
+            -Description "workspace retry infrastructure" `
+            -RootDir $RootDir `
+            -Services $infrastructureServices `
+            -ProjectNames $composeProjectNames `
+            -HostPorts $infrastructurePorts `
+            -Emergency
+
+        $retryRemovedInfrastructurePortOwnerCount = Remove-InfrastructurePortOwnerContainersIfPresent `
+            -HostPorts $infrastructurePorts
+
+        if (($retryRemovedCount + $retryRemovedInfrastructureCount + $retryRemovedInfrastructurePortOwnerCount) -gt 0) {
             Write-Host ""
-            Write-Host "Emergency retry cleanup removed $retryRemovedCount container(s)."
+            Write-Host "Emergency retry cleanup removed app=$retryRemovedCount infrastructure=$retryRemovedInfrastructureCount infrastructurePortOwners=$retryRemovedInfrastructurePortOwnerCount container(s)."
             Write-Host "Retrying Aspire Docker deployment after emergency cleanup..."
             Invoke-NativeCommand {
                 aspire deploy --apphost $AppHostProject --output-path $OutputDir --non-interactive
