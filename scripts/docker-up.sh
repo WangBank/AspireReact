@@ -44,16 +44,16 @@ show_compose_diagnostics() {
   echo "Current compose status:"
   docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" ps -a || true
 
-  for service in app apphost-monitor postgres; do
+  for service in lies-app lies-apphost-monitor postgres; do
     echo
     echo "Recent logs for $service:"
     docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" logs --tail 80 "$service" || true
   done
 }
 
-CLEANUP_SERVICES=(app apphost-monitor dashboard)
-CORE_SERVICES=(app)
-MONITOR_SERVICES=(apphost-monitor)
+CLEANUP_SERVICES=(app lies-app apphost-monitor lies-apphost-monitor dashboard)
+CORE_SERVICES=(lies-app)
+MONITOR_SERVICES=(lies-apphost-monitor)
 if [[ -n "$APPHOST_COMPOSE_FILE" ]]; then
   recreate_compose_services_if_present "AppHost compose" "$APPHOST_COMPOSE_FILE" "$APPHOST_COMPOSE_ENV_FILE" "${CLEANUP_SERVICES[@]}"
 fi
@@ -72,7 +72,7 @@ if ! docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" up 
 fi
 
 docker compose --env-file "$ENV_FILE" -f "$ROOT_DIR/docker-compose.yml" up -d --build "${MONITOR_SERVICES[@]}" || \
-  echo "Skipping optional apphost-monitor startup"
+  echo "Skipping optional lies-apphost-monitor startup"
 
 APP_PORT="$(grep '^APP_PORT=' "$ENV_FILE" | cut -d'=' -f2 || true)"
 DASHBOARD_PORT="$(grep '^ASPIRE_DASHBOARD_PORT=' "$ENV_FILE" | cut -d'=' -f2 || true)"
@@ -81,4 +81,4 @@ echo
 echo "Docker services are up."
 echo "App URL: http://localhost:${APP_PORT:-5516}"
 echo "Aspire Dashboard: http://localhost:${DASHBOARD_PORT:-18888}"
-echo "Logs: docker compose --env-file \"$ENV_FILE\" -f \"$ROOT_DIR/docker-compose.yml\" logs -f app"
+echo "Logs: docker compose --env-file \"$ENV_FILE\" -f \"$ROOT_DIR/docker-compose.yml\" logs -f lies-app"

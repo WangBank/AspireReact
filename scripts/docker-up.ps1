@@ -87,7 +87,7 @@ function Show-ComposeDiagnostics {
     Write-Host "Current compose status:"
     docker compose --env-file $EnvFile -f $ComposeFile ps -a
 
-    foreach ($service in @("app", "apphost-monitor", "postgres")) {
+    foreach ($service in @("lies-app", "lies-apphost-monitor", "postgres")) {
         Write-Host ""
         Write-Host "Recent logs for ${service}:"
         docker compose --env-file $EnvFile -f $ComposeFile logs --tail 80 $service
@@ -110,9 +110,9 @@ if (-not (Test-Path $EnvFile)) {
     Write-Host "Created $EnvFile. Update passwords and ports if needed."
 }
 
-$cleanupServices = @("app", "apphost-monitor", "dashboard")
-$coreServices = @("app")
-$monitorServices = @("apphost-monitor")
+$cleanupServices = @("app", "lies-app", "apphost-monitor", "lies-apphost-monitor", "dashboard")
+$coreServices = @("lies-app")
+$monitorServices = @("lies-apphost-monitor")
 if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
     Recreate-ComposeServicesIfPresent -Description "AppHost compose" -ComposeFile $AppHostComposeFile -EnvFile $AppHostComposeEnvFile -Services $cleanupServices
 }
@@ -137,7 +137,7 @@ catch {
 
 Invoke-BestEffortNativeCommand {
     docker compose --env-file $EnvFile -f $ComposeFile up -d --build $monitorServices
-} "optional apphost-monitor startup"
+} "optional lies-apphost-monitor startup"
 
 $AppPort = "5516"
 $DashboardPort = "18888"
@@ -154,4 +154,4 @@ Write-Host ""
 Write-Host "Docker services are up."
 Write-Host "App URL: http://localhost:$AppPort"
 Write-Host "Aspire Dashboard: http://localhost:$DashboardPort"
-Write-Host "Logs: docker compose --env-file '$EnvFile' -f '$ComposeFile' logs -f app"
+Write-Host "Logs: docker compose --env-file '$EnvFile' -f '$ComposeFile' logs -f lies-app"

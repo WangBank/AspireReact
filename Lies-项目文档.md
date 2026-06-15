@@ -232,7 +232,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\docker-up.ps1
 常用命令：
 
 ```bash
-docker compose --env-file .env.docker logs -f app
+docker compose --env-file .env.docker logs -f lies-app
 docker compose --env-file .env.docker logs -f dashboard
 docker compose --env-file .env.docker down
 ```

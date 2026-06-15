@@ -29,7 +29,7 @@ services:
       timeout: 5s
       retries: 10
 
-  app:
+  lies-app:
     build:
       context: .
       dockerfile: Dockerfile
@@ -47,7 +47,7 @@ services:
       Jwt__Secret: ${JWT_SECRET:-8Zk9pQ2sX7gR5tU4jB6vN2mD8aF1cH3kL0zP5qW7eS2dF9gH4jK6lA8}
       Jwt__Issuer: ${JWT_ISSUER:-Lies.Server}
       Jwt__Audience: ${JWT_AUDIENCE:-Lies.Client}
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://apphost-monitor:18889
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://lies-apphost-monitor:18889
       OTEL_EXPORTER_OTLP_PROTOCOL: grpc
       RapidOcr__ModelsDirectory: /app/RuntimeData/RapidOcr
       RapidOcr__FontPath: /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
@@ -58,7 +58,7 @@ services:
       - app_logs:/app/Logs
       - app_runtime:/app/RuntimeData
 
-  apphost-monitor:
+  lies-apphost-monitor:
     build:
       context: .
       dockerfile: Dockerfile
@@ -81,8 +81,8 @@ services:
       Monitoring__RedisConnectionString: redis:6379
       ConnectionStrings__PostgreSQL: Host=postgres;Port=5432;Database=${POSTGRES_DB:-lies};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres123}
       ConnectionStrings__Redis: redis:6379
-      Monitoring__ServerUrl: http://app:8080
-      Monitoring__FrontendUrl: http://app:8080
+      Monitoring__ServerUrl: http://lies-app:8080
+      Monitoring__FrontendUrl: http://lies-app:8080
       Monitoring__PostgresUrl: http://postgres:5432
       Monitoring__RedisUrl: http://redis:6379
     ports:

@@ -124,6 +124,9 @@ static void ConfigureLocalDevelopmentWithExternalInfrastructure(IDistributedAppl
 
 static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder builder)
 {
+    const string composeEnvironmentName = "lies-compose";
+    const string publishedAppServiceName = "lies-app";
+    const string publishedMonitorServiceName = "lies-apphost-monitor";
     var composeProjectName = GetConfig(builder, "Deployment:Docker:ComposeProjectName", "lies");
     var appPort = GetIntConfig(builder, "Deployment:Docker:AppPort", 5516);
     var dashboardPort = GetNullableIntConfig(builder, "Deployment:Docker:DashboardPort", 18888);
@@ -152,7 +155,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
             secret: true)
         .WithDescription("Docker Redis 访问密码。");
 
-    builder.AddDockerComposeEnvironment("compose")
+    builder.AddDockerComposeEnvironment(composeEnvironmentName)
         .ConfigureComposeFile(file =>
         {
             file.Name = composeProjectName;
@@ -188,7 +191,7 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         .WaitFor(redis)
         .WithEnvironment("ASPNETCORE_URLS", "http://+:8080")
         .WithEnvironment("DOTNET_ENVIRONMENT", "Production")
-        .WithEnvironment("OTEL_EXPORTER_OTLP_ENDPOINT", "http://apphost-monitor:18889")
+        .WithEnvironment("OTEL_EXPORTER_OTLP_ENDPOINT", $"http://{publishedMonitorServiceName}:18889")
         .WithEnvironment("OTEL_EXPORTER_OTLP_PROTOCOL", "grpc")
         .WithEnvironment("Redis__ConnectionString", ReferenceExpression.Create($"redis:6379,password={redisPassword}"))
         .WithEnvironment("ConnectionStrings__Redis", ReferenceExpression.Create($"redis:6379,password={redisPassword}"))
@@ -200,11 +203,11 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
         .WithVolume("app_runtime", "/app/RuntimeData")
         .PublishAsDockerComposeService((_, service) =>
         {
-            service.Name = "app";
+            service.Name = publishedAppServiceName;
             service.Restart = "unless-stopped";
         });
 
-    builder.AddDockerfile("apphost-monitor", "..", "Dockerfile", "apphost-monitor")
+    builder.AddDockerfile(publishedMonitorServiceName, "..", "Dockerfile", "apphost-monitor")
         .WithReference(postgresDb, "PostgreSQL")
         .WithReference(redis, "Redis")
         .WaitFor(postgres)
@@ -225,13 +228,13 @@ static void ConfigureDockerComposeDeployment(IDistributedApplicationBuilder buil
             "Monitoring__RedisConnectionString",
             ReferenceExpression.Create($"redis:6379,password={redisPassword}"))
         .WithEndpoint(targetPort: 17100, port: dashboardPort, scheme: "http", name: "dashboard", isExternal: true)
-        .WithEnvironment("Monitoring__ServerUrl", "http://app:8080")
-        .WithEnvironment("Monitoring__FrontendUrl", "http://app:8080")
+        .WithEnvironment("Monitoring__ServerUrl", $"http://{publishedAppServiceName}:8080")
+        .WithEnvironment("Monitoring__FrontendUrl", $"http://{publishedAppServiceName}:8080")
         .WithEnvironment("Monitoring__PostgresUrl", "http://postgres:5432")
         .WithEnvironment("Monitoring__RedisUrl", "http://redis:6379")
         .PublishAsDockerComposeService((_, service) =>
         {
-            service.Name = "apphost-monitor";
+            service.Name = publishedMonitorServiceName;
             service.Restart = "unless-stopped";
             BindServicePortToLoopback(service, dashboardPort, 17100);
         });
@@ -279,10 +282,10 @@ static void ConfigureDeploymentMonitoring(IDistributedApplicationBuilder builder
         redisService.WithHealthCheck("redis");
     }
 
-    builder.AddExternalService("server", GetUriConfig(builder, "Monitoring:ServerUrl", "http://app:8080"))
+    builder.AddExternalService("server", GetUriConfig(builder, "Monitoring:ServerUrl", "http://lies-app:8080"))
         .WithHttpHealthCheck("/health");
 
-    builder.AddExternalService("webfrontend", GetUriConfig(builder, "Monitoring:FrontendUrl", "http://app:8080"))
+    builder.AddExternalService("webfrontend", GetUriConfig(builder, "Monitoring:FrontendUrl", "http://lies-app:8080"))
         .WithHttpHealthCheck("/");
 }
 

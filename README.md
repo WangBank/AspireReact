@@ -177,7 +177,7 @@ ASPIRE_DASHBOARD_BIND_HOST=127.0.0.1
 ASPIRE_DASHBOARD_PORT=18888
 ```
 
-当前这套部署态 Dashboard 由 `apphost-monitor` 自己提供页面和资源服务，用来把部署态的 `postgres`、`redis`、`server`、`webfrontend` 资源树接回 Aspire 视图。
+当前这套部署态 Dashboard 由 `lies-apphost-monitor` 自己提供页面和资源服务，用来把部署态的 `postgres`、`redis`、`server`、`webfrontend` 资源树接回 Aspire 视图。
 
 如果你想在本地开发时看完整资源视图（`postgres`、`redis`、`server`、`webfrontend` 的依赖与状态），请运行：
 
@@ -188,7 +188,7 @@ dotnet run --project Lies.AppHost
 说明：
 
 - `Lies.AppHost` 现在已经建模了 PostgreSQL、Redis、Server 和前端资源
-- 部署态会通过 `apphost-monitor` 直接承载 Dashboard 和资源状态
+- 部署态会通过 `lies-apphost-monitor` 直接承载 Dashboard 和资源状态
 - `server` 和 `webfrontend` 在 Docker 部署里仍由同一个 `app` 容器承载，但 Dashboard 会按两个资源节点展示健康状态，方便和本地视图保持一致
 
 `.env.docker` 里可以单独指定 PostgreSQL 镜像，例如：
@@ -216,8 +216,8 @@ POSTGRES_IMAGE=postgres:latest
 常用命令：
 
 ```bash
-docker compose --env-file .env.docker logs -f app
-docker compose --env-file .env.docker logs -f apphost-monitor
+docker compose --env-file .env.docker logs -f lies-app
+docker compose --env-file .env.docker logs -f lies-apphost-monitor
 docker compose --env-file .env.docker down
 ```
 
@@ -517,10 +517,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\aspire-docker-up.ps1
 这条链路的特点：
 
 - 由 `Lies.AppHost` 生成 Docker Compose 产物，而不是手写维护资源关系
-- 发布态资源包括 `apphost-monitor`、`postgres`、`redis`、`app`
+- 发布态资源包括 `lies-apphost-monitor`、`postgres`、`redis`、`lies-app`
 - `postgres`、`redis` 和部署态 Dashboard 默认都只绑定到 `127.0.0.1`
 - `app` 继续保持对外端口 `5516`
-- `apphost-monitor` 对外提供 `18888 -> 17100` 的 Dashboard 页面，同时在容器内承载资源服务和 OTLP 接收端点
+- `lies-apphost-monitor` 对外提供 `18888 -> 17100` 的 Dashboard 页面，同时在容器内承载资源服务和 OTLP 接收端点
 - PostgreSQL `latest` 已按 18+ 规则改成 `/var/lib/postgresql` 数据卷挂载
 
 相关配置文件：
