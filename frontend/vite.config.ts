@@ -94,6 +94,11 @@ export default defineConfig(({ command }) => ({
         target: devApiTarget,
         changeOrigin: true,
       },
+      '/messagehub': {
+        target: devApiTarget,
+        changeOrigin: true,
+        ws: true,
+      },
     }
   }
 }));

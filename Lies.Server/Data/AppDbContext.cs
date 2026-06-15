@@ -13,6 +13,10 @@ public class AppDbContext : DbContext
     public DbSet<TradeNote> TradeNotes { get; set; }
     public DbSet<PortfolioImportAudit> PortfolioImportAudits { get; set; }
     public DbSet<QuickLoginToken> QuickLoginTokens { get; set; }
+    public DbSet<MessageConversation> MessageConversations { get; set; }
+    public DbSet<MessageConversationParticipant> MessageConversationParticipants { get; set; }
+    public DbSet<UserContact> UserContacts { get; set; }
+    public DbSet<UserMessage> UserMessages { get; set; }
     public DbSet<StockBasic> StockBasics { get; set; }
     public DbSet<User> Users { get; set; }
     public DbSet<SystemSetting> SystemSettings { get; set; }
@@ -49,6 +53,14 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<PortfolioImportAudit>().HasIndex(a => a.SaveStatus);
         modelBuilder.Entity<QuickLoginToken>().HasIndex(t => t.Selector).IsUnique();
         modelBuilder.Entity<QuickLoginToken>().HasIndex(t => new { t.UserId, t.ExpiresAt });
+        modelBuilder.Entity<MessageConversation>().HasIndex(c => c.PairKey).IsUnique();
+        modelBuilder.Entity<MessageConversation>().HasIndex(c => c.LastMessageAt);
+        modelBuilder.Entity<MessageConversationParticipant>().HasIndex(p => new { p.ConversationId, p.UserId }).IsUnique();
+        modelBuilder.Entity<MessageConversationParticipant>().HasIndex(p => new { p.UserId, p.IsPinned });
+        modelBuilder.Entity<UserContact>().HasIndex(c => new { c.OwnerUserId, c.ContactUserId }).IsUnique();
+        modelBuilder.Entity<UserContact>().HasIndex(c => new { c.OwnerUserId, c.IsPinned });
+        modelBuilder.Entity<UserMessage>().HasIndex(m => new { m.ConversationId, m.CreatedAt });
+        modelBuilder.Entity<UserMessage>().HasIndex(m => new { m.SenderUserId, m.CreatedAt });
         modelBuilder.Entity<SystemSetting>().HasIndex(s => s.SettingKey).IsUnique();
         
         // StockBasic 配置
@@ -102,6 +114,48 @@ public class AppDbContext : DbContext
             .HasOne(t => t.User)
             .WithMany(u => u.QuickLoginTokens)
             .HasForeignKey(t => t.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MessageConversationParticipant>()
+            .HasOne(p => p.Conversation)
+            .WithMany(c => c.Participants)
+            .HasForeignKey(p => p.ConversationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MessageConversationParticipant>()
+            .HasOne(p => p.User)
+            .WithMany(u => u.MessageConversationParticipants)
+            .HasForeignKey(p => p.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserMessage>()
+            .HasOne(m => m.Conversation)
+            .WithMany(c => c.Messages)
+            .HasForeignKey(m => m.ConversationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserMessage>()
+            .HasOne(m => m.SenderUser)
+            .WithMany(u => u.SentMessages)
+            .HasForeignKey(m => m.SenderUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<UserMessage>()
+            .HasOne(m => m.ReplyToMessage)
+            .WithMany(m => m.Replies)
+            .HasForeignKey(m => m.ReplyToMessageId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<UserContact>()
+            .HasOne(c => c.OwnerUser)
+            .WithMany(u => u.OwnedContacts)
+            .HasForeignKey(c => c.OwnerUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserContact>()
+            .HasOne(c => c.ContactUser)
+            .WithMany(u => u.ContactOfUsers)
+            .HasForeignKey(c => c.ContactUserId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<SystemSetting>()

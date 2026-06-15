@@ -1,4 +1,5 @@
 using Lies.Server.Data;
+using Lies.Server.Hubs;
 using Lies.Server.Infrastructure;
 using Lies.Server.Middlewares;
 using Lies.Server.Services;
@@ -283,7 +284,10 @@ try
     builder.Services.AddScoped<ISensitiveWordService, SensitiveWordService>();
     builder.Services.AddScoped<IDataHealthService, DataHealthService>();
     builder.Services.AddScoped<IMarketIndexService, MarketIndexService>();
+    builder.Services.AddScoped<IMessageService, MessageService>();
+    builder.Services.AddSingleton<IMessagePresenceTracker, MessagePresenceTracker>();
     builder.Services.AddScoped<RequireAuthenticatedApiFilter>();
+    builder.Services.AddSignalR();
 
     // 添加控制器支持
     builder.Services.AddControllers(options =>
@@ -391,6 +395,7 @@ try
 
     // 映射控制器路由
     app.MapControllers();
+    app.MapHub<MessageHub>("/messagehub");
 
     app.MapDefaultEndpoints();
 

@@ -3,6 +3,7 @@ using System;
 using Lies.Server.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Lies.Server.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260612080538_AddMessagingModule")]
+    partial class AddMessagingModule
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -662,27 +665,11 @@ namespace Lies.Server.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("image_url");
 
-                    b.Property<bool>("IsRecalled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_recalled");
-
                     b.Property<string>("MessageType")
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
                         .HasColumnName("message_type");
-
-                    b.Property<DateTime?>("RecalledAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("recalled_at");
-
-                    b.Property<int?>("RecalledByUserId")
-                        .HasColumnType("integer")
-                        .HasColumnName("recalled_by_user_id");
-
-                    b.Property<int?>("ReplyToMessageId")
-                        .HasColumnType("integer")
-                        .HasColumnName("reply_to_message_id");
 
                     b.Property<int>("SenderUserId")
                         .HasColumnType("integer")
@@ -694,8 +681,6 @@ namespace Lies.Server.Migrations
                         .HasColumnName("text_content");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ReplyToMessageId");
 
                     b.HasIndex("ConversationId", "CreatedAt");
 
@@ -821,11 +806,6 @@ namespace Lies.Server.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("Lies.Server.Entities.UserMessage", "ReplyToMessage")
-                        .WithMany("Replies")
-                        .HasForeignKey("ReplyToMessageId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("Lies.Server.Entities.User", "SenderUser")
                         .WithMany("SentMessages")
                         .HasForeignKey("SenderUserId")
@@ -833,8 +813,6 @@ namespace Lies.Server.Migrations
                         .IsRequired();
 
                     b.Navigation("Conversation");
-
-                    b.Navigation("ReplyToMessage");
 
                     b.Navigation("SenderUser");
                 });
@@ -869,11 +847,6 @@ namespace Lies.Server.Migrations
                     b.Navigation("TradeNotes");
 
                     b.Navigation("UpdatedSystemSettings");
-                });
-
-            modelBuilder.Entity("Lies.Server.Entities.UserMessage", b =>
-                {
-                    b.Navigation("Replies");
                 });
 #pragma warning restore 612, 618
         }

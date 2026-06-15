@@ -85,10 +85,19 @@ public class JwtMiddleware
     {
         var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
 
-        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            return null;
+        if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            return authHeader["Bearer ".Length..].Trim();
+        }
 
-        return authHeader["Bearer ".Length..].Trim();
+        var accessToken = context.Request.Query["access_token"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(accessToken)
+            && context.Request.Path.StartsWithSegments("/messagehub", StringComparison.OrdinalIgnoreCase))
+        {
+            return accessToken.Trim();
+        }
+
+        return null;
     }
 
     private async Task AttachUserToContext(HttpContext context, string token)

@@ -361,6 +361,10 @@ public class AdminService : IAdminService
                 bankFlows = await _db.BankFlows.AsNoTracking().OrderBy(item => item.Date).ThenBy(item => item.Id).ToListAsync(cancellationToken),
                 stockTrades = await _db.StockTrades.AsNoTracking().OrderBy(item => item.TradeDate).ThenBy(item => item.Id).ToListAsync(cancellationToken),
                 tradeNotes = await _db.TradeNotes.AsNoTracking().OrderBy(item => item.Date).ThenBy(item => item.Id).ToListAsync(cancellationToken),
+                userContacts = await _db.UserContacts.AsNoTracking().OrderBy(item => item.OwnerUserId).ThenBy(item => item.ContactUserId).ToListAsync(cancellationToken),
+                messageConversations = await _db.MessageConversations.AsNoTracking().OrderBy(item => item.Id).ToListAsync(cancellationToken),
+                messageConversationParticipants = await _db.MessageConversationParticipants.AsNoTracking().OrderBy(item => item.ConversationId).ThenBy(item => item.UserId).ToListAsync(cancellationToken),
+                userMessages = await _db.UserMessages.AsNoTracking().OrderBy(item => item.ConversationId).ThenBy(item => item.Id).ToListAsync(cancellationToken),
                 portfolioImportAudits = await _db.PortfolioImportAudits.AsNoTracking().OrderBy(item => item.CreatedAt).ToListAsync(cancellationToken),
                 stockBasics = await _db.StockBasics.AsNoTracking().OrderBy(item => item.StockCode).ToListAsync(cancellationToken),
                 systemSettings = await _db.SystemSettings.AsNoTracking().OrderBy(item => item.SettingKey).ToListAsync(cancellationToken)

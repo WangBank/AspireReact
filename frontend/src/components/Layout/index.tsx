@@ -40,6 +40,7 @@ import MenuRoundedIcon from '@mui/icons-material/MenuRounded';
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded';
 import { alpha, useTheme } from '@mui/material/styles';
 import { useStore } from '../../stores/StoreProvider';
+import { messageService } from '../../services/MessageService';
 
 interface NavLinkItem {
   label: string;
@@ -48,6 +49,7 @@ interface NavLinkItem {
 
 const BASE_NAV_ITEMS: NavLinkItem[] = [
   { label: '首页', path: '/dashboard' },
+  { label: '消息', path: '/messages' },
   { label: '录入', path: '/entry/unified' },
   { label: '数据列表', path: '/list/unified' },
   { label: '统计', path: '/statistics' },
@@ -142,6 +144,33 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
     closeUserMenu();
     setMobileMenuOpen(false);
   }, [closeUserMenu, location.pathname]);
+
+  useEffect(() => {
+    if (!authStore.isAuthenticated || authStore.isAdmin) {
+      return undefined;
+    }
+
+    let disposed = false;
+    const touch = async () => {
+      try {
+        await messageService.heartbeat();
+      } catch {
+        if (!disposed) {
+          // ignore heartbeat failures
+        }
+      }
+    };
+
+    void touch();
+    const timer = window.setInterval(() => {
+      void touch();
+    }, 60000);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [authStore.isAdmin, authStore.isAuthenticated]);
 
   useEffect(() => {
     if (!installCopyNotice) {

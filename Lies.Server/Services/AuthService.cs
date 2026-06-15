@@ -206,7 +206,8 @@ public class AuthService : IAuthService
             IsAdmin = IsAdmin(user),
             AvatarUrl = NormalizeAssetUrl(user.AvatarPath),
             CreatedAt = user.CreatedAt,
-            LastLoginAt = user.LastLoginAt
+            LastLoginAt = user.LastLoginAt,
+            LastSeenAt = user.LastSeenAt
         };
     }
 
@@ -314,6 +315,7 @@ public class AuthService : IAuthService
     {
         var now = DateTime.UtcNow;
         user.LastLoginAt = now;
+        user.LastSeenAt = now;
 
         if (rotatedToken != null)
         {

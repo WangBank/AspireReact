@@ -42,6 +42,9 @@ public class User
     [Column("last_login_at")]
     public DateTime? LastLoginAt { get; set; }
 
+    [Column("last_seen_at")]
+    public DateTime? LastSeenAt { get; set; }
+
     [Column("is_active")]
     public bool IsActive { get; set; } = true;
 
@@ -52,5 +55,9 @@ public class User
     public virtual ICollection<TradeNote>? TradeNotes { get; set; }
     public virtual ICollection<PortfolioImportAudit>? PortfolioImportAudits { get; set; }
     public virtual ICollection<QuickLoginToken>? QuickLoginTokens { get; set; }
+    public virtual ICollection<UserContact>? OwnedContacts { get; set; }
+    public virtual ICollection<UserContact>? ContactOfUsers { get; set; }
+    public virtual ICollection<MessageConversationParticipant>? MessageConversationParticipants { get; set; }
+    public virtual ICollection<UserMessage>? SentMessages { get; set; }
     public virtual ICollection<SystemSetting>? UpdatedSystemSettings { get; set; }
 }

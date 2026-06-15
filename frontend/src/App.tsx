@@ -23,6 +23,8 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const UnifiedListPage = lazy(() => import('./pages/UnifiedListPage'));
 const StockHistoryPage = lazy(() => import('./pages/StockHistoryPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
+const MessagePage = lazy(() => import('./pages/MessagePage'));
+const MessageContactsPage = lazy(() => import('./pages/MessageContactsPage'));
 
 const ProtectedRoute = observer(({ children }: { children: React.ReactNode }) => {
   const { authStore } = useStore();
@@ -237,6 +239,22 @@ const App = observer(() => {
             <ProtectedRoute>
               {renderLazyPage(<ProfilePage />)}
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/messages"
+          element={
+            <UserRoute>
+              {renderLazyPage(<MessagePage />)}
+            </UserRoute>
+          }
+        />
+        <Route
+          path="/messages/contacts"
+          element={
+            <UserRoute>
+              {renderLazyPage(<MessageContactsPage />)}
+            </UserRoute>
           }
         />
         <Route

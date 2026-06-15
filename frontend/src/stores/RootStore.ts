@@ -12,6 +12,7 @@ import { notesStore } from './NotesStore';
 import { unifiedListStore } from './UnifiedListStore';
 import { configStore } from './ConfigStore';
 import { stockLeaderboardStore } from './StockLeaderboardStore';
+import { messageStore } from './MessageStore';
 
 export class RootStore {
   authStore = authStore;
@@ -28,6 +29,7 @@ export class RootStore {
   notesStore = notesStore;
   configStore = configStore;
   stockLeaderboardStore = stockLeaderboardStore;
+  messageStore = messageStore;
 }
 
 export const rootStore = new RootStore();
