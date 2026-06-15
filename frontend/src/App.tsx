@@ -77,13 +77,33 @@ const renderLazyPage = (page: ReactNode, withLayout = true) => {
 };
 
 const App = observer(() => {
-  const { authStore } = useStore();
+  const { authStore, messageStore } = useStore();
 
   useEffect(() => {
     if (authStore.isAuthenticated && !authStore.profile && !authStore.loading) {
       void authStore.fetchProfile();
     }
   }, [authStore, authStore.isAuthenticated, authStore.loading, authStore.profile]);
+
+  useEffect(() => {
+    if (!authStore.isAuthenticated || authStore.isAdmin) {
+      void messageStore.dispose();
+      return undefined;
+    }
+
+    void messageStore.bootstrap();
+
+    return () => {
+      void messageStore.dispose();
+    };
+  }, [authStore.isAdmin, authStore.isAuthenticated, messageStore]);
+
+  useEffect(() => {
+    const unreadPrefix = authStore.isAuthenticated && !authStore.isAdmin && messageStore.totalUnreadCount > 0
+      ? `(${messageStore.totalUnreadCount}) `
+      : '';
+    document.title = `${unreadPrefix}Lies`;
+  }, [authStore.isAdmin, authStore.isAuthenticated, messageStore.totalUnreadCount]);
 
   return (
     <>

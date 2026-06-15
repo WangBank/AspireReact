@@ -51,9 +51,7 @@ const LoginPage = observer(() => {
   }, [authStore]);
 
   useEffect(() => {
-    if (isRegister) {
-      void authStore.fetchCaptcha();
-    }
+    void authStore.fetchCaptcha();
   }, [authStore, isRegister]);
 
   const toggleMode = () => {
@@ -89,9 +87,9 @@ const LoginPage = observer(() => {
     } else if (isRegister && password !== confirmPassword) {
       newErrors.confirmPassword = '两次密码输入不一致';
     }
-    if (isRegister && !captchaCode.trim()) {
+    if (!captchaCode.trim()) {
       newErrors.captcha = '请输入验证码';
-    } else if (isRegister && (captchaCode.length !== 4 || !/^\d{4}$/.test(captchaCode))) {
+    } else if (captchaCode.length !== 4 || !/^\d{4}$/.test(captchaCode)) {
       newErrors.captcha = '验证码为4位数字';
     }
     setErrors(newErrors);
@@ -112,7 +110,16 @@ const LoginPage = observer(() => {
         captchaCode,
       );
     } else {
-      await authStore.login(username.trim(), password);
+      await authStore.login(
+        username.trim(),
+        password,
+        authStore.captcha?.captchaId ?? '',
+        captchaCode,
+      );
+    }
+
+    if (!authStore.isAuthenticated) {
+      handleRefreshCaptcha();
     }
   };
 
@@ -346,61 +353,59 @@ const LoginPage = observer(() => {
                 />
               )}
 
-              {isRegister && (
-                <TextField
-                  label="验证码"
-                  placeholder="请输入 4 位数字"
-                  value={captchaCode}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '').slice(0, 4);
-                    setCaptchaCode(val);
-                    setErrors((prev) => ({ ...prev, captcha: '' }));
-                  }}
-                  slotProps={{
-                    htmlInput: { maxLength: 4, inputMode: 'numeric' },
-                    input: {
-                      endAdornment: (
-                        <InputAdornment position="end" sx={{ ml: 1 }}>
-                          {captchaSvg ? (
-                            <Button
-                              type="button"
-                              onClick={handleRefreshCaptcha}
+              <TextField
+                label="验证码"
+                placeholder="请输入 4 位数字"
+                value={captchaCode}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                  setCaptchaCode(val);
+                  setErrors((prev) => ({ ...prev, captcha: '' }));
+                }}
+                slotProps={{
+                  htmlInput: { maxLength: 4, inputMode: 'numeric' },
+                  input: {
+                    endAdornment: (
+                      <InputAdornment position="end" sx={{ ml: 1 }}>
+                        {captchaSvg ? (
+                          <Button
+                            type="button"
+                            onClick={handleRefreshCaptcha}
+                            sx={{
+                              minWidth: 128,
+                              height: 48,
+                              p: 0,
+                              overflow: 'hidden',
+                              borderRadius: 2,
+                              border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+                            }}
+                          >
+                            <Box
+                              component="img"
+                              src={captchaSvg}
+                              alt="验证码"
                               sx={{
-                                minWidth: 128,
-                                height: 48,
-                                p: 0,
-                                overflow: 'hidden',
-                                borderRadius: 2,
-                                border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                                display: 'block',
                               }}
-                            >
-                              <Box
-                                component="img"
-                                src={captchaSvg}
-                                alt="验证码"
-                                sx={{
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'cover',
-                                  display: 'block',
-                                }}
-                              />
-                            </Button>
-                          ) : (
-                            <IconButton onClick={handleRefreshCaptcha} color="primary">
-                              <RefreshRoundedIcon />
-                            </IconButton>
-                          )}
-                        </InputAdornment>
-                      ),
-                    },
-                  }}
-                  autoComplete="off"
-                  error={Boolean(errors.captcha)}
-                  helperText={errors.captcha || '点击右侧验证码可以刷新'}
-                  fullWidth
-                />
-              )}
+                            />
+                          </Button>
+                        ) : (
+                          <IconButton onClick={handleRefreshCaptcha} color="primary">
+                            <RefreshRoundedIcon />
+                          </IconButton>
+                        )}
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+                autoComplete="off"
+                error={Boolean(errors.captcha)}
+                helperText={errors.captcha || '点击右侧验证码可以刷新'}
+                fullWidth
+              />
 
               <Button
                 type="submit"

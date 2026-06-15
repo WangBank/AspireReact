@@ -10,6 +10,7 @@ public class MessageUserSummaryDto
     public bool IsOnline { get; set; }
     public DateTime? LastSeenAt { get; set; }
     public bool IsContact { get; set; }
+    public bool IsFriend { get; set; }
     public string? Alias { get; set; }
 }
 
@@ -21,6 +22,7 @@ public class MessageContactDto
     public bool IsOnline { get; set; }
     public DateTime? LastSeenAt { get; set; }
     public string? Alias { get; set; }
+    public bool IsFriend { get; set; }
     public bool IsPinned { get; set; }
     public DateTime CreatedAt { get; set; }
     public int? ConversationId { get; set; }

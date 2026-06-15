@@ -5,6 +5,7 @@ import {
   Alert,
   AppBar,
   Avatar,
+  Badge,
   Box,
   Button,
   Chip,
@@ -97,7 +98,7 @@ interface InstallGuideContent {
 }
 
 const Layout = observer(({ children }: { children: React.ReactNode }) => {
-  const { authStore } = useStore();
+  const { authStore, messageStore } = useStore();
   const location = useLocation();
   const navigate = useNavigate();
   const theme = useTheme();
@@ -130,6 +131,7 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
   const showFloatingEntry = showTradingNavigation && !isEntryRoute;
   const showInstallAction = !isStandaloneApp;
   const navItems = authStore.isAdmin ? ADMIN_NAV_ITEMS : BASE_NAV_ITEMS;
+  const totalUnreadCount = showTradingNavigation ? messageStore.totalUnreadCount : 0;
 
   const closeUserMenu = useCallback(() => setUserMenuAnchor(null), []);
 
@@ -144,6 +146,12 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
     closeUserMenu();
     setMobileMenuOpen(false);
   }, [closeUserMenu, location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/messages')) {
+      messageStore.dismissIncomingNotice();
+    }
+  }, [location.pathname, messageStore]);
 
   useEffect(() => {
     if (!authStore.isAuthenticated || authStore.isAdmin) {
@@ -368,6 +376,20 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
     return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
 
+  const renderNavLabel = (item: NavLinkItem) => {
+    if (item.path !== '/messages') {
+      return item.label;
+    }
+
+    return (
+      <Badge color="error" badgeContent={totalUnreadCount} max={99}>
+        <Box component="span" sx={{ pr: totalUnreadCount > 0 ? 0.5 : 0 }}>
+          {item.label}
+        </Box>
+      </Badge>
+    );
+  };
+
   const avatarLetter = (authStore.username ?? '?').charAt(0).toUpperCase();
   const roleLabel = authStore.isAdmin ? '管理员' : '普通用户';
 
@@ -400,7 +422,7 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
               },
             }}
           >
-            {item.label}
+            {renderNavLabel(item)}
           </Button>
         );
       })}
@@ -687,7 +709,7 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
                     selected={isNavActive(item.path)}
                     onClick={() => setMobileMenuOpen(false)}
                   >
-                    <ListItemText primary={<Typography sx={{ fontWeight: 600 }}>{item.label}</Typography>} />
+                    <ListItemText primary={<Typography sx={{ fontWeight: 600 }}>{renderNavLabel(item)}</Typography>} />
                   </ListItemButton>
                 </Box>
               ))}
@@ -728,6 +750,43 @@ const Layout = observer(({ children }: { children: React.ReactNode }) => {
           sx={{ alignItems: 'center' }}
         >
           {installHint}
+        </Alert>
+      </Snackbar>
+
+      <Snackbar
+        key={messageStore.incomingNotice?.key ?? 'incoming-message-notice'}
+        open={Boolean(messageStore.incomingNotice)}
+        autoHideDuration={4200}
+        onClose={() => messageStore.dismissIncomingNotice()}
+        anchorOrigin={{ vertical: 'top', horizontal: isMobile ? 'center' : 'right' }}
+      >
+        <Alert
+          onClose={() => messageStore.dismissIncomingNotice()}
+          severity="info"
+          variant="filled"
+          action={(
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => {
+                const conversationId = messageStore.incomingNotice?.conversationId;
+                messageStore.dismissIncomingNotice();
+                if (!conversationId) {
+                  return;
+                }
+
+                navigate('/messages');
+                void messageStore.selectConversation(conversationId);
+              }}
+            >
+              查看
+            </Button>
+          )}
+          sx={{ alignItems: 'center' }}
+        >
+          {messageStore.incomingNotice
+            ? `${messageStore.incomingNotice.senderLabel}：${messageStore.incomingNotice.preview}`
+            : ''}
         </Alert>
       </Snackbar>
 

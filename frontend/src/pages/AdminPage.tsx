@@ -548,7 +548,7 @@ const AdminPage = () => {
       setExportTempPath(result.tempFilePath);
       setExportSuccess(`已导出 ${result.fileName}`);
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : '导出数据库快照失败');
+      setExportError(err instanceof Error ? err.message : '导出数据库备份失败');
     } finally {
       setExporting(false);
     }
@@ -586,7 +586,7 @@ const AdminPage = () => {
             onClick={handleExportDatabase}
             disabled={exporting}
           >
-            {exporting ? '导出中...' : '一键导出数据库快照'}
+            {exporting ? '导出中...' : '一键导出数据库备份'}
           </button>
           <button
             type="button"

@@ -91,11 +91,11 @@ export class AuthService {
     return json.data;
   }
 
-  async login(username: string, password: string): Promise<AuthResponse> {
+  async login(username: string, password: string, captchaId: string, captchaCode: string): Promise<AuthResponse> {
     const response = await fetch(`${API_BASE}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, captchaId, captchaCode }),
     });
 
     const json: AuthResponse = await response.json();

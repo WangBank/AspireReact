@@ -141,11 +141,11 @@ export class AuthStore {
     this.rememberRecentQuickLogin(data);
   }
 
-  login = async (username: string, password: string) => {
+  login = async (username: string, password: string, captchaId: string, captchaCode: string) => {
     this.loading = true;
     this.error = null;
     try {
-      const result = await authService.login(username, password);
+      const result = await authService.login(username, password, captchaId, captchaCode);
       runInAction(() => {
         this.applyAuthenticatedSession(result.data);
         this.loading = false;

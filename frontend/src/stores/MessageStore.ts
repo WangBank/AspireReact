@@ -12,6 +12,12 @@ import {
 } from '../services/MessageService';
 
 type RealtimeStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+type IncomingNotice = {
+  key: string;
+  conversationId: number;
+  senderLabel: string;
+  preview: string;
+};
 
 const buildConversationPreview = (message: MessageItem): string => {
   if (message.textContent?.trim()) {
@@ -43,24 +49,53 @@ export class MessageStore {
   lastUserSearchKeyword: string | null = null;
   lastUserSearchSkip = 0;
   highlightedMessageId: number | null = null;
+  incomingNotice: IncomingNotice | null = null;
+  messagePageActive = false;
   private connection: HubConnection | null = null;
+  private bootstrapPromise: Promise<void> | null = null;
 
   constructor() {
     makeAutoObservable(this, {}, { autoBind: true });
   }
+
+  get totalUnreadCount() {
+    return this.conversations.reduce((total, item) => total + item.unreadCount, 0);
+  }
+
+  bootstrap = async () => {
+    if (this.connection && this.conversations.length > 0) {
+      return;
+    }
+
+    if (this.bootstrapPromise) {
+      await this.bootstrapPromise;
+      return;
+    }
+
+    this.bootstrapPromise = (async () => {
+      await this.loadConversations();
+      await this.connectRealtime();
+    })();
+
+    try {
+      await this.bootstrapPromise;
+    } finally {
+      this.bootstrapPromise = null;
+    }
+  };
 
   initialize = async () => {
     this.loading = true;
     this.error = null;
     try {
       await Promise.all([
+        this.bootstrap(),
         this.loadConversations(),
         this.loadContacts(),
       ]);
       if (!this.selectedConversationId && this.conversations.length > 0) {
         await this.selectConversation(this.conversations[0].conversationId);
       }
-      await this.connectRealtime();
       runInAction(() => {
         this.loading = false;
       });
@@ -82,6 +117,26 @@ export class MessageStore {
     }
 
     runInAction(() => {
+      this.conversations = [];
+      this.contacts = [];
+      this.currentConversation = null;
+      this.selectedConversationId = null;
+      this.userSearchResults = [];
+      this.messageSearchResult = null;
+      this.globalMessageSearchResult = null;
+      this.loading = false;
+      this.conversationsLoading = false;
+      this.contactsLoading = false;
+      this.messagesLoading = false;
+      this.searchingUsers = false;
+      this.searchingMessages = false;
+      this.sending = false;
+      this.error = null;
+      this.lastUserSearchKeyword = null;
+      this.lastUserSearchSkip = 0;
+      this.highlightedMessageId = null;
+      this.incomingNotice = null;
+      this.messagePageActive = false;
       this.connection = null;
       this.realtimeStatus = 'disconnected';
     });
@@ -274,9 +329,17 @@ export class MessageStore {
   };
 
   startDirectConversation = async (targetUserId: number) => {
-    const summary = await messageService.createOrGetDirectConversation(targetUserId);
-    await Promise.all([this.loadConversations(), this.loadContacts()]);
-    await this.selectConversation(summary.conversationId);
+    try {
+      const summary = await messageService.createOrGetDirectConversation(targetUserId);
+      await Promise.all([this.loadConversations(), this.loadContacts()]);
+      await this.selectConversation(summary.conversationId);
+      return true;
+    } catch (err) {
+      runInAction(() => {
+        this.error = err instanceof Error ? err.message : '发起会话失败';
+      });
+      return false;
+    }
   };
 
   searchMessages = async (keyword: string) => {
@@ -336,7 +399,14 @@ export class MessageStore {
 
   sendMessage = async (text: string, image?: File | null, replyToMessageId?: number | null) => {
     if (!this.selectedConversationId) {
-      return;
+      return false;
+    }
+
+    if (this.currentConversation && !this.currentConversation.summary.peer.isFriend) {
+      runInAction(() => {
+        this.error = '只有互为联系人后才能继续发送消息';
+      });
+      return false;
     }
 
     this.sending = true;
@@ -346,11 +416,13 @@ export class MessageStore {
         this.applyIncomingMessage(message);
         this.sending = false;
       });
+      return true;
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '发送消息失败';
         this.sending = false;
       });
+      return false;
     }
   };
 
@@ -398,6 +470,10 @@ export class MessageStore {
             : item
         ));
 
+        if (this.incomingNotice?.conversationId === conversationId) {
+          this.incomingNotice = null;
+        }
+
         if (this.currentConversation?.summary.conversationId === conversationId) {
           this.currentConversation = {
             ...this.currentConversation,
@@ -412,6 +488,14 @@ export class MessageStore {
 
   clearError = () => {
     this.error = null;
+  };
+
+  dismissIncomingNotice = () => {
+    this.incomingNotice = null;
+  };
+
+  setMessagePageActive = (active: boolean) => {
+    this.messagePageActive = active;
   };
 
   private async connectRealtime() {
@@ -451,7 +535,7 @@ export class MessageStore {
         this.applyIncomingMessage(message);
       });
 
-      if (!message.isMine && this.selectedConversationId === message.conversationId) {
+      if (!message.isMine && this.messagePageActive && this.selectedConversationId === message.conversationId) {
         void this.markConversationRead(message.conversationId, message.id);
       }
     });
@@ -496,6 +580,8 @@ export class MessageStore {
   }
 
   private applyIncomingMessage(message: MessageItem) {
+    const matchedConversation = this.conversations.find((item) => item.conversationId === message.conversationId) ?? null;
+
     if (this.currentConversation?.summary.conversationId === message.conversationId) {
       const exists = this.currentConversation.messages.some((item) => item.id === message.id);
       if (!exists) {
@@ -514,7 +600,7 @@ export class MessageStore {
         }
 
         found = true;
-        const unreadCount = message.isMine || this.selectedConversationId === message.conversationId
+        const unreadCount = message.isMine || (this.messagePageActive && this.selectedConversationId === message.conversationId)
           ? 0
           : item.unreadCount + 1;
 
@@ -537,6 +623,15 @@ export class MessageStore {
 
     if (!found) {
       void this.loadConversations();
+    }
+
+    if (!message.isMine && this.selectedConversationId !== message.conversationId && !matchedConversation?.isMuted) {
+      this.incomingNotice = {
+        key: `${message.id}-${message.createdAt}`,
+        conversationId: message.conversationId,
+        senderLabel: matchedConversation?.peer.alias?.trim() || matchedConversation?.peer.username || message.senderUsername,
+        preview: buildConversationPreview(message),
+      };
     }
   }
 

@@ -27,7 +27,7 @@ import { formatLastSeen, formatTime } from '../components/Message/messageFormatt
 import PageHeader from '../components/Page/PageHeader';
 import RouteLoadingFallback from '../components/Page/RouteLoadingFallback';
 import SectionCard from '../components/Page/SectionCard';
-import type { MessageUserSummary } from '../services/MessageService';
+import type { MessageContact, MessageUserSummary } from '../services/MessageService';
 import { useStore } from '../stores/StoreProvider';
 
 const MessageContactsPage = observer(() => {
@@ -47,6 +47,7 @@ const MessageContactsPage = observer(() => {
   const [deleteContactTarget, setDeleteContactTarget] = useState<{ userId: number; label: string } | null>(null);
   const [contactDeleting, setContactDeleting] = useState(false);
   const [userSearchSkip, setUserSearchSkip] = useState(0);
+  const [contactSearchSkip, setContactSearchSkip] = useState(0);
 
   useEffect(() => {
     let disposed = false;
@@ -65,7 +66,6 @@ const MessageContactsPage = observer(() => {
 
     return () => {
       disposed = true;
-      void messageStore.dispose();
     };
   }, [messageStore]);
 
@@ -102,6 +102,24 @@ const MessageContactsPage = observer(() => {
     setUserSearchSkip(nextSkip);
   };
 
+  const handleDialogSearchUsers = async () => {
+    setContactSearchSkip(0);
+    await messageStore.searchUsers(contactSearchKeyword, 0);
+  };
+
+  const handleDialogNextBatch = async () => {
+    const nextSkip = contactSearchSkip + 20;
+    await messageStore.searchUsers(contactSearchKeyword, nextSkip);
+    const availableDialogUsers = messageStore.userSearchResults.filter((item) => !item.isContact);
+    if (availableDialogUsers.length === 0) {
+      setContactSearchSkip(0);
+      await messageStore.searchUsers(contactSearchKeyword, 0);
+      return;
+    }
+
+    setContactSearchSkip(nextSkip);
+  };
+
   const resetContactDialog = () => {
     setSelectedContactUserId(null);
     setSelectedContactPreview(null);
@@ -109,11 +127,13 @@ const MessageContactsPage = observer(() => {
     setContactPinned(false);
     setEditingContactUserId(null);
     setContactSearchKeyword('');
+    setContactSearchSkip(0);
   };
 
-  const openCreateContactDialog = () => {
+  const openCreateContactDialog = async () => {
     resetContactDialog();
     setContactDialogOpen(true);
+    await messageStore.searchUsers('', 0);
   };
 
   const openCreateContactDialogForUser = (user: MessageUserSummary) => {
@@ -138,6 +158,7 @@ const MessageContactsPage = observer(() => {
       isOnline: contact.isOnline,
       lastSeenAt: contact.lastSeenAt,
       isContact: true,
+      isFriend: contact.isFriend,
       alias: contact.alias,
     });
     setContactAlias(contact.alias ?? '');
@@ -186,8 +207,25 @@ const MessageContactsPage = observer(() => {
     }
   };
 
-  const openConversation = async (targetUserId: number) => {
-    await messageStore.startDirectConversation(targetUserId);
+  const openConversation = async (contact: MessageContact) => {
+    if (contact.conversationId) {
+      await messageStore.selectConversation(contact.conversationId);
+      navigate('/messages');
+      return;
+    }
+
+    if (!contact.isFriend) {
+      return;
+    }
+
+    const started = await messageStore.startDirectConversation(contact.contactUserId);
+    if (started) {
+      navigate('/messages');
+    }
+  };
+
+  const openConversationById = async (conversationId: number) => {
+    await messageStore.selectConversation(conversationId);
     navigate('/messages');
   };
 
@@ -200,13 +238,13 @@ const MessageContactsPage = observer(() => {
       <PageHeader
         eyebrow="Contacts"
         title="联系人管理"
-        subtitle="集中搜索平台用户、添加新联系人、维护备注和置顶，并可直接发起一对一会话。"
+        subtitle="集中搜索平台用户、添加联系人、维护备注和置顶。只有双方互相添加后，才允许继续发送站内消息。"
         actions={(
           <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <Button variant="outlined" startIcon={<ChatRoundedIcon />} onClick={() => navigate('/messages')}>
               返回消息
             </Button>
-            <Button variant="contained" startIcon={<PersonAddRoundedIcon />} onClick={openCreateContactDialog}>
+            <Button variant="contained" startIcon={<PersonAddRoundedIcon />} onClick={() => void openCreateContactDialog()}>
               新增联系人
             </Button>
           </Stack>
@@ -237,7 +275,7 @@ const MessageContactsPage = observer(() => {
       >
         <SectionCard
           title="搜索平台用户"
-          description="默认展示当前不是好友的推荐用户，也可以按用户名或邮箱继续筛选。"
+          description="默认展示当前不是联系人的推荐用户。先添加联系人，待对方也把你加入联系人后，才可发消息。"
           actions={(
             <Button
               variant="outlined"
@@ -387,18 +425,6 @@ const MessageContactsPage = observer(() => {
                         <Button
                           size="small"
                           variant="contained"
-                          startIcon={<ChatRoundedIcon />}
-                          sx={{ whiteSpace: 'nowrap' }}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void openConversation(user.id);
-                          }}
-                        >
-                          发消息
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
                           startIcon={<PersonAddRoundedIcon />}
                           sx={{ whiteSpace: 'nowrap' }}
                           onClick={(event) => {
@@ -406,7 +432,7 @@ const MessageContactsPage = observer(() => {
                             openCreateContactDialogForUser(user);
                           }}
                         >
-                          添加
+                          添加联系人
                         </Button>
                       </Stack>
                     </ListItemButton>
@@ -419,7 +445,7 @@ const MessageContactsPage = observer(() => {
                 )}
                 {!messageStore.searchingUsers && availableUsers.length === 0 && (
                   <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 2 }}>
-                    {userKeyword.trim() ? '没有找到符合条件的可添加用户。' : '当前没有可添加的非好友用户。'}
+                    {userKeyword.trim() ? '没有找到符合条件的可添加用户。' : '当前没有可添加的非联系人用户。'}
                   </Typography>
                 )}
               </List>
@@ -429,7 +455,7 @@ const MessageContactsPage = observer(() => {
 
         <SectionCard
           title="我的联系人"
-          description="支持搜索、编辑、置顶、删除，并可直接进入消息页继续沟通。"
+          description="支持搜索、编辑、置顶、删除。仅互为好友时才显示发送入口，单向联系人会保持等待状态。"
           actions={(
             <Button
               variant="outlined"
@@ -499,7 +525,8 @@ const MessageContactsPage = observer(() => {
                       px: 1.25,
                       py: 1.1,
                     }}
-                    onClick={() => void openConversation(contact.contactUserId)}
+                    disabled={!contact.isFriend && !contact.conversationId}
+                    onClick={() => void openConversation(contact)}
                   >
                     <Avatar src={contact.avatarUrl ?? undefined} alt={contact.username}>
                       {contact.username.slice(0, 1).toUpperCase()}
@@ -512,6 +539,12 @@ const MessageContactsPage = observer(() => {
                             {contact.alias || contact.username}
                           </Typography>
                           {contact.isOnline && <Chip size="small" color="success" label="在线" />}
+                          <Chip
+                            size="small"
+                            color={contact.isFriend ? 'success' : 'default'}
+                            variant={contact.isFriend ? 'filled' : 'outlined'}
+                            label={contact.isFriend ? '互为好友' : '待对方同意'}
+                          />
                           {contact.isPinned && <Chip size="small" variant="outlined" label="置顶" />}
                         </Stack>
                       )}
@@ -526,22 +559,23 @@ const MessageContactsPage = observer(() => {
                         </Stack>
                       )}
                     />
-                    <Stack spacing={0.8} sx={{ minWidth: { xs: 96, sm: 118 }, flexShrink: 0 }}>
-                      <Button
-                        size="small"
-                        variant="contained"
-                        startIcon={<ChatRoundedIcon />}
-                        sx={{ whiteSpace: 'nowrap' }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void openConversation(contact.contactUserId);
-                        }}
-                      >
-                        发消息
-                      </Button>
-                      <Button
-                        size="small"
-                        variant="outlined"
+                      <Stack spacing={0.8} sx={{ minWidth: { xs: 96, sm: 118 }, flexShrink: 0 }}>
+                        <Button
+                          size="small"
+                          variant={contact.isFriend ? 'contained' : 'outlined'}
+                          startIcon={<ChatRoundedIcon />}
+                          disabled={!contact.isFriend && !contact.conversationId}
+                          sx={{ whiteSpace: 'nowrap' }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openConversation(contact);
+                          }}
+                        >
+                          {contact.isFriend ? '发消息' : (contact.conversationId ? '查看会话' : '待同意')}
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
                         sx={{ whiteSpace: 'nowrap' }}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -626,9 +660,9 @@ const MessageContactsPage = observer(() => {
                       variant="contained"
                       startIcon={<ChatRoundedIcon />}
                       sx={{ whiteSpace: 'nowrap' }}
-                      onClick={() => void openConversation(conversation.peer.id)}
+                      onClick={() => void openConversationById(conversation.conversationId)}
                     >
-                      继续聊天
+                      {conversation.peer.isFriend ? '继续聊天' : '查看会话'}
                     </Button>
                   </Stack>
                 </Stack>
@@ -643,7 +677,8 @@ const MessageContactsPage = observer(() => {
         editingContactUserId={editingContactUserId}
         searchKeyword={contactSearchKeyword}
         onSearchKeywordChange={setContactSearchKeyword}
-        onSearchUsers={() => void messageStore.searchUsers(contactSearchKeyword)}
+        onSearchUsers={() => void handleDialogSearchUsers()}
+        onNextBatch={() => void handleDialogNextBatch()}
         searchingUsers={messageStore.searchingUsers}
         userSearchResults={messageStore.userSearchResults}
         selectedContactUserId={selectedContactUserId}

@@ -293,9 +293,9 @@ public class AdminController : ControllerBase
             return guard;
         }
 
-        var result = await _adminService.ExportDatabaseSnapshotAsync(cancellationToken);
+        var result = await _adminService.ExportDatabaseBackupAsync(cancellationToken);
         Response.Headers.Append("X-Temp-File-Path", result.TempFilePath);
-        return File(result.Bytes, result.ContentType, result.FileName);
+        return PhysicalFile(result.TempFilePath, result.ContentType, result.FileName);
     }
 
     private IActionResult? EnsureAdmin(int? userId = null)

@@ -220,7 +220,7 @@ export class AdminService {
     });
 
     if (!response.ok) {
-      let message = '导出数据库快照失败';
+      let message = '导出数据库备份失败';
       try {
         const json: ApiResponse<null> = await response.json();
         message = json.message || message;
@@ -233,7 +233,7 @@ export class AdminService {
 
     const contentDisposition = response.headers.get('Content-Disposition') || '';
     const fileNameMatch = /filename\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/i.exec(contentDisposition);
-    const fileName = decodeURIComponent(fileNameMatch?.[1] || fileNameMatch?.[2] || 'database-export.json');
+    const fileName = decodeURIComponent(fileNameMatch?.[1] || fileNameMatch?.[2] || 'database-backup.dump');
 
     return {
       blob: await response.blob(),

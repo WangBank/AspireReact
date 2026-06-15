@@ -27,6 +27,7 @@ interface MessageContactEditorDialogProps {
   searchKeyword: string;
   onSearchKeywordChange: (value: string) => void;
   onSearchUsers: () => void | Promise<void>;
+  onNextBatch?: () => void | Promise<void>;
   searchingUsers: boolean;
   userSearchResults: MessageUserSummary[];
   selectedContactUserId: number | null;
@@ -47,6 +48,7 @@ const MessageContactEditorDialog = ({
   searchKeyword,
   onSearchKeywordChange,
   onSearchUsers,
+  onNextBatch,
   searchingUsers,
   userSearchResults,
   selectedContactUserId,
@@ -62,6 +64,11 @@ const MessageContactEditorDialog = ({
 }: MessageContactEditorDialogProps) => {
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
+  const trimmedSearchKeyword = searchKeyword.trim();
+  const isRecommendationMode = !editingContactUserId && trimmedSearchKeyword.length === 0;
+  const displayUsers = isRecommendationMode
+    ? userSearchResults.filter((user) => !user.isContact)
+    : userSearchResults;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth fullScreen={fullScreen}>
@@ -93,9 +100,34 @@ const MessageContactEditorDialog = ({
                 </Button>
               </Stack>
 
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1}
+                sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between' }}
+              >
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                  <Chip
+                    size="small"
+                    color={isRecommendationMode ? 'primary' : 'default'}
+                    label={isRecommendationMode ? '推荐联系人' : '搜索结果'}
+                  />
+                  <Chip size="small" variant="outlined" label={`${displayUsers.length} 人`} />
+                </Stack>
+                {onNextBatch && (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => onNextBatch()}
+                    disabled={searchingUsers}
+                  >
+                    换一批
+                  </Button>
+                )}
+              </Stack>
+
               <Paper variant="outlined" sx={{ borderRadius: 3, maxHeight: 280, overflowY: 'auto' }}>
                 <List disablePadding>
-                  {userSearchResults.map((user) => (
+                  {displayUsers.map((user) => (
                     <ListItemButton
                       key={user.id}
                       selected={selectedContactUserId === user.id}
@@ -112,9 +144,9 @@ const MessageContactEditorDialog = ({
                       {user.isContact && <Chip size="small" label="已是联系人" />}
                     </ListItemButton>
                   ))}
-                  {userSearchResults.length === 0 && (
+                  {displayUsers.length === 0 && (
                     <Typography variant="body2" color="text.secondary" sx={{ px: 2, py: 2 }}>
-                      先搜索一个用户。
+                      {isRecommendationMode ? '当前没有可推荐的联系人，点击“换一批”试试。' : '没有匹配的用户，换个关键词再试。'}
                     </Typography>
                   )}
                 </List>

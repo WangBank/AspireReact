@@ -37,6 +37,12 @@ public class LoginRequest
 
     [Required(ErrorMessage = "密码不能为空")]
     public string Password { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "验证码ID不能为空")]
+    public string CaptchaId { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "验证码不能为空")]
+    public string CaptchaCode { get; set; } = string.Empty;
 }
 
 public class QuickLoginRequest

@@ -105,6 +105,12 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
     {
+        var captchaValid = await _captchaService.ValidateCaptchaAsync(request.CaptchaId, request.CaptchaCode);
+        if (!captchaValid)
+        {
+            return new AuthResponse { Success = false, Message = "验证码错误或已过期" };
+        }
+
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Username == request.Username);
         if (user == null)
         {

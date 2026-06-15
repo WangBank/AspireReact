@@ -17,6 +17,7 @@ export interface MessageUserSummary {
   isOnline: boolean;
   lastSeenAt: string | null;
   isContact: boolean;
+  isFriend: boolean;
   alias: string | null;
 }
 
@@ -27,6 +28,7 @@ export interface MessageContact {
   isOnline: boolean;
   lastSeenAt: string | null;
   alias: string | null;
+  isFriend: boolean;
   isPinned: boolean;
   createdAt: string;
   conversationId: number | null;

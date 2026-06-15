@@ -1,9 +1,11 @@
-using System.Text;
-using System.Text.Json;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
 using Lies.Server.Data;
 using Lies.Server.DTOs;
 using Lies.Server.Entities;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Lies.Server.Services;
 
@@ -39,24 +41,27 @@ public interface IAdminService
         IReadOnlyCollection<int> userIds,
         string newPassword,
         CancellationToken cancellationToken = default);
-    Task<DatabaseExportResult> ExportDatabaseSnapshotAsync(CancellationToken cancellationToken = default);
+    Task<DatabaseExportResult> ExportDatabaseBackupAsync(CancellationToken cancellationToken = default);
 }
 
 public class DatabaseExportResult
 {
     public string FileName { get; set; } = string.Empty;
-    public string ContentType { get; set; } = "application/json";
+    public string ContentType { get; set; } = "application/octet-stream";
     public string TempFilePath { get; set; } = string.Empty;
-    public byte[] Bytes { get; set; } = [];
 }
 
 public class AdminService : IAdminService
 {
     private readonly AppDbContext _db;
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<AdminService> _logger;
 
-    public AdminService(AppDbContext db)
+    public AdminService(AppDbContext db, IConfiguration configuration, ILogger<AdminService> logger)
     {
         _db = db;
+        _configuration = configuration;
+        _logger = logger;
     }
 
     public async Task<AdminSummaryResponse> GetSummaryAsync(CancellationToken cancellationToken = default)
@@ -348,45 +353,196 @@ public class AdminService : IAdminService
         _db.QuickLoginTokens.RemoveRange(quickLoginTokens);
     }
 
-    public async Task<DatabaseExportResult> ExportDatabaseSnapshotAsync(CancellationToken cancellationToken = default)
+    public async Task<DatabaseExportResult> ExportDatabaseBackupAsync(CancellationToken cancellationToken = default)
     {
-        var snapshot = new
+        var connectionString = _db.Database.GetConnectionString();
+        if (string.IsNullOrWhiteSpace(connectionString))
         {
-            exportedAt = DateTime.UtcNow,
-            databaseType = "PostgreSQL",
-            tables = new
-            {
-                users = await _db.Users.AsNoTracking().OrderBy(user => user.Id).ToListAsync(cancellationToken),
-                accountDailies = await _db.AccountDailies.AsNoTracking().OrderBy(item => item.Date).ToListAsync(cancellationToken),
-                bankFlows = await _db.BankFlows.AsNoTracking().OrderBy(item => item.Date).ThenBy(item => item.Id).ToListAsync(cancellationToken),
-                stockTrades = await _db.StockTrades.AsNoTracking().OrderBy(item => item.TradeDate).ThenBy(item => item.Id).ToListAsync(cancellationToken),
-                tradeNotes = await _db.TradeNotes.AsNoTracking().OrderBy(item => item.Date).ThenBy(item => item.Id).ToListAsync(cancellationToken),
-                userContacts = await _db.UserContacts.AsNoTracking().OrderBy(item => item.OwnerUserId).ThenBy(item => item.ContactUserId).ToListAsync(cancellationToken),
-                messageConversations = await _db.MessageConversations.AsNoTracking().OrderBy(item => item.Id).ToListAsync(cancellationToken),
-                messageConversationParticipants = await _db.MessageConversationParticipants.AsNoTracking().OrderBy(item => item.ConversationId).ThenBy(item => item.UserId).ToListAsync(cancellationToken),
-                userMessages = await _db.UserMessages.AsNoTracking().OrderBy(item => item.ConversationId).ThenBy(item => item.Id).ToListAsync(cancellationToken),
-                portfolioImportAudits = await _db.PortfolioImportAudits.AsNoTracking().OrderBy(item => item.CreatedAt).ToListAsync(cancellationToken),
-                stockBasics = await _db.StockBasics.AsNoTracking().OrderBy(item => item.StockCode).ToListAsync(cancellationToken),
-                systemSettings = await _db.SystemSettings.AsNoTracking().OrderBy(item => item.SettingKey).ToListAsync(cancellationToken)
-            }
+            throw new InvalidOperationException("PostgreSQL connection string is not configured.");
+        }
+
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        if (string.IsNullOrWhiteSpace(builder.Host)
+            || string.IsNullOrWhiteSpace(builder.Database)
+            || string.IsNullOrWhiteSpace(builder.Username))
+        {
+            throw new InvalidOperationException("PostgreSQL connection string is incomplete.");
+        }
+
+        var fileName = $"lies-db-backup-{DateTime.Now:yyyyMMdd-HHmmss}.dump";
+        var tempFilePath = Path.Combine(Path.GetTempPath(), fileName);
+        var pgDumpPath = ResolvePgDumpPath();
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = pgDumpPath,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
         };
 
-        var json = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions
+        foreach (var argument in BuildPgDumpArguments(builder, tempFilePath))
         {
-            WriteIndented = true
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        ApplyPgEnvironment(startInfo, builder);
+
+        using var process = new Process
+        {
+            StartInfo = startInfo,
+            EnableRaisingEvents = true
+        };
+
+        try
+        {
+            if (!process.Start())
+            {
+                throw new InvalidOperationException("Failed to start pg_dump.");
+            }
+        }
+        catch (Win32Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"未找到 pg_dump，可通过配置 DatabaseBackup:PgDumpPath 指定路径。当前尝试路径: {pgDumpPath}",
+                ex);
+        }
+
+        using var registration = cancellationToken.Register(() =>
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch
+            {
+                // Ignore kill failures during cancellation.
+            }
         });
 
-        var fileName = $"lies-db-export-{DateTime.Now:yyyyMMdd-HHmmss}.json";
-        var tempFilePath = Path.Combine(Path.GetTempPath(), fileName);
-        var bytes = Encoding.UTF8.GetBytes(json);
-        await File.WriteAllBytesAsync(tempFilePath, bytes, cancellationToken);
+        var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+
+        await process.WaitForExitAsync(cancellationToken);
+
+        var standardOutput = await standardOutputTask;
+        var standardError = await standardErrorTask;
+
+        if (process.ExitCode != 0)
+        {
+            TryDeleteFile(tempFilePath);
+            var errorMessage = string.IsNullOrWhiteSpace(standardError)
+                ? string.IsNullOrWhiteSpace(standardOutput)
+                    ? "pg_dump exited with a non-zero status."
+                    : standardOutput.Trim()
+                : standardError.Trim();
+
+            _logger.LogError(
+                "pg_dump failed with exit code {ExitCode}. Output: {Output}",
+                process.ExitCode,
+                errorMessage);
+
+            throw new InvalidOperationException($"导出 PostgreSQL dump 失败: {errorMessage}");
+        }
+
+        var fileInfo = new FileInfo(tempFilePath);
+        if (!fileInfo.Exists || fileInfo.Length <= 0)
+        {
+            TryDeleteFile(tempFilePath);
+            throw new InvalidOperationException("导出的 dump 文件为空。");
+        }
 
         return new DatabaseExportResult
         {
             FileName = fileName,
-            TempFilePath = tempFilePath,
-            Bytes = bytes
+            ContentType = "application/octet-stream",
+            TempFilePath = tempFilePath
         };
+    }
+
+    private string ResolvePgDumpPath()
+    {
+        var configuredPath = _configuration["DatabaseBackup:PgDumpPath"];
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            return configuredPath;
+        }
+
+        return "pg_dump";
+    }
+
+    private static List<string> BuildPgDumpArguments(NpgsqlConnectionStringBuilder builder, string outputPath)
+    {
+        return
+        [
+            "--format=custom",
+            "--compress=6",
+            "--no-owner",
+            "--no-privileges",
+            $"--file={outputPath}",
+            $"--host={builder.Host}",
+            $"--port={builder.Port.ToString(CultureInfo.InvariantCulture)}",
+            $"--username={builder.Username}",
+            $"--dbname={builder.Database}"
+        ];
+    }
+
+    private static void ApplyPgEnvironment(ProcessStartInfo startInfo, NpgsqlConnectionStringBuilder builder)
+    {
+        if (!string.IsNullOrWhiteSpace(builder.Password))
+        {
+            startInfo.Environment["PGPASSWORD"] = builder.Password;
+        }
+
+        startInfo.Environment["PGSSLMODE"] = MapSslMode(builder);
+
+        if (!string.IsNullOrWhiteSpace(builder.RootCertificate))
+        {
+            startInfo.Environment["PGSSLROOTCERT"] = builder.RootCertificate;
+        }
+
+        if (!string.IsNullOrWhiteSpace(builder.SslCertificate))
+        {
+            startInfo.Environment["PGSSLCERT"] = builder.SslCertificate;
+        }
+
+        if (!string.IsNullOrWhiteSpace(builder.SslKey))
+        {
+            startInfo.Environment["PGSSLKEY"] = builder.SslKey;
+        }
+    }
+
+    private static string MapSslMode(NpgsqlConnectionStringBuilder builder)
+    {
+        return builder.SslMode switch
+        {
+            SslMode.Disable => "disable",
+            SslMode.Allow => "allow",
+            SslMode.Prefer => "prefer",
+            SslMode.Require => "require",
+            SslMode.VerifyCA => "verify-ca",
+            SslMode.VerifyFull => "verify-full",
+            _ => "prefer"
+        };
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Best effort cleanup only.
+        }
     }
 
     private async Task<Dictionary<int, AdminUserPerformanceResponse>> BuildUserPerformanceLookupAsync(

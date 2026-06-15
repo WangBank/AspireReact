@@ -34,6 +34,8 @@ RUN set -eux; \
     cp -a /root/.nuget/packages/aspire.dashboard.sdk.linux-* /app/nuget-packages/; \
     cp -a /root/.nuget/packages/aspire.hosting.orchestration.linux-* /app/nuget-packages/
 
+FROM postgres:latest AS postgres-tools
+
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
@@ -47,7 +49,11 @@ RUN set -eux; \
         && apt-get install -y --no-install-recommends -o Acquire::Retries=5 -o Acquire::http::Timeout=30 \
           fontconfig \
           libfontconfig1 \
-          fonts-noto-cjk; then \
+          fonts-noto-cjk \
+          libpq5 \
+          libldap2 \
+          libsasl2-2 \
+          libgssapi-krb5-2; then \
         installed=1; \
         break; \
       fi; \
@@ -60,6 +66,7 @@ RUN set -eux; \
 
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /src/frontend/dist ./wwwroot
+COPY --from=postgres-tools /usr/lib/postgresql/18/bin/pg_dump /usr/local/bin/pg_dump
 
 RUN mkdir -p /app/Logs /app/RuntimeData/RapidOcr
 
