@@ -57,6 +57,8 @@ public class User
     public virtual ICollection<QuickLoginToken>? QuickLoginTokens { get; set; }
     public virtual ICollection<UserContact>? OwnedContacts { get; set; }
     public virtual ICollection<UserContact>? ContactOfUsers { get; set; }
+    public virtual ICollection<UserFriendRequest>? SentFriendRequests { get; set; }
+    public virtual ICollection<UserFriendRequest>? ReceivedFriendRequests { get; set; }
     public virtual ICollection<MessageConversationParticipant>? MessageConversationParticipants { get; set; }
     public virtual ICollection<UserMessage>? SentMessages { get; set; }
     public virtual ICollection<SystemSetting>? UpdatedSystemSettings { get; set; }

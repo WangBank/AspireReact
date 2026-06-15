@@ -6,6 +6,7 @@ import {
   type MessageConversationDetail,
   type MessageConversationSummary,
   type GlobalMessageSearchResult,
+  type MessageFriendRequest,
   type MessageItem,
   type MessageSearchResult,
   type MessageUserSummary,
@@ -42,6 +43,7 @@ const buildConversationPreview = (message: MessageItem): string => {
 export class MessageStore {
   conversations: MessageConversationSummary[] = [];
   contacts: MessageContact[] = [];
+  friendRequests: MessageFriendRequest[] = [];
   currentConversation: MessageConversationDetail | null = null;
   selectedConversationId: number | null = null;
   userSearchResults: MessageUserSummary[] = [];
@@ -50,6 +52,7 @@ export class MessageStore {
   loading = false;
   conversationsLoading = false;
   contactsLoading = false;
+  friendRequestsLoading = false;
   messagesLoading = false;
   searchingUsers = false;
   searchingMessages = false;
@@ -70,6 +73,14 @@ export class MessageStore {
 
   get totalUnreadCount() {
     return this.conversations.reduce((total, item) => total + item.unreadCount, 0);
+  }
+
+  get pendingIncomingFriendRequestCount() {
+    return this.friendRequests.filter((item) => item.direction === 'incoming' && item.status === 'pending').length;
+  }
+
+  get pendingOutgoingFriendRequestCount() {
+    return this.friendRequests.filter((item) => item.direction === 'outgoing' && item.status === 'pending').length;
   }
 
   bootstrap = async () => {
@@ -102,6 +113,7 @@ export class MessageStore {
         this.bootstrap(),
         this.loadConversations(),
         this.loadContacts(),
+        this.loadFriendRequests(),
       ]);
       if (!this.selectedConversationId && this.conversations.length > 0) {
         await this.selectConversation(this.conversations[0].conversationId);
@@ -129,6 +141,7 @@ export class MessageStore {
     runInAction(() => {
       this.conversations = [];
       this.contacts = [];
+      this.friendRequests = [];
       this.currentConversation = null;
       this.selectedConversationId = null;
       this.userSearchResults = [];
@@ -137,6 +150,7 @@ export class MessageStore {
       this.loading = false;
       this.conversationsLoading = false;
       this.contactsLoading = false;
+      this.friendRequestsLoading = false;
       this.messagesLoading = false;
       this.searchingUsers = false;
       this.searchingMessages = false;
@@ -180,6 +194,22 @@ export class MessageStore {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '加载联系人失败';
         this.contactsLoading = false;
+      });
+    }
+  };
+
+  loadFriendRequests = async () => {
+    this.friendRequestsLoading = true;
+    try {
+      const data = await messageService.getFriendRequests();
+      runInAction(() => {
+        this.friendRequests = data;
+        this.friendRequestsLoading = false;
+      });
+    } catch (err) {
+      runInAction(() => {
+        this.error = err instanceof Error ? err.message : '加载好友通知失败';
+        this.friendRequestsLoading = false;
       });
     }
   };
@@ -317,31 +347,88 @@ export class MessageStore {
     this.userSearchResults = [];
   };
 
+  createFriendRequest = async (targetUserId: number, requestMessage?: string, alias?: string) => {
+    try {
+      await messageService.createFriendRequest({ targetUserId, requestMessage, alias });
+      await Promise.all([
+        this.loadFriendRequests(),
+        this.refreshUserSearchResults(),
+        this.loadContacts(),
+        this.loadConversations(),
+      ]);
+      await this.refreshSelectedConversation();
+    } catch (err) {
+      runInAction(() => {
+        this.error = err instanceof Error ? err.message : '发送好友申请失败';
+      });
+      throw err;
+    }
+  };
+
+  respondFriendRequest = async (requestId: number, action: 'accept' | 'reject') => {
+    try {
+      await messageService.respondFriendRequest(requestId, { action });
+      await Promise.all([
+        this.loadFriendRequests(),
+        this.refreshUserSearchResults(),
+        this.loadContacts(),
+        this.loadConversations(),
+      ]);
+      await this.refreshSelectedConversation();
+    } catch (err) {
+      runInAction(() => {
+        this.error = err instanceof Error ? err.message : '处理好友申请失败';
+      });
+      throw err;
+    }
+  };
+
   upsertContact = async (contactUserId: number, alias?: string, isPinned = false) => {
-    await messageService.upsertContact({ contactUserId, alias, isPinned });
-    await Promise.all([this.loadContacts(), this.loadConversations()]);
-    await this.refreshSelectedConversation();
-    await this.refreshUserSearchResults();
+    try {
+      await messageService.upsertContact({ contactUserId, alias, isPinned });
+      await Promise.all([this.loadContacts(), this.loadConversations(), this.loadFriendRequests()]);
+      await this.refreshSelectedConversation();
+      await this.refreshUserSearchResults();
+    } catch (err) {
+      runInAction(() => {
+        this.error = err instanceof Error ? err.message : '保存联系人失败';
+      });
+      throw err;
+    }
   };
 
   updateContact = async (contactUserId: number, alias?: string, isPinned = false) => {
-    await messageService.updateContact(contactUserId, { alias, isPinned });
-    await Promise.all([this.loadContacts(), this.loadConversations()]);
-    await this.refreshSelectedConversation();
-    await this.refreshUserSearchResults();
+    try {
+      await messageService.updateContact(contactUserId, { alias, isPinned });
+      await Promise.all([this.loadContacts(), this.loadConversations(), this.loadFriendRequests()]);
+      await this.refreshSelectedConversation();
+      await this.refreshUserSearchResults();
+    } catch (err) {
+      runInAction(() => {
+        this.error = err instanceof Error ? err.message : '更新联系人失败';
+      });
+      throw err;
+    }
   };
 
   deleteContact = async (contactUserId: number) => {
-    await messageService.deleteContact(contactUserId);
-    await Promise.all([this.loadContacts(), this.loadConversations()]);
-    await this.refreshSelectedConversation();
-    await this.refreshUserSearchResults();
+    try {
+      await messageService.deleteContact(contactUserId);
+      await Promise.all([this.loadContacts(), this.loadConversations(), this.loadFriendRequests()]);
+      await this.refreshSelectedConversation();
+      await this.refreshUserSearchResults();
+    } catch (err) {
+      runInAction(() => {
+        this.error = err instanceof Error ? err.message : '删除联系人失败';
+      });
+      throw err;
+    }
   };
 
   startDirectConversation = async (targetUserId: number) => {
     try {
       const summary = await messageService.createOrGetDirectConversation(targetUserId);
-      await Promise.all([this.loadConversations(), this.loadContacts()]);
+      await Promise.all([this.loadConversations(), this.loadContacts(), this.loadFriendRequests()]);
       await this.selectConversation(summary.conversationId);
       return true;
     } catch (err) {
@@ -539,6 +626,9 @@ export class MessageStore {
         this.realtimeStatus = 'connected';
       });
       void this.loadConversations();
+      void this.loadContacts();
+      void this.loadFriendRequests();
+      void this.refreshUserSearchResults();
       if (this.selectedConversationId) {
         void this.selectConversation(this.selectedConversationId);
       }
@@ -589,6 +679,22 @@ export class MessageStore {
       runInAction(() => {
         this.applyPresenceChange(event.userId, event.isOnline, event.lastSeenAt);
       });
+    });
+
+    connection.on('FriendRequestsChanged', () => {
+      void this.loadFriendRequests();
+      void this.loadContacts();
+      void this.loadConversations();
+      void this.refreshUserSearchResults();
+      void this.refreshSelectedConversation();
+    });
+
+    connection.on('ContactsChanged', () => {
+      void this.loadContacts();
+      void this.loadConversations();
+      void this.loadFriendRequests();
+      void this.refreshUserSearchResults();
+      void this.refreshSelectedConversation();
     });
 
     await connection.start();

@@ -16,6 +16,7 @@ public class AppDbContext : DbContext
     public DbSet<MessageConversation> MessageConversations { get; set; }
     public DbSet<MessageConversationParticipant> MessageConversationParticipants { get; set; }
     public DbSet<UserContact> UserContacts { get; set; }
+    public DbSet<UserFriendRequest> UserFriendRequests { get; set; }
     public DbSet<UserMessage> UserMessages { get; set; }
     public DbSet<StockBasic> StockBasics { get; set; }
     public DbSet<User> Users { get; set; }
@@ -59,6 +60,8 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<MessageConversationParticipant>().HasIndex(p => new { p.UserId, p.IsPinned });
         modelBuilder.Entity<UserContact>().HasIndex(c => new { c.OwnerUserId, c.ContactUserId }).IsUnique();
         modelBuilder.Entity<UserContact>().HasIndex(c => new { c.OwnerUserId, c.IsPinned });
+        modelBuilder.Entity<UserFriendRequest>().HasIndex(r => new { r.RequesterUserId, r.TargetUserId }).IsUnique();
+        modelBuilder.Entity<UserFriendRequest>().HasIndex(r => new { r.TargetUserId, r.Status, r.CreatedAt });
         modelBuilder.Entity<UserMessage>().HasIndex(m => new { m.ConversationId, m.CreatedAt });
         modelBuilder.Entity<UserMessage>().HasIndex(m => new { m.SenderUserId, m.CreatedAt });
         modelBuilder.Entity<SystemSetting>().HasIndex(s => s.SettingKey).IsUnique();
@@ -156,6 +159,18 @@ public class AppDbContext : DbContext
             .HasOne(c => c.ContactUser)
             .WithMany(u => u.ContactOfUsers)
             .HasForeignKey(c => c.ContactUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserFriendRequest>()
+            .HasOne(r => r.RequesterUser)
+            .WithMany(u => u.SentFriendRequests)
+            .HasForeignKey(r => r.RequesterUserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<UserFriendRequest>()
+            .HasOne(r => r.TargetUser)
+            .WithMany(u => u.ReceivedFriendRequests)
+            .HasForeignKey(r => r.TargetUserId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<SystemSetting>()

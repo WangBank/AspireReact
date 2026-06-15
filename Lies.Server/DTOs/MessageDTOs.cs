@@ -12,6 +12,9 @@ public class MessageUserSummaryDto
     public bool IsContact { get; set; }
     public bool IsFriend { get; set; }
     public string? Alias { get; set; }
+    public int? FriendRequestId { get; set; }
+    public string? FriendRequestStatus { get; set; }
+    public string? FriendRequestDirection { get; set; }
 }
 
 public class MessageContactDto
@@ -100,6 +103,21 @@ public class GlobalMessageSearchResultDto
     public List<GlobalMessageSearchHitDto> Hits { get; set; } = [];
 }
 
+public class MessageFriendRequestDto
+{
+    public int Id { get; set; }
+    public MessageUserSummaryDto Peer { get; set; } = new();
+    public string Direction { get; set; } = "incoming";
+    public string Status { get; set; } = "pending";
+    public string? RequestMessage { get; set; }
+    public string? RequesterAlias { get; set; }
+    public string Source { get; set; } = "站内搜索";
+    public DateTime CreatedAt { get; set; }
+    public DateTime? RespondedAt { get; set; }
+    public bool CanAccept { get; set; }
+    public bool CanReject { get; set; }
+}
+
 public class CreateDirectConversationRequest
 {
     [Required(ErrorMessage = "目标用户不能为空")]
@@ -117,12 +135,31 @@ public class UpsertContactRequest
     public bool IsPinned { get; set; }
 }
 
+public class CreateFriendRequestRequest
+{
+    [Required(ErrorMessage = "目标用户不能为空")]
+    public int TargetUserId { get; set; }
+
+    [MaxLength(200, ErrorMessage = "验证信息最多 200 个字符")]
+    public string? RequestMessage { get; set; }
+
+    [MaxLength(100, ErrorMessage = "备注名最多 100 个字符")]
+    public string? Alias { get; set; }
+}
+
 public class UpdateContactRequest
 {
     [MaxLength(100, ErrorMessage = "备注名最多 100 个字符")]
     public string? Alias { get; set; }
 
     public bool IsPinned { get; set; }
+}
+
+public class RespondFriendRequestRequest
+{
+    [Required(ErrorMessage = "处理动作不能为空")]
+    [RegularExpression("accept|reject", ErrorMessage = "处理动作仅支持 accept 或 reject")]
+    public string Action { get; set; } = "accept";
 }
 
 public class MarkConversationReadRequest

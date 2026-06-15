@@ -19,6 +19,9 @@ export interface MessageUserSummary {
   isContact: boolean;
   isFriend: boolean;
   alias: string | null;
+  friendRequestId: number | null;
+  friendRequestStatus: MessageFriendRequestStatus | null;
+  friendRequestDirection: MessageFriendRequestDirection | null;
 }
 
 export interface MessageContact {
@@ -32,6 +35,23 @@ export interface MessageContact {
   isPinned: boolean;
   createdAt: string;
   conversationId: number | null;
+}
+
+export type MessageFriendRequestStatus = 'pending' | 'accepted' | 'rejected';
+export type MessageFriendRequestDirection = 'incoming' | 'outgoing';
+
+export interface MessageFriendRequest {
+  id: number;
+  peer: MessageUserSummary;
+  direction: MessageFriendRequestDirection;
+  status: MessageFriendRequestStatus;
+  requestMessage: string | null;
+  requesterAlias: string | null;
+  source: string;
+  createdAt: string;
+  respondedAt: string | null;
+  canAccept: boolean;
+  canReject: boolean;
 }
 
 export interface MessageConversationSummary {
@@ -103,6 +123,16 @@ export interface UpsertContactPayload {
   contactUserId: number;
   alias?: string;
   isPinned?: boolean;
+}
+
+export interface CreateFriendRequestPayload {
+  targetUserId: number;
+  requestMessage?: string;
+  alias?: string;
+}
+
+export interface RespondFriendRequestPayload {
+  action: 'accept' | 'reject';
 }
 
 export interface UpdateContactPayload {
@@ -239,6 +269,41 @@ export class MessageService {
     });
 
     const json = await parseJson<ApiResponse<MessageContact[]>>(response);
+    return json.data;
+  }
+
+  async getFriendRequests(): Promise<MessageFriendRequest[]> {
+    const response = await fetch(`${API_BASE}/friend-requests`, {
+      headers: buildAuthHeaders(),
+    });
+
+    const json = await parseJson<ApiResponse<MessageFriendRequest[]>>(response);
+    return json.data;
+  }
+
+  async createFriendRequest(payload: CreateFriendRequestPayload): Promise<MessageFriendRequest> {
+    const response = await fetch(`${API_BASE}/friend-requests`, {
+      method: 'POST',
+      headers: buildAuthHeaders(true),
+      body: JSON.stringify({
+        targetUserId: payload.targetUserId,
+        requestMessage: payload.requestMessage?.trim() || null,
+        alias: payload.alias?.trim() || null,
+      }),
+    });
+
+    const json = await parseJson<ApiResponse<MessageFriendRequest>>(response);
+    return json.data;
+  }
+
+  async respondFriendRequest(requestId: number, payload: RespondFriendRequestPayload): Promise<MessageFriendRequest> {
+    const response = await fetch(`${API_BASE}/friend-requests/${requestId}/respond`, {
+      method: 'POST',
+      headers: buildAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
+
+    const json = await parseJson<ApiResponse<MessageFriendRequest>>(response);
     return json.data;
   }
 

@@ -6,6 +6,7 @@ import {
   Badge,
   Box,
   Button,
+  Chip,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -28,6 +29,7 @@ import CircleRoundedIcon from '@mui/icons-material/CircleRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import GroupRoundedIcon from '@mui/icons-material/GroupRounded';
+import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import ManageSearchRoundedIcon from '@mui/icons-material/ManageSearchRounded';
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded';
 import PushPinRoundedIcon from '@mui/icons-material/PushPinRounded';
@@ -107,6 +109,7 @@ const MessagePage = observer(() => {
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [contactsPanelOpen, setContactsPanelOpen] = useState(false);
   const [contactSearchKeyword, setContactSearchKeyword] = useState('');
+  const [friendRequestMessage, setFriendRequestMessage] = useState('');
   const [contactAlias, setContactAlias] = useState('');
   const [selectedContactUserId, setSelectedContactUserId] = useState<number | null>(null);
   const [selectedContactPreview, setSelectedContactPreview] = useState<MessageUserSummary | null>(null);
@@ -206,6 +209,16 @@ const MessagePage = observer(() => {
   );
   const currentCanSend = currentSummary?.peer.isFriend ?? false;
   const currentPeerLabel = currentSummary?.peer.alias || currentSummary?.peer.username || '';
+  const defaultFriendRequestMessage = useMemo(
+    () => authStore.username ? `我是${authStore.username}` : '你好，我想加你为好友',
+    [authStore.username],
+  );
+  const selectedIncomingFriendRequestId = selectedContactPreview?.friendRequestStatus === 'pending'
+    && selectedContactPreview.friendRequestDirection === 'incoming'
+    ? selectedContactPreview.friendRequestId
+    : null;
+  const selectedOutgoingFriendRequestPending = selectedContactPreview?.friendRequestStatus === 'pending'
+    && selectedContactPreview.friendRequestDirection === 'outgoing';
   const compactRealtimeLabel = messageStore.realtimeStatus === 'connected'
     ? '实时同步'
     : messageStore.realtimeStatus === 'reconnecting'
@@ -244,6 +257,7 @@ const MessagePage = observer(() => {
   const resetContactDialog = () => {
     setSelectedContactUserId(null);
     setSelectedContactPreview(null);
+    setFriendRequestMessage(defaultFriendRequestMessage);
     setContactAlias('');
     setContactPinned(false);
     setEditingContactUserId(null);
@@ -275,7 +289,7 @@ const MessagePage = observer(() => {
     resetContactDialog();
     setSelectedContactUserId(user.id);
     setSelectedContactPreview(user);
-    setContactAlias(user.alias ?? '');
+    setContactAlias(user.alias ?? user.username);
     setContactDialogOpen(true);
   };
 
@@ -288,8 +302,12 @@ const MessagePage = observer(() => {
     try {
       if (editingContactUserId) {
         await messageStore.updateContact(selectedContactUserId, contactAlias, contactPinned);
+      } else if (selectedIncomingFriendRequestId) {
+        await messageStore.respondFriendRequest(selectedIncomingFriendRequestId, 'accept');
+      } else if (!selectedOutgoingFriendRequestPending) {
+        await messageStore.createFriendRequest(selectedContactUserId, friendRequestMessage, contactAlias);
       } else {
-        await messageStore.upsertContact(selectedContactUserId, contactAlias, contactPinned);
+        return;
       }
 
       setContactDialogOpen(false);
@@ -444,7 +462,7 @@ const MessagePage = observer(() => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {messageStore.error && (
+      {messageStore.error && !currentSummary && (
         <Alert severity="error" onClose={messageStore.clearError}>
           {messageStore.error}
         </Alert>
@@ -495,17 +513,23 @@ const MessagePage = observer(() => {
             </Badge>
 
             <Tooltip title="联系人">
-              <IconButton
-                onClick={() => void openContactsPanel()}
-                sx={{
-                  width: 38,
-                  height: 38,
-                  color: alpha(theme.palette.text.primary, 0.84),
-                  backgroundColor: alpha(theme.palette.common.white, 0.5),
-                }}
+              <Badge
+                color="error"
+                badgeContent={messageStore.pendingIncomingFriendRequestCount > 99 ? '99+' : messageStore.pendingIncomingFriendRequestCount}
+                invisible={messageStore.pendingIncomingFriendRequestCount === 0}
               >
-                <GroupRoundedIcon />
-              </IconButton>
+                <IconButton
+                  onClick={() => void openContactsPanel()}
+                  sx={{
+                    width: 38,
+                    height: 38,
+                    color: alpha(theme.palette.text.primary, 0.84),
+                    backgroundColor: alpha(theme.palette.common.white, 0.5),
+                  }}
+                >
+                  <GroupRoundedIcon />
+                </IconButton>
+              </Badge>
             </Tooltip>
 
             <Tooltip title="全局搜索">
@@ -848,6 +872,15 @@ const MessagePage = observer(() => {
                           {currentSummary.peer.isOnline && (
                             <CircleRoundedIcon sx={{ fontSize: 13, color: theme.palette.success.main }} />
                           )}
+                          {!currentCanSend && (
+                            <Chip
+                              size="small"
+                              color="warning"
+                              icon={<LockRoundedIcon />}
+                              label="未互为好友"
+                              sx={{ height: 24, fontWeight: 700 }}
+                            />
+                          )}
                         </Stack>
                         <Typography variant="body2" color="text.secondary" noWrap>
                           {currentCanSend
@@ -875,6 +908,40 @@ const MessagePage = observer(() => {
                           <GroupRoundedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
+
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        component="label"
+                        disabled={!currentCanSend}
+                        startIcon={<AddPhotoAlternateRoundedIcon fontSize="small" />}
+                        sx={{ borderRadius: 999, backgroundColor: alpha(theme.palette.common.white, 0.72), whiteSpace: 'nowrap' }}
+                      >
+                        上传图片
+                        <input
+                          hidden
+                          type="file"
+                          accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                          onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
+                        />
+                      </Button>
+
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        component="label"
+                        disabled={!currentCanSend}
+                        startIcon={<AttachFileRoundedIcon fontSize="small" />}
+                        sx={{ borderRadius: 999, backgroundColor: alpha(theme.palette.common.white, 0.72), whiteSpace: 'nowrap' }}
+                      >
+                        上传文件
+                        <input
+                          hidden
+                          type="file"
+                          accept=".pdf,.txt,.md,.csv,.tsv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.rtf"
+                          onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
+                        />
+                      </Button>
 
                       {currentPeerContact ? (
                         <Tooltip title="编辑联系人">
@@ -940,6 +1007,25 @@ const MessagePage = observer(() => {
                       </Tooltip>
                     </Stack>
                   </Stack>
+
+                  {!currentCanSend && (
+                    <Alert
+                      severity="warning"
+                      action={currentPeerContact ? (
+                        <Button color="inherit" size="small" onClick={() => openEditContactDialog(currentPeerContact.contactUserId)}>
+                          联系人设置
+                        </Button>
+                      ) : (
+                        <Button color="inherit" size="small" onClick={() => openCreateContactDialogForUser(currentSummary.peer)}>
+                          添加联系人
+                        </Button>
+                      )}
+                    >
+                      {currentPeerContact
+                        ? '你已经添加了对方，但对方还没有把你加为联系人。上传文件和发送消息会在双方互相添加后开放。'
+                        : '你还没有添加对方为联系人。添加后仍需对方也添加你，双方互相添加后才能上传文件和发送消息。'}
+                    </Alert>
+                  )}
 
                   {showConversationSearch && (
                     <Box
@@ -1329,12 +1415,6 @@ const MessagePage = observer(() => {
                 }}
               >
                 <Stack spacing={1.1}>
-                  {!currentCanSend && (
-                    <Alert severity="info">
-                      当前还不是互为好友。你可以查看历史消息，但在双方互相添加之前不能继续发送新消息。
-                    </Alert>
-                  )}
-
                   {replyTarget && currentCanSend && (
                     <Paper
                       variant="outlined"
@@ -1429,6 +1509,12 @@ const MessagePage = observer(() => {
                     </Alert>
                   )}
 
+                  {messageStore.error && (
+                    <Alert severity="error" onClose={messageStore.clearError}>
+                      {messageStore.error}
+                    </Alert>
+                  )}
+
                   <Paper
                     variant="outlined"
                     sx={{
@@ -1438,11 +1524,11 @@ const MessagePage = observer(() => {
                     }}
                   >
                     <Stack
-                      direction="row"
-                      spacing={0.35}
-                      sx={{ mb: 0.8, alignItems: 'center', justifyContent: 'space-between' }}
+                      direction={{ xs: 'column', md: 'row' }}
+                      spacing={0.75}
+                      sx={{ mb: 0.8, alignItems: { xs: 'stretch', md: 'center' }, justifyContent: 'space-between' }}
                     >
-                      <Stack direction="row" spacing={0.3}>
+                      <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.6 }}>
                         <Tooltip title="表情">
                           <IconButton
                             size="small"
@@ -1453,35 +1539,50 @@ const MessagePage = observer(() => {
                           </IconButton>
                         </Tooltip>
 
-                        <Tooltip title="从剪贴板读取截图">
-                          <IconButton size="small" disabled={!currentCanSend} onClick={() => void readClipboardScreenshot()}>
-                            <ScreenshotMonitorRoundedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          startIcon={<ScreenshotMonitorRoundedIcon fontSize="small" />}
+                          disabled={!currentCanSend}
+                          onClick={() => void readClipboardScreenshot()}
+                          sx={{ borderRadius: 999 }}
+                        >
+                          读取截图
+                        </Button>
 
-                        <Tooltip title="选择图片">
-                          <IconButton size="small" component="label" disabled={!currentCanSend}>
-                            <AddPhotoAlternateRoundedIcon fontSize="small" />
-                            <input
-                              hidden
-                              type="file"
-                              accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                              onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
-                            />
-                          </IconButton>
-                        </Tooltip>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          component="label"
+                          disabled={!currentCanSend}
+                          startIcon={<AddPhotoAlternateRoundedIcon fontSize="small" />}
+                          sx={{ borderRadius: 999 }}
+                        >
+                          上传图片
+                          <input
+                            hidden
+                            type="file"
+                            accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                            onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
+                          />
+                        </Button>
 
-                        <Tooltip title="选择文件">
-                          <IconButton size="small" component="label" disabled={!currentCanSend}>
-                            <AttachFileRoundedIcon fontSize="small" />
-                            <input
-                              hidden
-                              type="file"
-                              accept=".pdf,.txt,.md,.csv,.tsv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.rtf"
-                              onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
-                            />
-                          </IconButton>
-                        </Tooltip>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          component="label"
+                          disabled={!currentCanSend}
+                          startIcon={<AttachFileRoundedIcon fontSize="small" />}
+                          sx={{ borderRadius: 999 }}
+                        >
+                          上传文件
+                          <input
+                            hidden
+                            type="file"
+                            accept=".pdf,.txt,.md,.csv,.tsv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.rtf"
+                            onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
+                          />
+                        </Button>
                       </Stack>
 
                       <Button
@@ -1489,11 +1590,25 @@ const MessagePage = observer(() => {
                         endIcon={<SendRoundedIcon />}
                         disabled={!canSubmitMessage}
                         onClick={() => void sendMessage()}
-                        sx={{ borderRadius: 999, minWidth: 108 }}
+                        sx={{ borderRadius: 999, minWidth: 108, alignSelf: { xs: 'flex-end', md: 'auto' } }}
                       >
                         {messageStore.sending ? '发送中...' : '发送'}
                       </Button>
                     </Stack>
+
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        mb: 0.9,
+                        display: 'block',
+                        color: currentCanSend ? alpha(theme.palette.text.secondary, 0.86) : theme.palette.warning.dark,
+                        fontSize: '0.74rem',
+                      }}
+                    >
+                      {currentCanSend
+                        ? '支持发送文本，并附带 1 张图片或 1 个本地文件。'
+                        : '当前未互为好友，上传图片、上传文件和发送消息都已禁用。'}
+                    </Typography>
 
                     <Divider sx={{ mb: 0.9 }} />
 
@@ -1691,7 +1806,7 @@ const MessagePage = observer(() => {
           <Stack spacing={1.4}>
             <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="body2" color="text.secondary">
-                共 {messageStore.contacts.length} 位联系人，置顶 {pinnedContactCount} 位
+                共 {messageStore.contacts.length} 位联系人，置顶 {pinnedContactCount} 位，待处理申请 {messageStore.pendingIncomingFriendRequestCount} 条
               </Typography>
               <Button size="small" onClick={() => navigate('/messages/contacts')}>
                 打开管理页
@@ -1829,8 +1944,11 @@ const MessagePage = observer(() => {
         onSelectUser={(user) => {
           setSelectedContactUserId(user.id);
           setSelectedContactPreview(user);
+          setContactAlias((current) => current || user.alias || user.username);
         }}
         selectedContactPreview={selectedContactPreview}
+        requestMessage={friendRequestMessage}
+        onRequestMessageChange={setFriendRequestMessage}
         alias={contactAlias}
         onAliasChange={setContactAlias}
         pinned={contactPinned}
@@ -1841,6 +1959,16 @@ const MessagePage = observer(() => {
         }}
         onSubmit={() => void saveContact()}
         saving={contactSaving}
+        submitLabel={
+          editingContactUserId
+            ? '保存'
+            : selectedIncomingFriendRequestId
+              ? '同意并加为好友'
+              : selectedOutgoingFriendRequestPending
+                ? '等待对方验证'
+                : '发送申请'
+        }
+        submitDisabled={contactSaving || !selectedContactUserId || Boolean(!editingContactUserId && selectedOutgoingFriendRequestPending)}
       />
 
       <MessageDeleteContactDialog

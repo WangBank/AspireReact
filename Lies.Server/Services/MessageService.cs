@@ -9,6 +9,9 @@ public interface IMessageService
 {
     Task<List<MessageUserSummaryDto>> SearchUsersAsync(int currentUserId, string? keyword, int skip, int take, CancellationToken cancellationToken = default);
     Task<List<MessageContactDto>> GetContactsAsync(int currentUserId, string? keyword, CancellationToken cancellationToken = default);
+    Task<List<MessageFriendRequestDto>> GetFriendRequestsAsync(int currentUserId, CancellationToken cancellationToken = default);
+    Task<MessageFriendRequestDto> CreateFriendRequestAsync(int currentUserId, CreateFriendRequestRequest request, CancellationToken cancellationToken = default);
+    Task<MessageFriendRequestDto> RespondFriendRequestAsync(int currentUserId, int requestId, RespondFriendRequestRequest request, CancellationToken cancellationToken = default);
     Task<MessageContactDto> UpsertContactAsync(int currentUserId, UpsertContactRequest request, CancellationToken cancellationToken = default);
     Task<MessageContactDto?> UpdateContactAsync(int currentUserId, int contactUserId, UpdateContactRequest request, CancellationToken cancellationToken = default);
     Task<bool> DeleteContactAsync(int currentUserId, int contactUserId, CancellationToken cancellationToken = default);
@@ -34,6 +37,12 @@ public sealed class MessageFileDownloadResult
 
 public class MessageService : IMessageService
 {
+    private const string FriendRequestStatusPending = "pending";
+    private const string FriendRequestStatusAccepted = "accepted";
+    private const string FriendRequestStatusRejected = "rejected";
+    private const string FriendRequestDirectionIncoming = "incoming";
+    private const string FriendRequestDirectionOutgoing = "outgoing";
+    private const string DefaultFriendRequestSource = "站内搜索";
     private static readonly HashSet<string> AllowedImageContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/png",
@@ -69,6 +78,8 @@ public class MessageService : IMessageService
     private readonly IWebHostEnvironment _environment;
     private readonly IMessagePresenceTracker _presenceTracker;
     private readonly ISensitiveWordService _sensitiveWordService;
+
+    private sealed record FriendRequestSummary(int Id, string Status, string Direction);
 
     public MessageService(
         AppDbContext db,
@@ -113,8 +124,17 @@ public class MessageService : IMessageService
             .Take(Math.Clamp(take, 1, 50))
             .ToListAsync(cancellationToken);
 
+        var requestMap = await GetFriendRequestMapAsync(
+            currentUserId,
+            users.Select(item => item.Id).ToArray(),
+            cancellationToken);
+
         return users
-            .Select(user => MapUserSummary(user, contact: null, isFriend: false))
+            .Select(user => MapUserSummary(
+                user,
+                contact: null,
+                isFriend: false,
+                friendRequest: requestMap.GetValueOrDefault(user.Id)))
             .ToList();
     }
 
@@ -154,6 +174,183 @@ public class MessageService : IMessageService
                 ConversationId = GetOptionalConversationId(conversationMap, item.ContactUserId)
             })
             .ToList();
+    }
+
+    public async Task<List<MessageFriendRequestDto>> GetFriendRequestsAsync(int currentUserId, CancellationToken cancellationToken = default)
+    {
+        var requests = await _db.UserFriendRequests
+            .AsNoTracking()
+            .Include(item => item.RequesterUser)
+            .Include(item => item.TargetUser)
+            .Where(item =>
+                (item.RequesterUserId == currentUserId || item.TargetUserId == currentUserId)
+                && item.RequesterUser != null
+                && item.TargetUser != null
+                && item.RequesterUser.IsActive
+                && item.TargetUser.IsActive)
+            .OrderByDescending(item => item.Status == FriendRequestStatusPending && item.TargetUserId == currentUserId)
+            .ThenByDescending(item => item.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        var peerUserIds = requests
+            .Select(item => item.RequesterUserId == currentUserId ? item.TargetUserId : item.RequesterUserId)
+            .Distinct()
+            .ToArray();
+        var contacts = await _db.UserContacts
+            .AsNoTracking()
+            .Where(item => item.OwnerUserId == currentUserId && peerUserIds.Contains(item.ContactUserId))
+            .ToDictionaryAsync(item => item.ContactUserId, cancellationToken);
+        var peerUsersWhoAddedCurrentUser = await GetPeerUsersWhoAddedCurrentUserAsync(currentUserId, peerUserIds, cancellationToken);
+
+        return requests
+            .Select(item =>
+            {
+                var isIncoming = item.TargetUserId == currentUserId;
+                var peer = isIncoming ? item.RequesterUser! : item.TargetUser!;
+                var contact = contacts.GetValueOrDefault(peer.Id);
+                var requestInfo = new FriendRequestSummary(
+                    item.Id,
+                    item.Status,
+                    isIncoming ? FriendRequestDirectionIncoming : FriendRequestDirectionOutgoing);
+
+                return new MessageFriendRequestDto
+                {
+                    Id = item.Id,
+                    Peer = MapUserSummary(peer, contact, peerUsersWhoAddedCurrentUser.Contains(peer.Id), requestInfo),
+                    Direction = requestInfo.Direction,
+                    Status = item.Status,
+                    RequestMessage = item.RequestMessage,
+                    RequesterAlias = item.RequesterAlias,
+                    Source = string.IsNullOrWhiteSpace(item.Source) ? DefaultFriendRequestSource : item.Source,
+                    CreatedAt = item.CreatedAt,
+                    RespondedAt = item.RespondedAt,
+                    CanAccept = isIncoming && item.Status == FriendRequestStatusPending,
+                    CanReject = isIncoming && item.Status == FriendRequestStatusPending,
+                };
+            })
+            .ToList();
+    }
+
+    public async Task<MessageFriendRequestDto> CreateFriendRequestAsync(int currentUserId, CreateFriendRequestRequest request, CancellationToken cancellationToken = default)
+    {
+        var targetUser = await GetValidPeerUserAsync(currentUserId, request.TargetUserId, cancellationToken);
+        var contactRelations = await _db.UserContacts
+            .AsNoTracking()
+            .Where(item =>
+                (item.OwnerUserId == currentUserId && item.ContactUserId == request.TargetUserId)
+                || (item.OwnerUserId == request.TargetUserId && item.ContactUserId == currentUserId))
+            .Select(item => new { item.OwnerUserId, item.ContactUserId })
+            .ToListAsync(cancellationToken);
+
+        var currentUserAddedPeer = contactRelations.Any(item => item.OwnerUserId == currentUserId && item.ContactUserId == request.TargetUserId);
+        var peerAddedCurrentUser = contactRelations.Any(item => item.OwnerUserId == request.TargetUserId && item.ContactUserId == currentUserId);
+        if (currentUserAddedPeer && peerAddedCurrentUser)
+        {
+            throw new InvalidOperationException("你们已经是好友了");
+        }
+
+        var reverseRequest = await _db.UserFriendRequests
+            .FirstOrDefaultAsync(
+                item => item.RequesterUserId == request.TargetUserId && item.TargetUserId == currentUserId,
+                cancellationToken);
+        if (reverseRequest?.Status == FriendRequestStatusPending)
+        {
+            throw new InvalidOperationException("对方已经向你发起好友申请，请前往好友通知处理");
+        }
+
+        var friendRequest = await _db.UserFriendRequests
+            .Include(item => item.RequesterUser)
+            .Include(item => item.TargetUser)
+            .FirstOrDefaultAsync(
+                item => item.RequesterUserId == currentUserId && item.TargetUserId == request.TargetUserId,
+                cancellationToken);
+
+        if (friendRequest == null)
+        {
+            friendRequest = new UserFriendRequest
+            {
+                RequesterUserId = currentUserId,
+                TargetUserId = request.TargetUserId,
+                CreatedAt = DateTime.UtcNow,
+            };
+            _db.UserFriendRequests.Add(friendRequest);
+        }
+
+        friendRequest.RequestMessage = NormalizeFriendRequestMessage(request.RequestMessage);
+        friendRequest.RequesterAlias = NormalizeAlias(request.Alias);
+        friendRequest.Source = DefaultFriendRequestSource;
+        friendRequest.Status = FriendRequestStatusPending;
+        friendRequest.RespondedAt = null;
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        friendRequest.RequesterUser ??= await _db.Users.FirstAsync(item => item.Id == currentUserId, cancellationToken);
+        friendRequest.TargetUser ??= targetUser;
+
+        return BuildFriendRequestDto(
+            currentUserId,
+            friendRequest,
+            contact: null,
+            peerAddedCurrentUser);
+    }
+
+    public async Task<MessageFriendRequestDto> RespondFriendRequestAsync(int currentUserId, int requestId, RespondFriendRequestRequest request, CancellationToken cancellationToken = default)
+    {
+        var normalizedAction = request.Action.Trim().ToLowerInvariant();
+        var friendRequest = await _db.UserFriendRequests
+            .Include(item => item.RequesterUser)
+            .Include(item => item.TargetUser)
+            .FirstOrDefaultAsync(
+                item => item.Id == requestId && item.TargetUserId == currentUserId,
+                cancellationToken);
+
+        if (friendRequest?.RequesterUser == null || friendRequest.TargetUser == null || !friendRequest.RequesterUser.IsActive || !friendRequest.TargetUser.IsActive)
+        {
+            throw new InvalidOperationException("好友申请不存在");
+        }
+
+        if (friendRequest.Status != FriendRequestStatusPending)
+        {
+            throw new InvalidOperationException("这条好友申请已经处理过了");
+        }
+
+        if (normalizedAction == "accept")
+        {
+            await UpsertAcceptedContactAsync(
+                ownerUserId: friendRequest.RequesterUserId,
+                contactUserId: friendRequest.TargetUserId,
+                alias: friendRequest.RequesterAlias,
+                cancellationToken);
+            await UpsertAcceptedContactAsync(
+                ownerUserId: friendRequest.TargetUserId,
+                contactUserId: friendRequest.RequesterUserId,
+                alias: null,
+                cancellationToken);
+            friendRequest.Status = FriendRequestStatusAccepted;
+        }
+        else if (normalizedAction == "reject")
+        {
+            friendRequest.Status = FriendRequestStatusRejected;
+        }
+        else
+        {
+            throw new InvalidOperationException("处理动作无效");
+        }
+
+        friendRequest.RespondedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var contact = await _db.UserContacts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                item => item.OwnerUserId == currentUserId && item.ContactUserId == friendRequest.RequesterUserId,
+                cancellationToken);
+
+        return BuildFriendRequestDto(
+            currentUserId,
+            friendRequest,
+            contact,
+            isFriend: friendRequest.Status == FriendRequestStatusAccepted);
     }
 
     public async Task<MessageContactDto> UpsertContactAsync(int currentUserId, UpsertContactRequest request, CancellationToken cancellationToken = default)
@@ -269,7 +466,9 @@ public class MessageService : IMessageService
             .ToListAsync(cancellationToken);
 
         var peerUserIds = participants
-            .Select(item => GetPeerUserId(item, currentUserId))
+            .Select(item => TryGetPeerUserId(item, currentUserId))
+            .Where(item => item.HasValue)
+            .Select(item => item!.Value)
             .Distinct()
             .ToArray();
         var conversationIds = participants.Select(item => item.ConversationId).ToArray();
@@ -292,11 +491,16 @@ public class MessageService : IMessageService
         var summaries = participants
             .Select(item =>
             {
-                var peerUserId = GetPeerUserId(item, currentUserId);
+                var peerUserId = TryGetPeerUserId(item, currentUserId);
+                if (!peerUserId.HasValue)
+                {
+                    return null;
+                }
+
                 return BuildConversationSummary(
                     item,
-                    contacts.GetValueOrDefault(peerUserId),
-                    peerUsersWhoAddedCurrentUser.Contains(peerUserId),
+                    contacts.GetValueOrDefault(peerUserId.Value),
+                    peerUsersWhoAddedCurrentUser.Contains(peerUserId.Value),
                     unreadCountMap.GetValueOrDefault(item.ConversationId));
             })
             .Where(item => item != null)
@@ -327,19 +531,27 @@ public class MessageService : IMessageService
             return null;
         }
 
-        var peerUserId = GetPeerUserId(participant, currentUserId);
+        var peerUserId = TryGetPeerUserId(participant, currentUserId);
+        if (!peerUserId.HasValue)
+        {
+            return null;
+        }
+
         var contacts = await _db.UserContacts
             .AsNoTracking()
-            .Where(item => item.OwnerUserId == currentUserId && item.ContactUserId == peerUserId)
+            .Where(item => item.OwnerUserId == currentUserId && item.ContactUserId == peerUserId.Value)
             .ToDictionaryAsync(item => item.ContactUserId, cancellationToken);
-        var peerUsersWhoAddedCurrentUser = await GetPeerUsersWhoAddedCurrentUserAsync(currentUserId, [peerUserId], cancellationToken);
+        var peerUsersWhoAddedCurrentUser = await GetPeerUsersWhoAddedCurrentUserAsync(currentUserId, [peerUserId.Value], cancellationToken);
 
         var summary = BuildConversationSummary(
             participant,
-            contacts.GetValueOrDefault(peerUserId),
-            peerUsersWhoAddedCurrentUser.Contains(peerUserId),
-            unreadCount: 0)
-            ?? throw new InvalidOperationException("会话数据异常");
+            contacts.GetValueOrDefault(peerUserId.Value),
+            peerUsersWhoAddedCurrentUser.Contains(peerUserId.Value),
+            unreadCount: 0);
+        if (summary == null)
+        {
+            return null;
+        }
 
         var query = _db.UserMessages
             .AsNoTracking()
@@ -435,7 +647,9 @@ public class MessageService : IMessageService
         }
 
         var peerUserIds = participants
-            .Select(item => GetPeerUserId(item, currentUserId))
+            .Select(item => TryGetPeerUserId(item, currentUserId))
+            .Where(item => item.HasValue)
+            .Select(item => item!.Value)
             .Distinct()
             .ToArray();
 
@@ -448,11 +662,16 @@ public class MessageService : IMessageService
         var summariesByConversationId = participants
             .Select(item =>
             {
-                var peerUserId = GetPeerUserId(item, currentUserId);
+                var peerUserId = TryGetPeerUserId(item, currentUserId);
+                if (!peerUserId.HasValue)
+                {
+                    return null;
+                }
+
                 return BuildConversationSummary(
                     item,
-                    contacts.GetValueOrDefault(peerUserId),
-                    peerUsersWhoAddedCurrentUser.Contains(peerUserId),
+                    contacts.GetValueOrDefault(peerUserId.Value),
+                    peerUsersWhoAddedCurrentUser.Contains(peerUserId.Value),
                     unreadCount: 0);
             })
             .Where(item => item != null)
@@ -509,11 +728,16 @@ public class MessageService : IMessageService
         participant.IsMuted = request.IsMuted;
         await _db.SaveChangesAsync(cancellationToken);
 
-        var peerUserId = GetPeerUserId(participant, currentUserId);
+        var peerUserId = TryGetPeerUserId(participant, currentUserId);
+        if (!peerUserId.HasValue)
+        {
+            return null;
+        }
+
         var contact = await _db.UserContacts
             .AsNoTracking()
-            .FirstOrDefaultAsync(item => item.OwnerUserId == currentUserId && item.ContactUserId == peerUserId, cancellationToken);
-        var peerUsersWhoAddedCurrentUser = await GetPeerUsersWhoAddedCurrentUserAsync(currentUserId, [peerUserId], cancellationToken);
+            .FirstOrDefaultAsync(item => item.OwnerUserId == currentUserId && item.ContactUserId == peerUserId.Value, cancellationToken);
+        var peerUsersWhoAddedCurrentUser = await GetPeerUsersWhoAddedCurrentUserAsync(currentUserId, [peerUserId.Value], cancellationToken);
 
         var unreadCount = await _db.UserMessages
             .AsNoTracking()
@@ -522,7 +746,7 @@ public class MessageService : IMessageService
                 && item.SenderUserId != currentUserId
                 && item.Id > (participant.LastReadMessageId ?? 0), cancellationToken);
 
-        return BuildConversationSummary(participant, contact, peerUsersWhoAddedCurrentUser.Contains(peerUserId), unreadCount);
+        return BuildConversationSummary(participant, contact, peerUsersWhoAddedCurrentUser.Contains(peerUserId.Value), unreadCount);
     }
 
     public async Task<MessageMutationResultDto?> SendMessageAsync(int currentUserId, int conversationId, SendMessageRequest request, CancellationToken cancellationToken = default)
@@ -888,6 +1112,47 @@ public class MessageService : IMessageService
         }
     }
 
+    private async Task<Dictionary<int, FriendRequestSummary>> GetFriendRequestMapAsync(
+        int currentUserId,
+        IReadOnlyCollection<int> peerUserIds,
+        CancellationToken cancellationToken)
+    {
+        if (peerUserIds.Count == 0)
+        {
+            return [];
+        }
+
+        var normalizedPeerUserIds = peerUserIds
+            .Where(item => item != currentUserId)
+            .Distinct()
+            .ToArray();
+        if (normalizedPeerUserIds.Length == 0)
+        {
+            return [];
+        }
+
+        var requests = await _db.UserFriendRequests
+            .AsNoTracking()
+            .Where(item =>
+                (item.RequesterUserId == currentUserId && normalizedPeerUserIds.Contains(item.TargetUserId))
+                || (item.TargetUserId == currentUserId && normalizedPeerUserIds.Contains(item.RequesterUserId)))
+            .OrderByDescending(item => item.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return requests
+            .GroupBy(item => item.RequesterUserId == currentUserId ? item.TargetUserId : item.RequesterUserId)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var request = group.First();
+                    var direction = request.TargetUserId == currentUserId
+                        ? FriendRequestDirectionIncoming
+                        : FriendRequestDirectionOutgoing;
+                    return new FriendRequestSummary(request.Id, request.Status, direction);
+                });
+    }
+
     private async Task<Dictionary<int, int>> GetConversationIdMapAsync(int currentUserId, IReadOnlyCollection<int> peerUserIds, CancellationToken cancellationToken)
     {
         if (peerUserIds.Count == 0)
@@ -949,11 +1214,16 @@ public class MessageService : IMessageService
             return null;
         }
 
-        var peerUserId = GetPeerUserId(participant, currentUserId);
+        var peerUserId = TryGetPeerUserId(participant, currentUserId);
+        if (!peerUserId.HasValue)
+        {
+            return null;
+        }
+
         var contact = await _db.UserContacts
             .AsNoTracking()
-            .FirstOrDefaultAsync(item => item.OwnerUserId == currentUserId && item.ContactUserId == peerUserId, cancellationToken);
-        var peerUsersWhoAddedCurrentUser = await GetPeerUsersWhoAddedCurrentUserAsync(currentUserId, [peerUserId], cancellationToken);
+            .FirstOrDefaultAsync(item => item.OwnerUserId == currentUserId && item.ContactUserId == peerUserId.Value, cancellationToken);
+        var peerUsersWhoAddedCurrentUser = await GetPeerUsersWhoAddedCurrentUserAsync(currentUserId, [peerUserId.Value], cancellationToken);
 
         var unreadCount = await _db.UserMessages
             .AsNoTracking()
@@ -962,7 +1232,41 @@ public class MessageService : IMessageService
                 && item.SenderUserId != currentUserId
                 && item.Id > (participant.LastReadMessageId ?? 0), cancellationToken);
 
-        return BuildConversationSummary(participant, contact, peerUsersWhoAddedCurrentUser.Contains(peerUserId), unreadCount);
+        return BuildConversationSummary(participant, contact, peerUsersWhoAddedCurrentUser.Contains(peerUserId.Value), unreadCount);
+    }
+
+    private MessageFriendRequestDto BuildFriendRequestDto(
+        int currentUserId,
+        UserFriendRequest request,
+        UserContact? contact,
+        bool isFriend)
+    {
+        var isIncoming = request.TargetUserId == currentUserId;
+        var peer = isIncoming ? request.RequesterUser : request.TargetUser;
+        if (peer == null)
+        {
+            throw new InvalidOperationException("好友申请数据异常");
+        }
+
+        var requestInfo = new FriendRequestSummary(
+            request.Id,
+            request.Status,
+            isIncoming ? FriendRequestDirectionIncoming : FriendRequestDirectionOutgoing);
+
+        return new MessageFriendRequestDto
+        {
+            Id = request.Id,
+            Peer = MapUserSummary(peer, contact, isFriend, requestInfo),
+            Direction = requestInfo.Direction,
+            Status = request.Status,
+            RequestMessage = request.RequestMessage,
+            RequesterAlias = request.RequesterAlias,
+            Source = string.IsNullOrWhiteSpace(request.Source) ? DefaultFriendRequestSource : request.Source,
+            CreatedAt = request.CreatedAt,
+            RespondedAt = request.RespondedAt,
+            CanAccept = isIncoming && request.Status == FriendRequestStatusPending,
+            CanReject = isIncoming && request.Status == FriendRequestStatusPending,
+        };
     }
 
     private MessageConversationSummaryDto? BuildConversationSummary(MessageConversationParticipant participant, UserContact? contact, bool isFriend, int unreadCount)
@@ -986,13 +1290,22 @@ public class MessageService : IMessageService
         };
     }
 
+    private static int? TryGetPeerUserId(MessageConversationParticipant participant, int currentUserId)
+    {
+        return participant.Conversation?.Participants?.FirstOrDefault(item => item.UserId != currentUserId)?.UserId;
+    }
+
     private static int GetPeerUserId(MessageConversationParticipant participant, int currentUserId)
     {
-        return participant.Conversation?.Participants?.First(item => item.UserId != currentUserId).UserId
+        return TryGetPeerUserId(participant, currentUserId)
             ?? throw new InvalidOperationException("会话参与人数据异常");
     }
 
-    private MessageUserSummaryDto MapUserSummary(User user, UserContact? contact, bool isFriend)
+    private MessageUserSummaryDto MapUserSummary(
+        User user,
+        UserContact? contact,
+        bool isFriend,
+        FriendRequestSummary? friendRequest = null)
     {
         return new MessageUserSummaryDto
         {
@@ -1003,7 +1316,10 @@ public class MessageService : IMessageService
             LastSeenAt = user.LastSeenAt,
             IsContact = contact != null,
             IsFriend = isFriend,
-            Alias = contact?.Alias
+            Alias = contact?.Alias,
+            FriendRequestId = friendRequest?.Id,
+            FriendRequestStatus = friendRequest?.Status,
+            FriendRequestDirection = friendRequest?.Direction,
         };
     }
 
@@ -1022,6 +1338,38 @@ public class MessageService : IMessageService
         }
 
         return user.LastSeenAt.HasValue && DateTime.UtcNow - user.LastSeenAt.Value <= TimeSpan.FromMinutes(2);
+    }
+
+    private async Task UpsertAcceptedContactAsync(
+        int ownerUserId,
+        int contactUserId,
+        string? alias,
+        CancellationToken cancellationToken)
+    {
+        var contact = await _db.UserContacts
+            .FirstOrDefaultAsync(
+                item => item.OwnerUserId == ownerUserId && item.ContactUserId == contactUserId,
+                cancellationToken);
+
+        if (contact == null)
+        {
+            contact = new UserContact
+            {
+                OwnerUserId = ownerUserId,
+                ContactUserId = contactUserId,
+                Alias = NormalizeAlias(alias),
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            };
+            _db.UserContacts.Add(contact);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(contact.Alias))
+        {
+            contact.Alias = NormalizeAlias(alias);
+        }
+        contact.UpdatedAt = DateTime.UtcNow;
     }
 
     private async Task<(string ImageUrl, string FileName)> SaveMessageImageAsync(int currentUserId, IFormFile image, CancellationToken cancellationToken)
@@ -1205,6 +1553,12 @@ public class MessageService : IMessageService
     }
 
     private static string? NormalizeAlias(string? value)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    private static string? NormalizeFriendRequestMessage(string? value)
     {
         var trimmed = value?.Trim();
         return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;

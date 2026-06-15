@@ -46,6 +46,76 @@ public class MessagesController : ControllerBase
         return Ok(new { success = true, data = contacts, message = $"查询到 {contacts.Count} 个联系人" });
     }
 
+    [HttpGet("friend-requests")]
+    public async Task<IActionResult> GetFriendRequests(CancellationToken cancellationToken = default)
+    {
+        var authResult = this.RequireCurrentUser(out var userId);
+        if (authResult != null)
+        {
+            return authResult;
+        }
+
+        var requests = await _messageService.GetFriendRequestsAsync(userId, cancellationToken);
+        return Ok(new { success = true, data = requests, message = $"查询到 {requests.Count} 条好友通知" });
+    }
+
+    [HttpPost("friend-requests")]
+    public async Task<IActionResult> CreateFriendRequest([FromBody] CreateFriendRequestRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new { success = false, message = "参数验证失败", errors = ModelState });
+        }
+
+        var authResult = this.RequireCurrentUser(out var userId);
+        if (authResult != null)
+        {
+            return authResult;
+        }
+
+        try
+        {
+            var result = await _messageService.CreateFriendRequestAsync(userId, request, cancellationToken);
+            await NotifyFriendshipChangedAsync([userId, request.TargetUserId], cancellationToken);
+            return Ok(new { success = true, data = result, message = "好友申请已发送" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    [HttpPost("friend-requests/{requestId:int}/respond")]
+    public async Task<IActionResult> RespondFriendRequest(int requestId, [FromBody] RespondFriendRequestRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new { success = false, message = "参数验证失败", errors = ModelState });
+        }
+
+        var authResult = this.RequireCurrentUser(out var userId);
+        if (authResult != null)
+        {
+            return authResult;
+        }
+
+        try
+        {
+            var result = await _messageService.RespondFriendRequestAsync(userId, requestId, request, cancellationToken);
+            await NotifyFriendshipChangedAsync([userId, result.Peer.Id], cancellationToken);
+            return Ok(new
+            {
+                success = true,
+                data = result,
+                message = request.Action == "accept" ? "已同意好友申请" : "已拒绝好友申请"
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
     [HttpPost("contacts")]
     public async Task<IActionResult> UpsertContact([FromBody] UpsertContactRequest request, CancellationToken cancellationToken = default)
     {
@@ -367,5 +437,17 @@ public class MessagesController : ControllerBase
             CreatedAt = source.CreatedAt,
             IsMine = source.SenderUserId == recipientUserId
         };
+    }
+
+    private async Task NotifyFriendshipChangedAsync(IEnumerable<int> userIds, CancellationToken cancellationToken)
+    {
+        var audience = userIds.Distinct().Select(MessageHub.GetUserGroup).ToArray();
+        if (audience.Length == 0)
+        {
+            return;
+        }
+
+        await _messageHubContext.Clients.Groups(audience).SendAsync("FriendRequestsChanged", cancellationToken);
+        await _messageHubContext.Clients.Groups(audience).SendAsync("ContactsChanged", cancellationToken);
     }
 }

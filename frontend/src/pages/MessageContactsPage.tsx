@@ -1,20 +1,30 @@
+import AlternateEmailRoundedIcon from '@mui/icons-material/AlternateEmailRounded';
+import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded';
 import ChatRoundedIcon from '@mui/icons-material/ChatRounded';
-import AutorenewRoundedIcon from '@mui/icons-material/AutorenewRounded';
+import CircleRoundedIcon from '@mui/icons-material/CircleRounded';
+import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
+import EditRoundedIcon from '@mui/icons-material/EditRounded';
+import GroupRoundedIcon from '@mui/icons-material/GroupRounded';
 import PersonAddRoundedIcon from '@mui/icons-material/PersonAddRounded';
+import PushPinRoundedIcon from '@mui/icons-material/PushPinRounded';
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded';
+import ScheduleRoundedIcon from '@mui/icons-material/ScheduleRounded';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
+import StarBorderRoundedIcon from '@mui/icons-material/StarBorderRounded';
 import {
   Alert,
   Avatar,
   Box,
   Button,
   Chip,
+  Divider,
+  IconButton,
+  InputAdornment,
   List,
-  ListItemButton,
-  ListItemText,
   Paper,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
@@ -24,20 +34,33 @@ import { useNavigate } from 'react-router-dom';
 import MessageContactEditorDialog from '../components/Message/MessageContactEditorDialog';
 import MessageDeleteContactDialog from '../components/Message/MessageDeleteContactDialog';
 import { formatLastSeen, formatTime } from '../components/Message/messageFormatters';
-import PageHeader from '../components/Page/PageHeader';
 import RouteLoadingFallback from '../components/Page/RouteLoadingFallback';
-import SectionCard from '../components/Page/SectionCard';
 import type { MessageContact, MessageUserSummary } from '../services/MessageService';
 import { useStore } from '../stores/StoreProvider';
 
+const getContactLabel = (contact: MessageContact) => contact.alias?.trim() || contact.username;
+
+const formatCreatedDate = (value: string) => new Intl.DateTimeFormat('zh-CN', {
+  month: 'numeric',
+  day: 'numeric',
+}).format(new Date(value));
+
+const formatRequestDate = (value: string) => new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date(value));
+
 const MessageContactsPage = observer(() => {
-  const { messageStore } = useStore();
+  const { authStore, messageStore } = useStore();
   const theme = useTheme();
   const navigate = useNavigate();
+  const [activeContactUserId, setActiveContactUserId] = useState<number | null>(null);
   const [contactKeyword, setContactKeyword] = useState('');
   const [userKeyword, setUserKeyword] = useState('');
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [contactSearchKeyword, setContactSearchKeyword] = useState('');
+  const [friendRequestMessage, setFriendRequestMessage] = useState('');
   const [contactAlias, setContactAlias] = useState('');
   const [selectedContactUserId, setSelectedContactUserId] = useState<number | null>(null);
   const [selectedContactPreview, setSelectedContactPreview] = useState<MessageUserSummary | null>(null);
@@ -85,6 +108,87 @@ const MessageContactsPage = observer(() => {
     () => messageStore.conversations.slice(0, 5),
     [messageStore.conversations],
   );
+  const filteredContacts = useMemo(() => {
+    const normalizedKeyword = contactKeyword.trim().toLowerCase();
+    if (!normalizedKeyword) {
+      return messageStore.contacts;
+    }
+
+    return messageStore.contacts.filter((contact) => {
+      const label = getContactLabel(contact).toLowerCase();
+      const username = contact.username.toLowerCase();
+      return label.includes(normalizedKeyword) || username.includes(normalizedKeyword);
+    });
+  }, [contactKeyword, messageStore.contacts]);
+  const groupedContacts = useMemo(
+    () => [
+      {
+        key: 'pinned',
+        label: '置顶联系人',
+        items: filteredContacts.filter((item) => item.isPinned),
+      },
+      {
+        key: 'online',
+        label: '在线联系人',
+        items: filteredContacts.filter((item) => !item.isPinned && item.isOnline),
+      },
+      {
+        key: 'others',
+        label: '其他联系人',
+        items: filteredContacts.filter((item) => !item.isPinned && !item.isOnline),
+      },
+    ],
+    [filteredContacts],
+  );
+
+  useEffect(() => {
+    if (filteredContacts.length === 0) {
+      setActiveContactUserId(null);
+      return;
+    }
+
+    if (!activeContactUserId || !filteredContacts.some((item) => item.contactUserId === activeContactUserId)) {
+      setActiveContactUserId(filteredContacts[0].contactUserId);
+    }
+  }, [activeContactUserId, filteredContacts]);
+
+  const activeContact = useMemo(
+    () => (
+      filteredContacts.find((item) => item.contactUserId === activeContactUserId)
+      ?? messageStore.contacts.find((item) => item.contactUserId === activeContactUserId)
+      ?? null
+    ),
+    [activeContactUserId, filteredContacts, messageStore.contacts],
+  );
+  const activeConversation = useMemo(() => {
+    if (!activeContact) {
+      return null;
+    }
+
+    if (activeContact.conversationId) {
+      return messageStore.conversations.find((item) => item.conversationId === activeContact.conversationId) ?? null;
+    }
+
+    return messageStore.conversations.find((item) => item.peer.id === activeContact.contactUserId) ?? null;
+  }, [activeContact, messageStore.conversations]);
+  const alternateRecentConversations = useMemo(
+    () => recentConversations.filter((item) => item.conversationId !== activeConversation?.conversationId).slice(0, 3),
+    [activeConversation?.conversationId, recentConversations],
+  );
+  const defaultFriendRequestMessage = useMemo(
+    () => authStore.username ? `我是${authStore.username}` : '你好，我想加你为好友',
+    [authStore.username],
+  );
+  const selectedIncomingFriendRequestId = selectedContactPreview?.friendRequestStatus === 'pending'
+    && selectedContactPreview.friendRequestDirection === 'incoming'
+    ? selectedContactPreview.friendRequestId
+    : null;
+  const selectedOutgoingFriendRequestPending = selectedContactPreview?.friendRequestStatus === 'pending'
+    && selectedContactPreview.friendRequestDirection === 'outgoing';
+  const recentFriendRequests = useMemo(
+    () => messageStore.friendRequests.slice(0, 8),
+    [messageStore.friendRequests],
+  );
 
   const reloadAvailableUsers = async (skip = userSearchSkip) => {
     setUserSearchSkip(skip);
@@ -123,6 +227,7 @@ const MessageContactsPage = observer(() => {
   const resetContactDialog = () => {
     setSelectedContactUserId(null);
     setSelectedContactPreview(null);
+    setFriendRequestMessage(defaultFriendRequestMessage);
     setContactAlias('');
     setContactPinned(false);
     setEditingContactUserId(null);
@@ -140,7 +245,7 @@ const MessageContactsPage = observer(() => {
     resetContactDialog();
     setSelectedContactUserId(user.id);
     setSelectedContactPreview(user);
-    setContactAlias(user.alias ?? '');
+    setContactAlias(user.alias ?? user.username);
     setContactDialogOpen(true);
   };
 
@@ -160,6 +265,9 @@ const MessageContactsPage = observer(() => {
       isContact: true,
       isFriend: contact.isFriend,
       alias: contact.alias,
+      friendRequestId: null,
+      friendRequestStatus: null,
+      friendRequestDirection: null,
     });
     setContactAlias(contact.alias ?? '');
     setContactPinned(contact.isPinned);
@@ -176,8 +284,12 @@ const MessageContactsPage = observer(() => {
     try {
       if (editingContactUserId) {
         await messageStore.updateContact(selectedContactUserId, contactAlias, contactPinned);
+      } else if (selectedIncomingFriendRequestId) {
+        await messageStore.respondFriendRequest(selectedIncomingFriendRequestId, 'accept');
+      } else if (!selectedOutgoingFriendRequestPending) {
+        await messageStore.createFriendRequest(selectedContactUserId, friendRequestMessage, contactAlias);
       } else {
-        await messageStore.upsertContact(selectedContactUserId, contactAlias, contactPinned);
+        return;
       }
 
       setContactDialogOpen(false);
@@ -186,6 +298,11 @@ const MessageContactsPage = observer(() => {
     } finally {
       setContactSaving(false);
     }
+  };
+
+  const handleRespondFriendRequest = async (requestId: number, action: 'accept' | 'reject') => {
+    await messageStore.respondFriendRequest(requestId, action);
+    await reloadAvailableUsers(0);
   };
 
   const confirmDeleteContact = (userId: number, label: string) => {
@@ -234,443 +351,1094 @@ const MessageContactsPage = observer(() => {
   }
 
   return (
-    <Box>
-      <PageHeader
-        eyebrow="Contacts"
-        title="联系人管理"
-        subtitle="集中搜索平台用户、添加联系人、维护备注和置顶。只有双方互相添加后，才允许继续发送站内消息。"
-        actions={(
-          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <Button variant="outlined" startIcon={<ChatRoundedIcon />} onClick={() => navigate('/messages')}>
-              返回消息
-            </Button>
-            <Button variant="contained" startIcon={<PersonAddRoundedIcon />} onClick={() => void openCreateContactDialog()}>
-              新增联系人
-            </Button>
-          </Stack>
-        )}
-        stats={[
-          { label: '联系人总数', value: messageStore.contacts.length },
-          { label: '置顶联系人', value: pinnedContactCount },
-          { label: '在线联系人', value: onlineContactCount },
-          { label: '可添加用户', value: availableUsers.length },
-        ]}
-      />
-
+    <Box sx={{ px: { xs: 0, md: 0.5 }, py: { xs: 0, md: 0.75 } }}>
       {messageStore.error && (
         <Alert severity="error" sx={{ mb: 2.5 }} onClose={messageStore.clearError}>
           {messageStore.error}
         </Alert>
       )}
 
-      <Box
+      <Paper
+        elevation={0}
         sx={{
-          display: 'grid',
-          gap: 2,
-          gridTemplateColumns: {
-            xs: '1fr',
-            xl: 'minmax(0, 1fr) minmax(0, 1fr)',
-          },
+          overflow: 'hidden',
+          borderRadius: { xs: 4, md: 6 },
+          border: `1px solid ${alpha('#5a2d16', 0.08)}`,
+          background: 'linear-gradient(135deg, #f5c7b6 0%, #f7d7c0 54%, #f4e3be 100%)',
+          boxShadow: `0 28px 80px ${alpha('#9c5d39', 0.14)}`,
         }}
       >
-        <SectionCard
-          title="搜索平台用户"
-          description="默认展示当前不是联系人的推荐用户。先添加联系人，待对方也把你加入联系人后，才可发消息。"
-          actions={(
-            <Button
-              variant="outlined"
-              startIcon={<RefreshRoundedIcon />}
-              onClick={() => void reloadAvailableUsers(0)}
-              sx={{ whiteSpace: 'nowrap' }}
-            >
-              刷新结果
-            </Button>
-          )}
-        >
-          <Stack spacing={2}>
-            <Box
-              sx={{
-                display: 'grid',
-                gap: 1,
-                gridTemplateColumns: {
-                  xs: '1fr',
-                  md: 'minmax(0, 1fr) auto auto',
-                },
-                alignItems: 'stretch',
-              }}
-            >
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="输入用户名或邮箱，留空时默认展示最多 20 个非好友用户"
-                value={userKeyword}
-                onChange={(event) => {
-                  setUserKeyword(event.target.value);
-                  setUserSearchSkip(0);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    void reloadAvailableUsers(0);
-                  }
-                }}
-              />
-              <Button
-                variant="contained"
-                startIcon={<SearchRoundedIcon />}
-                onClick={() => void reloadAvailableUsers(0)}
-                disabled={messageStore.searchingUsers}
-                sx={{
-                  minWidth: { md: 112 },
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                }}
-              >
-                {messageStore.searchingUsers ? '搜索中...' : '搜索'}
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<AutorenewRoundedIcon />}
-                onClick={() => void handleNextBatch()}
-                disabled={messageStore.searchingUsers}
-                sx={{
-                  minWidth: { md: 112 },
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                }}
-              >
-                换一批
-              </Button>
-            </Box>
-
-            <Stack
-              direction={{ xs: 'column', lg: 'row' }}
-              spacing={1}
-              sx={{ alignItems: { xs: 'stretch', lg: 'center' }, flexWrap: 'wrap' }}
-            >
-              <Chip
-                color="primary"
-                variant="outlined"
-                label={messageStore.searchingUsers && availableUsers.length === 0
-                  ? '推荐加载中...'
-                  : `当前推荐 ${availableUsers.length} 人`}
-                sx={{ alignSelf: { xs: 'flex-start', lg: 'center' } }}
-              />
-              {availableUsers.slice(0, 4).map((user) => (
-                <Chip
-                  key={`quick-${user.id}`}
-                  avatar={<Avatar src={user.avatarUrl ?? undefined}>{user.username.slice(0, 1).toUpperCase()}</Avatar>}
-                  label={user.username}
-                  onClick={() => openCreateContactDialogForUser(user)}
-                  variant="outlined"
-                  sx={{
-                    maxWidth: 220,
-                    '& .MuiChip-label': {
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    },
-                  }}
-                />
-              ))}
-            </Stack>
-
-            <Paper
-              elevation={0}
-              sx={{
-                borderRadius: 3,
-                p: 1.25,
-                backgroundColor: alpha(theme.palette.background.default, 0.68),
-                minHeight: 360,
-              }}
-            >
-              <List disablePadding sx={{ maxHeight: 520, overflowY: 'auto' }}>
-                {availableUsers.map((user) => {
-                  return (
-                    <ListItemButton
-                      key={user.id}
-                      sx={{
-                        borderRadius: 3,
-                        mb: 1,
-                        alignItems: 'flex-start',
-                        border: `1px solid ${alpha(theme.palette.divider, 0.65)}`,
-                        px: 1.25,
-                        py: 1.1,
-                      }}
-                      onClick={() => setSelectedContactPreview(user)}
-                    >
-                      <Avatar src={user.avatarUrl ?? undefined} alt={user.username}>
-                        {user.username.slice(0, 1).toUpperCase()}
-                      </Avatar>
-                      <ListItemText
-                        sx={{ ml: 1.25, mr: 1 }}
-                        primary={(
-                          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
-                              {user.username}
-                            </Typography>
-                            {user.isOnline && <Chip size="small" color="success" label="在线" />}
-                          </Stack>
-                        )}
-                        secondary={(
-                          <Stack spacing={0.4} sx={{ mt: 0.45 }}>
-                            <Typography variant="body2" color="text.secondary">
-                              用户名：{user.username}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {formatLastSeen(user.isOnline, user.lastSeenAt)}
-                            </Typography>
-                          </Stack>
-                        )}
-                      />
-                      <Stack spacing={0.8} sx={{ minWidth: { xs: 96, sm: 118 }, flexShrink: 0 }}>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          startIcon={<PersonAddRoundedIcon />}
-                          sx={{ whiteSpace: 'nowrap' }}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openCreateContactDialogForUser(user);
-                          }}
-                        >
-                          添加联系人
-                        </Button>
-                      </Stack>
-                    </ListItemButton>
-                  );
-                })}
-                {messageStore.searchingUsers && availableUsers.length === 0 && (
-                  <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 2 }}>
-                    推荐用户加载中...
-                  </Typography>
-                )}
-                {!messageStore.searchingUsers && availableUsers.length === 0 && (
-                  <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 2 }}>
-                    {userKeyword.trim() ? '没有找到符合条件的可添加用户。' : '当前没有可添加的非联系人用户。'}
-                  </Typography>
-                )}
-              </List>
-            </Paper>
-          </Stack>
-        </SectionCard>
-
-        <SectionCard
-          title="我的联系人"
-          description="支持搜索、编辑、置顶、删除。仅互为好友时才显示发送入口，单向联系人会保持等待状态。"
-          actions={(
-            <Button
-              variant="outlined"
-              startIcon={<RefreshRoundedIcon />}
-              onClick={() => void messageStore.loadContacts(contactKeyword.trim())}
-            >
-              刷新联系人
-            </Button>
-          )}
-        >
-          <Stack spacing={2}>
-            <Box
-              sx={{
-                display: 'grid',
-                gap: 1,
-                gridTemplateColumns: {
-                  xs: '1fr',
-                  md: 'minmax(0, 1fr) auto',
-                },
-                alignItems: 'stretch',
-              }}
-            >
-              <TextField
-                fullWidth
-                size="small"
-                placeholder="搜索联系人或备注"
-                value={contactKeyword}
-                onChange={(event) => setContactKeyword(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    void messageStore.loadContacts(contactKeyword.trim());
-                  }
-                }}
-              />
-              <Button
-                variant="outlined"
-                startIcon={<SearchRoundedIcon />}
-                onClick={() => void messageStore.loadContacts(contactKeyword.trim())}
-                sx={{
-                  minWidth: { md: 112 },
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                }}
-              >
-                搜索
-              </Button>
-            </Box>
-
-            <Paper
-              elevation={0}
-              sx={{
-                borderRadius: 3,
-                p: 1.25,
-                backgroundColor: alpha(theme.palette.background.default, 0.68),
-                minHeight: 360,
-              }}
-            >
-              <List disablePadding sx={{ maxHeight: 520, overflowY: 'auto' }}>
-                {messageStore.contacts.map((contact) => (
-                  <ListItemButton
-                    key={contact.contactUserId}
-                    sx={{
-                      borderRadius: 3,
-                      mb: 1,
-                      alignItems: 'flex-start',
-                      border: `1px solid ${alpha(theme.palette.divider, 0.65)}`,
-                      px: 1.25,
-                      py: 1.1,
-                    }}
-                    disabled={!contact.isFriend && !contact.conversationId}
-                    onClick={() => void openConversation(contact)}
-                  >
-                    <Avatar src={contact.avatarUrl ?? undefined} alt={contact.username}>
-                      {contact.username.slice(0, 1).toUpperCase()}
-                    </Avatar>
-                    <ListItemText
-                      sx={{ ml: 1.25, mr: 1 }}
-                      primary={(
-                        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
-                          <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
-                            {contact.alias || contact.username}
-                          </Typography>
-                          {contact.isOnline && <Chip size="small" color="success" label="在线" />}
-                          <Chip
-                            size="small"
-                            color={contact.isFriend ? 'success' : 'default'}
-                            variant={contact.isFriend ? 'filled' : 'outlined'}
-                            label={contact.isFriend ? '互为好友' : '待对方同意'}
-                          />
-                          {contact.isPinned && <Chip size="small" variant="outlined" label="置顶" />}
-                        </Stack>
-                      )}
-                      secondary={(
-                        <Stack spacing={0.4} sx={{ mt: 0.45 }}>
-                          <Typography variant="body2" color="text.secondary">
-                            用户名：{contact.username}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {formatLastSeen(contact.isOnline, contact.lastSeenAt)}
-                          </Typography>
-                        </Stack>
-                      )}
-                    />
-                      <Stack spacing={0.8} sx={{ minWidth: { xs: 96, sm: 118 }, flexShrink: 0 }}>
-                        <Button
-                          size="small"
-                          variant={contact.isFriend ? 'contained' : 'outlined'}
-                          startIcon={<ChatRoundedIcon />}
-                          disabled={!contact.isFriend && !contact.conversationId}
-                          sx={{ whiteSpace: 'nowrap' }}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void openConversation(contact);
-                          }}
-                        >
-                          {contact.isFriend ? '发消息' : (contact.conversationId ? '查看会话' : '待同意')}
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="outlined"
-                        sx={{ whiteSpace: 'nowrap' }}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openEditContactDialog(contact.contactUserId);
-                        }}
-                      >
-                        编辑
-                      </Button>
-                      <Button
-                        size="small"
-                        color="error"
-                        variant="text"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          confirmDeleteContact(contact.contactUserId, contact.alias || contact.username);
-                        }}
-                      >
-                        删除
-                      </Button>
-                    </Stack>
-                  </ListItemButton>
-                ))}
-                {messageStore.contacts.length === 0 && (
-                  <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 2 }}>
-                    暂无联系人。
-                  </Typography>
-                )}
-              </List>
-            </Paper>
-          </Stack>
-        </SectionCard>
-      </Box>
-
-      {recentConversations.length > 0 && (
-        <SectionCard
-          title="最近沟通"
-          description="优先展示最近活跃的会话，方便直接继续聊天。"
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: '1fr',
+              lg: '72px 340px minmax(0, 1fr)',
+            },
+            minHeight: {
+              xs: 'auto',
+              lg: 'calc(100vh - 196px)',
+            },
+          }}
         >
           <Box
             sx={{
-              display: 'grid',
+              display: 'flex',
+              flexDirection: { xs: 'row', lg: 'column' },
+              alignItems: 'center',
+              justifyContent: { xs: 'space-between', lg: 'flex-start' },
               gap: 1.25,
-              gridTemplateColumns: {
-                xs: '1fr',
-                md: 'repeat(2, minmax(0, 1fr))',
-                xl: 'repeat(3, minmax(0, 1fr))',
-              },
+              px: { xs: 1.5, lg: 1 },
+              py: { xs: 1.5, lg: 2 },
+              borderRight: { lg: `1px solid ${alpha('#5a2d16', 0.08)}` },
+              borderBottom: { xs: `1px solid ${alpha('#5a2d16', 0.08)}`, lg: 'none' },
+              backgroundColor: alpha('#fff8f4', 0.18),
             }}
           >
-            {recentConversations.map((conversation) => (
-              <Paper
-                key={conversation.conversationId}
+            <Stack direction={{ xs: 'row', lg: 'column' }} spacing={1.1}>
+              <Tooltip title="消息">
+                <IconButton
+                  onClick={() => navigate('/messages')}
+                  sx={{
+                    width: 44,
+                    height: 44,
+                    backgroundColor: alpha('#fff', 0.4),
+                    color: '#5d3020',
+                  }}
+                >
+                  <ChatRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="联系人">
+                <IconButton
+                  sx={{
+                    width: 44,
+                    height: 44,
+                    backgroundColor: alpha(theme.palette.primary.main, 0.18),
+                    color: theme.palette.primary.main,
+                  }}
+                >
+                  <GroupRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="新增联系人">
+                <IconButton
+                  onClick={() => void openCreateContactDialog()}
+                  sx={{
+                    width: 44,
+                    height: 44,
+                    backgroundColor: alpha('#fff', 0.3),
+                    color: alpha('#5d3020', 0.86),
+                  }}
+                >
+                  <PersonAddRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title="刷新联系人">
+                <IconButton
+                  onClick={() => void messageStore.loadContacts()}
+                  sx={{
+                    width: 44,
+                    height: 44,
+                    backgroundColor: alpha('#fff', 0.3),
+                    color: alpha('#5d3020', 0.82),
+                  }}
+                >
+                  <RefreshRoundedIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Stack>
+            <Typography
+              variant="caption"
+              sx={{
+                color: alpha('#5d3020', 0.7),
+                writingMode: { lg: 'vertical-rl' },
+                textOrientation: { lg: 'mixed' },
+                letterSpacing: 2,
+                display: { xs: 'none', lg: 'block' },
+              }}
+            >
+              CONTACTS
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              minHeight: 0,
+              px: { xs: 1.5, md: 2 },
+              py: { xs: 1.75, md: 2.25 },
+              borderRight: { lg: `1px solid ${alpha('#5a2d16', 0.08)}` },
+              backgroundColor: alpha('#f8d8c9', 0.42),
+            }}
+          >
+            <Stack spacing={1.4}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="搜索联系人"
+                  value={contactKeyword}
+                  onChange={(event) => setContactKeyword(event.target.value)}
+                  slotProps={{
+                    input: {
+                      startAdornment: (
+                        <InputAdornment position="start" sx={{ mr: 0.2 }}>
+                          <SearchRoundedIcon sx={{ color: alpha('#6e3a25', 0.5) }} fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    },
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 3,
+                      backgroundColor: alpha('#fff', 0.28),
+                    },
+                  }}
+                />
+                <IconButton
+                  onClick={() => void openCreateContactDialog()}
+                  sx={{
+                    width: 42,
+                    height: 42,
+                    backgroundColor: alpha('#fff', 0.28),
+                    color: alpha('#6e3a25', 0.88),
+                  }}
+                >
+                  <PersonAddRoundedIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+
+              <Button
+                fullWidth
                 variant="outlined"
+                startIcon={<GroupRoundedIcon />}
+                onClick={() => void openCreateContactDialog()}
                 sx={{
+                  justifyContent: 'flex-start',
                   borderRadius: 3,
-                  p: 1.25,
+                  py: 1,
+                  px: 1.5,
+                  borderColor: alpha('#6e3a25', 0.18),
+                  backgroundColor: alpha('#fff', 0.18),
+                  color: '#422215',
                 }}
               >
-                <Stack spacing={1}>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', minWidth: 0 }}>
-                    <Avatar src={conversation.peer.avatarUrl ?? undefined} alt={conversation.peer.username}>
-                      {conversation.peer.username.slice(0, 1).toUpperCase()}
-                    </Avatar>
-                    <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
-                        {conversation.peer.alias || conversation.peer.username}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" noWrap>
-                        {conversation.lastMessageAt ? formatTime(conversation.lastMessageAt) : '暂无消息'}
-                      </Typography>
-                    </Box>
-                    {conversation.isPinned && <Chip size="small" variant="outlined" label="置顶" />}
-                  </Stack>
+                好友管理器
+              </Button>
 
-                  <Typography variant="body2" color="text.secondary" sx={{ minHeight: 42 }}>
-                    {conversation.lastMessagePreview || '还没有发送过消息'}
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                <Chip
+                  size="small"
+                  label={`联系人 ${messageStore.contacts.length}`}
+                  sx={{ backgroundColor: alpha('#fff', 0.4) }}
+                />
+                <Chip
+                  size="small"
+                  label={`在线 ${onlineContactCount}`}
+                  sx={{ backgroundColor: alpha('#fff', 0.25) }}
+                />
+                <Chip
+                  size="small"
+                  label={`置顶 ${pinnedContactCount}`}
+                  sx={{ backgroundColor: alpha('#fff', 0.25) }}
+                />
+                <Chip
+                  size="small"
+                  color={messageStore.pendingIncomingFriendRequestCount > 0 ? 'warning' : 'default'}
+                  label={`待处理 ${messageStore.pendingIncomingFriendRequestCount}`}
+                />
+              </Stack>
+            </Stack>
+
+            <Box sx={{ mt: 2, minHeight: 0, flex: 1, overflowY: 'auto', pr: 0.5 }}>
+              {filteredContacts.length === 0 ? (
+                <Paper
+                  elevation={0}
+                  sx={{
+                    px: 2,
+                    py: 2.5,
+                    borderRadius: 4,
+                    backgroundColor: alpha('#fff', 0.22),
+                    color: alpha('#4a281c', 0.78),
+                  }}
+                >
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                    还没有匹配的联系人
                   </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.8, color: alpha('#4a281c', 0.7) }}>
+                    {contactKeyword.trim() ? '换个关键词，或者直接新增联系人。' : '可以先从右侧推荐用户里添加联系人。'}
+                  </Typography>
+                </Paper>
+              ) : (
+                <Stack spacing={2}>
+                  {groupedContacts.map((section) => (
+                    section.items.length > 0 ? (
+                      <Box key={section.key}>
+                        <Stack
+                          direction="row"
+                          sx={{
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            px: 0.5,
+                            mb: 0.9,
+                          }}
+                        >
+                          <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#4a281c' }}>
+                            {section.label}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: alpha('#4a281c', 0.56) }}>
+                            {section.items.length}
+                          </Typography>
+                        </Stack>
+                        <List disablePadding>
+                          {section.items.map((contact) => {
+                            const selected = activeContactUserId === contact.contactUserId;
 
-                  <Stack direction="row" sx={{ justifyContent: 'flex-end' }}>
-                    <Button
+                            return (
+                              <Box key={contact.contactUserId} sx={{ mb: 0.85 }}>
+                                <Button
+                                  fullWidth
+                                  onClick={() => setActiveContactUserId(contact.contactUserId)}
+                                  sx={{
+                                    px: 1.1,
+                                    py: 1,
+                                    borderRadius: 3,
+                                    alignItems: 'flex-start',
+                                    justifyContent: 'flex-start',
+                                    textTransform: 'none',
+                                    color: 'inherit',
+                                    backgroundColor: selected ? alpha('#fff', 0.38) : alpha('#fff', 0.14),
+                                    border: `1px solid ${selected ? alpha(theme.palette.primary.main, 0.18) : alpha('#6e3a25', 0.06)}`,
+                                    boxShadow: selected ? `0 12px 30px ${alpha('#814c35', 0.14)}` : 'none',
+                                    '&:hover': {
+                                      backgroundColor: selected ? alpha('#fff', 0.46) : alpha('#fff', 0.24),
+                                    },
+                                    '& .contact-actions': {
+                                      opacity: { xs: 1, md: selected ? 1 : 0 },
+                                    },
+                                    '&:hover .contact-actions': {
+                                      opacity: 1,
+                                    },
+                                  }}
+                                >
+                                  <Stack direction="row" spacing={1.15} sx={{ width: '100%', alignItems: 'flex-start' }}>
+                                    <Box sx={{ position: 'relative', flexShrink: 0 }}>
+                                      <Avatar
+                                        src={contact.avatarUrl ?? undefined}
+                                        alt={contact.username}
+                                        sx={{ width: 46, height: 46 }}
+                                      >
+                                        {contact.username.slice(0, 1).toUpperCase()}
+                                      </Avatar>
+                                      <CircleRoundedIcon
+                                        sx={{
+                                          position: 'absolute',
+                                          right: -2,
+                                          bottom: -2,
+                                          fontSize: 15,
+                                          color: contact.isOnline ? '#35c46a' : alpha('#8f6a5a', 0.65),
+                                          backgroundColor: '#f6d4c4',
+                                          borderRadius: '50%',
+                                        }}
+                                      />
+                                    </Box>
+
+                                    <Box sx={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
+                                      <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
+                                        <Typography noWrap sx={{ fontWeight: 700, color: '#2f1b14' }}>
+                                          {getContactLabel(contact)}
+                                        </Typography>
+                                        {contact.isPinned && (
+                                          <PushPinRoundedIcon sx={{ fontSize: 14, color: theme.palette.primary.main }} />
+                                        )}
+                                      </Stack>
+                                      <Typography
+                                        variant="caption"
+                                        sx={{
+                                          display: 'block',
+                                          mt: 0.35,
+                                          color: alpha('#5f3827', 0.72),
+                                        }}
+                                        noWrap
+                                      >
+                                        {contact.isFriend ? `@${contact.username}` : `等待互加 · @${contact.username}`}
+                                      </Typography>
+                                      <Typography
+                                        variant="caption"
+                                        sx={{
+                                          display: 'block',
+                                          mt: 0.2,
+                                          color: alpha('#5f3827', 0.56),
+                                        }}
+                                        noWrap
+                                      >
+                                        {formatLastSeen(contact.isOnline, contact.lastSeenAt)}
+                                      </Typography>
+                                    </Box>
+
+                                    <Stack
+                                      className="contact-actions"
+                                      direction="row"
+                                      spacing={0.25}
+                                      sx={{
+                                        ml: 0.25,
+                                        transition: 'opacity 160ms ease',
+                                      }}
+                                    >
+                                      <IconButton
+                                        size="small"
+                                        disabled={!contact.isFriend && !contact.conversationId}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void openConversation(contact);
+                                        }}
+                                        sx={{ color: alpha('#6a3d29', 0.72) }}
+                                      >
+                                        <ChatBubbleOutlineRoundedIcon fontSize="small" />
+                                      </IconButton>
+                                      <IconButton
+                                        size="small"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          openEditContactDialog(contact.contactUserId);
+                                        }}
+                                        sx={{ color: alpha('#6a3d29', 0.72) }}
+                                      >
+                                        <EditRoundedIcon fontSize="small" />
+                                      </IconButton>
+                                      <IconButton
+                                        size="small"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          confirmDeleteContact(contact.contactUserId, getContactLabel(contact));
+                                        }}
+                                        sx={{ color: alpha(theme.palette.error.main, 0.8) }}
+                                      >
+                                        <DeleteOutlineRoundedIcon fontSize="small" />
+                                      </IconButton>
+                                    </Stack>
+                                  </Stack>
+                                </Button>
+                              </Box>
+                            );
+                          })}
+                        </List>
+                      </Box>
+                    ) : null
+                  ))}
+                </Stack>
+              )}
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              minWidth: 0,
+              px: { xs: 1.5, md: 3.2 },
+              py: { xs: 1.8, md: 3 },
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2.2,
+              background: `linear-gradient(180deg, ${alpha('#fff9f4', 0.16)} 0%, ${alpha('#fff6ef', 0.02)} 100%)`,
+            }}
+          >
+            <Paper
+              elevation={0}
+              sx={{
+                p: { xs: 1.6, md: 2 },
+                borderRadius: 4,
+                backgroundColor: alpha('#fff', 0.16),
+                border: `1px solid ${alpha('#6e3a25', 0.08)}`,
+              }}
+            >
+              <Stack spacing={1.4}>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1}
+                  sx={{ justifyContent: 'space-between', alignItems: { md: 'center' } }}
+                >
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#241611' }}>
+                      好友通知
+                    </Typography>
+                    <Typography variant="body2" sx={{ mt: 0.35, color: alpha('#4d2d21', 0.66) }}>
+                      这里集中处理别人发来的好友申请，也能看到自己发出的验证状态。
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                    <Chip
                       size="small"
-                      variant="contained"
-                      startIcon={<ChatRoundedIcon />}
-                      sx={{ whiteSpace: 'nowrap' }}
-                      onClick={() => void openConversationById(conversation.conversationId)}
+                      label={`待处理 ${messageStore.pendingIncomingFriendRequestCount}`}
+                      color={messageStore.pendingIncomingFriendRequestCount > 0 ? 'warning' : 'default'}
+                    />
+                    <Chip
+                      size="small"
+                      label={`已发送 ${messageStore.pendingOutgoingFriendRequestCount}`}
+                      variant="outlined"
+                    />
+                    <Button
+                      variant="text"
+                      size="small"
+                      startIcon={<RefreshRoundedIcon />}
+                      onClick={() => void messageStore.loadFriendRequests()}
+                      sx={{ whiteSpace: 'nowrap', color: '#512b1d' }}
                     >
-                      {conversation.peer.isFriend ? '继续聊天' : '查看会话'}
+                      刷新
                     </Button>
                   </Stack>
                 </Stack>
+
+                {recentFriendRequests.length > 0 ? (
+                  <Stack spacing={1.2}>
+                    {recentFriendRequests.map((request) => (
+                      <Paper
+                        key={request.id}
+                        elevation={0}
+                        sx={{
+                          px: { xs: 1.4, md: 1.8 },
+                          py: { xs: 1.35, md: 1.55 },
+                          borderRadius: 3.5,
+                          backgroundColor: alpha('#fff', 0.38),
+                          border: `1px solid ${alpha('#6e3a25', 0.08)}`,
+                        }}
+                      >
+                        <Stack
+                          direction={{ xs: 'column', sm: 'row' }}
+                          spacing={1.5}
+                          sx={{ justifyContent: 'space-between', alignItems: { sm: 'center' } }}
+                        >
+                          <Stack direction="row" spacing={1.2} sx={{ minWidth: 0, alignItems: 'flex-start', flex: 1 }}>
+                            <Avatar
+                              src={request.peer.avatarUrl ?? undefined}
+                              alt={request.peer.username}
+                              sx={{ width: 54, height: 54 }}
+                            >
+                              {request.peer.username.slice(0, 1).toUpperCase()}
+                            </Avatar>
+                            <Box sx={{ minWidth: 0, flex: 1 }}>
+                              <Stack
+                                direction={{ xs: 'column', md: 'row' }}
+                                spacing={0.9}
+                                sx={{ alignItems: { md: 'center' }, minWidth: 0 }}
+                              >
+                                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#2f1b14' }} noWrap>
+                                  {request.peer.alias || request.peer.username}
+                                </Typography>
+                                <Typography variant="body2" sx={{ fontWeight: 600, color: alpha('#4d2d21', 0.76) }}>
+                                  {request.direction === 'incoming' ? '请求加为好友' : '正在验证你的邀请'}
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: alpha('#4d2d21', 0.56) }}>
+                                  {formatRequestDate(request.createdAt)}
+                                </Typography>
+                              </Stack>
+                              <Typography variant="body2" sx={{ mt: 0.2, color: alpha('#4d2d21', 0.6) }}>
+                                @{request.peer.username}
+                              </Typography>
+                              <Typography variant="body2" sx={{ mt: 0.75, color: alpha('#4d2d21', 0.76), lineHeight: 1.7 }}>
+                                留言：{request.requestMessage?.trim() || '请求添加对方为好友'}
+                              </Typography>
+                              {request.requesterAlias?.trim() && (
+                                <Typography variant="body2" sx={{ mt: 0.45, color: alpha('#4d2d21', 0.68) }}>
+                                  备注：{request.requesterAlias}
+                                </Typography>
+                              )}
+                              <Typography variant="caption" sx={{ mt: 0.45, display: 'block', color: alpha('#4d2d21', 0.56) }}>
+                                来源：{request.source || '站内搜索'}
+                              </Typography>
+                            </Box>
+                          </Stack>
+
+                          <Stack
+                            direction={{ xs: 'row', sm: 'column' }}
+                            spacing={0.85}
+                            sx={{ alignItems: { sm: 'flex-end' }, justifyContent: 'center', flexShrink: 0 }}
+                          >
+                            <Chip
+                              size="small"
+                              color={
+                                request.status === 'accepted'
+                                  ? 'success'
+                                  : request.status === 'rejected'
+                                    ? 'default'
+                                    : request.direction === 'incoming'
+                                      ? 'warning'
+                                      : 'info'
+                              }
+                              label={
+                                request.status === 'accepted'
+                                  ? '已同意'
+                                  : request.status === 'rejected'
+                                    ? '已拒绝'
+                                    : request.direction === 'incoming'
+                                      ? '待你处理'
+                                      : '等待验证'
+                              }
+                              sx={{ fontWeight: 700 }}
+                            />
+                            {request.canAccept || request.canReject ? (
+                              <Stack direction="row" spacing={0.75}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="inherit"
+                                  onClick={() => void handleRespondFriendRequest(request.id, 'reject')}
+                                  sx={{ borderRadius: 999 }}
+                                >
+                                  拒绝
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  onClick={() => void handleRespondFriendRequest(request.id, 'accept')}
+                                  sx={{ borderRadius: 999, boxShadow: 'none' }}
+                                >
+                                  同意
+                                </Button>
+                              </Stack>
+                            ) : (
+                              <Typography variant="caption" sx={{ color: alpha('#4d2d21', 0.56) }}>
+                                {request.respondedAt ? `处理时间 ${formatTime(request.respondedAt)}` : '等待对方处理'}
+                              </Typography>
+                            )}
+                          </Stack>
+                        </Stack>
+                      </Paper>
+                    ))}
+                  </Stack>
+                ) : (
+                  <Typography variant="body2" sx={{ color: alpha('#4d2d21', 0.65) }}>
+                    暂时没有好友通知。
+                  </Typography>
+                )}
+              </Stack>
+            </Paper>
+
+            {activeContact ? (
+              <>
+                <Stack
+                  direction={{ xs: 'column', xl: 'row' }}
+                  spacing={2}
+                  sx={{ justifyContent: 'space-between' }}
+                >
+                  <Stack direction="row" spacing={2.2} sx={{ alignItems: 'center', minWidth: 0 }}>
+                    <Avatar
+                      src={activeContact.avatarUrl ?? undefined}
+                      alt={activeContact.username}
+                      sx={{
+                        width: { xs: 84, md: 112 },
+                        height: { xs: 84, md: 112 },
+                        boxShadow: `0 18px 40px ${alpha('#8c5336', 0.22)}`,
+                      }}
+                    >
+                      {activeContact.username.slice(0, 1).toUpperCase()}
+                    </Avatar>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={1}
+                        sx={{ alignItems: { xs: 'flex-start', sm: 'center' }, minWidth: 0 }}
+                      >
+                        <Typography
+                          variant="h4"
+                          sx={{
+                            fontWeight: 800,
+                            letterSpacing: '-0.03em',
+                            color: '#231510',
+                          }}
+                          noWrap
+                        >
+                          {getContactLabel(activeContact)}
+                        </Typography>
+                        <Chip
+                          size="small"
+                          label={activeContact.isOnline ? '在线' : '离线'}
+                          color={activeContact.isOnline ? 'success' : 'default'}
+                          sx={{ borderRadius: 2 }}
+                        />
+                      </Stack>
+                      <Typography variant="body1" sx={{ mt: 0.65, color: alpha('#513022', 0.8) }}>
+                        @{activeContact.username}
+                      </Typography>
+                      <Typography variant="body2" sx={{ mt: 1, color: alpha('#513022', 0.72) }}>
+                        {activeContact.isFriend
+                          ? '已互为联系人，可以直接继续发送消息。'
+                          : '当前仍是单向联系人，对方也添加你之后才允许继续发送新消息。'}
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    sx={{
+                      flexWrap: 'wrap',
+                      alignSelf: { xs: 'flex-start', xl: 'center' },
+                      justifyContent: { xl: 'flex-end' },
+                    }}
+                  >
+                    <Chip
+                      icon={<GroupRoundedIcon />}
+                      label={activeContact.isFriend ? '互为联系人' : '等待互加'}
+                      sx={{ backgroundColor: alpha('#fff', 0.28) }}
+                    />
+                    <Chip
+                      icon={<PushPinRoundedIcon />}
+                      label={activeContact.isPinned ? '已置顶' : '普通联系人'}
+                      sx={{ backgroundColor: alpha('#fff', 0.2) }}
+                    />
+                    <Chip
+                      icon={<ScheduleRoundedIcon />}
+                      label={formatLastSeen(activeContact.isOnline, activeContact.lastSeenAt)}
+                      sx={{ backgroundColor: alpha('#fff', 0.2) }}
+                    />
+                  </Stack>
+                </Stack>
+
+                <Divider sx={{ borderColor: alpha('#6e3a25', 0.1) }} />
+
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gap: 1.25,
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      md: 'repeat(4, minmax(0, 1fr))',
+                    },
+                  }}
+                >
+                  {[
+                    {
+                      icon: <GroupRoundedIcon fontSize="small" />,
+                      label: '联系人状态',
+                      value: activeContact.isFriend ? '已互加' : '待对方同意',
+                    },
+                    {
+                      icon: <AlternateEmailRoundedIcon fontSize="small" />,
+                      label: '会话状态',
+                      value: activeContact.conversationId || activeConversation ? '已有会话' : '尚未开启',
+                    },
+                    {
+                      icon: <ScheduleRoundedIcon fontSize="small" />,
+                      label: '添加时间',
+                      value: formatCreatedDate(activeContact.createdAt),
+                    },
+                    {
+                      icon: <StarBorderRoundedIcon fontSize="small" />,
+                      label: '列表位置',
+                      value: activeContact.isPinned ? '置顶区' : activeContact.isOnline ? '在线区' : '常规区',
+                    },
+                  ].map((item) => (
+                    <Paper
+                      key={item.label}
+                      elevation={0}
+                      sx={{
+                        px: 1.5,
+                        py: 1.35,
+                        borderRadius: 3,
+                        backgroundColor: alpha('#fff', 0.2),
+                        border: `1px solid ${alpha('#6e3a25', 0.08)}`,
+                      }}
+                    >
+                      <Stack direction="row" spacing={0.8} sx={{ alignItems: 'center', color: alpha('#5c3425', 0.65) }}>
+                        {item.icon}
+                        <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                          {item.label}
+                        </Typography>
+                      </Stack>
+                      <Typography variant="subtitle1" sx={{ mt: 1, fontWeight: 700, color: '#291711' }}>
+                        {item.value}
+                      </Typography>
+                    </Paper>
+                  ))}
+                </Box>
+
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gap: 1.5,
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      xl: 'minmax(0, 1.15fr) minmax(320px, 0.85fr)',
+                    },
+                  }}
+                >
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: { xs: 1.6, md: 2 },
+                      borderRadius: 4,
+                      backgroundColor: alpha('#fff', 0.18),
+                      border: `1px solid ${alpha('#6e3a25', 0.08)}`,
+                    }}
+                  >
+                    <Stack spacing={1.25}>
+                      <Typography variant="h6" sx={{ fontWeight: 800, color: '#241611' }}>
+                        联系人信息
+                      </Typography>
+                      {[
+                        ['显示名称', getContactLabel(activeContact)],
+                        ['用户名', `@${activeContact.username}`],
+                        ['最近在线', formatLastSeen(activeContact.isOnline, activeContact.lastSeenAt)],
+                        ['当前备注', activeContact.alias?.trim() || '未设置备注'],
+                      ].map(([label, value], index, rows) => (
+                        <Box key={label}>
+                          <Stack
+                            direction={{ xs: 'column', sm: 'row' }}
+                            spacing={0.6}
+                            sx={{
+                              justifyContent: 'space-between',
+                              alignItems: { xs: 'flex-start', sm: 'center' },
+                              py: 0.8,
+                            }}
+                          >
+                            <Typography variant="body2" sx={{ color: alpha('#4d2d21', 0.62) }}>
+                              {label}
+                            </Typography>
+                            <Typography
+                              variant="body1"
+                              sx={{ fontWeight: 600, color: '#2c1913', textAlign: { sm: 'right' } }}
+                            >
+                              {value}
+                            </Typography>
+                          </Stack>
+                          {index < rows.length - 1 && <Divider sx={{ borderColor: alpha('#6e3a25', 0.08) }} />}
+                        </Box>
+                      ))}
+                    </Stack>
+                  </Paper>
+
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: { xs: 1.6, md: 2 },
+                      borderRadius: 4,
+                      backgroundColor: alpha('#fff', 0.18),
+                      border: `1px solid ${alpha('#6e3a25', 0.08)}`,
+                    }}
+                  >
+                    <Stack spacing={1.35}>
+                      <Typography variant="h6" sx={{ fontWeight: 800, color: '#241611' }}>
+                        最近沟通
+                      </Typography>
+                      {activeConversation ? (
+                        <>
+                          <Typography variant="body2" sx={{ color: alpha('#4d2d21', 0.65) }}>
+                            {activeConversation.lastMessageAt
+                              ? `${formatTime(activeConversation.lastMessageAt)} · 最近一条消息`
+                              : '已建立会话，暂时还没有消息'}
+                          </Typography>
+                          <Paper
+                            elevation={0}
+                            sx={{
+                              p: 1.4,
+                              borderRadius: 3,
+                              backgroundColor: alpha('#fff', 0.3),
+                              color: '#2b1812',
+                            }}
+                          >
+                            <Typography variant="body1" sx={{ lineHeight: 1.7 }}>
+                              {activeConversation.lastMessagePreview || '还没有发送过消息。'}
+                            </Typography>
+                          </Paper>
+                          <Button
+                            variant="contained"
+                            startIcon={<ChatRoundedIcon />}
+                            onClick={() => void openConversation(activeContact)}
+                            sx={{
+                              alignSelf: 'flex-start',
+                              borderRadius: 999,
+                              px: 2.2,
+                              backgroundColor: '#ef8b78',
+                              color: '#2b140e',
+                              boxShadow: 'none',
+                            }}
+                          >
+                            {activeContact.isFriend ? '发消息' : '查看会话'}
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Typography variant="body2" sx={{ color: alpha('#4d2d21', 0.65), lineHeight: 1.8 }}>
+                            还没有和这位联系人建立会话。若双方已互加，可以直接开始一段新聊天。
+                          </Typography>
+                          <Button
+                            variant="outlined"
+                            startIcon={<ChatBubbleOutlineRoundedIcon />}
+                            disabled={!activeContact.isFriend}
+                            onClick={() => void openConversation(activeContact)}
+                            sx={{
+                              alignSelf: 'flex-start',
+                              borderRadius: 999,
+                              px: 2.2,
+                              borderColor: alpha('#6e3a25', 0.18),
+                              color: '#412116',
+                            }}
+                          >
+                            开始聊天
+                          </Button>
+                        </>
+                      )}
+
+                      {alternateRecentConversations.length > 0 && (
+                        <>
+                          <Divider sx={{ borderColor: alpha('#6e3a25', 0.08) }} />
+                          <Stack spacing={0.9}>
+                            {alternateRecentConversations.map((conversation) => (
+                              <Button
+                                key={conversation.conversationId}
+                                onClick={() => void openConversationById(conversation.conversationId)}
+                                sx={{
+                                  justifyContent: 'space-between',
+                                  px: 1.1,
+                                  py: 0.9,
+                                  borderRadius: 3,
+                                  textTransform: 'none',
+                                  color: '#392219',
+                                  backgroundColor: alpha('#fff', 0.16),
+                                }}
+                              >
+                                <Box sx={{ minWidth: 0, textAlign: 'left' }}>
+                                  <Typography noWrap sx={{ fontWeight: 700 }}>
+                                    {conversation.peer.alias || conversation.peer.username}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ color: alpha('#4d2d21', 0.62) }} noWrap>
+                                    {conversation.lastMessagePreview || '暂无消息'}
+                                  </Typography>
+                                </Box>
+                                <Typography variant="caption" sx={{ color: alpha('#4d2d21', 0.56), ml: 1 }}>
+                                  {conversation.lastMessageAt ? formatTime(conversation.lastMessageAt) : '--'}
+                                </Typography>
+                              </Button>
+                            ))}
+                          </Stack>
+                        </>
+                      )}
+                    </Stack>
+                  </Paper>
+                </Box>
+
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: { xs: 1.6, md: 2 },
+                    borderRadius: 4,
+                    backgroundColor: alpha('#fff', 0.16),
+                    border: `1px solid ${alpha('#6e3a25', 0.08)}`,
+                  }}
+                >
+                  <Stack spacing={1.5}>
+                    <Stack
+                      direction={{ xs: 'column', md: 'row' }}
+                      spacing={1}
+                      sx={{ justifyContent: 'space-between', alignItems: { md: 'center' } }}
+                    >
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800, color: '#241611' }}>
+                          推荐添加
+                        </Typography>
+                        <Typography variant="body2" sx={{ mt: 0.35, color: alpha('#4d2d21', 0.66) }}>
+                          这里展示当前还不是联系人的用户，可直接搜索后添加。
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<SearchRoundedIcon />}
+                          onClick={() => void reloadAvailableUsers(0)}
+                          disabled={messageStore.searchingUsers}
+                          sx={{ borderRadius: 999, whiteSpace: 'nowrap' }}
+                        >
+                          {messageStore.searchingUsers ? '搜索中...' : '搜索'}
+                        </Button>
+                        <Button
+                          variant="text"
+                          size="small"
+                          startIcon={<RefreshRoundedIcon />}
+                          onClick={() => void handleNextBatch()}
+                          disabled={messageStore.searchingUsers}
+                          sx={{ whiteSpace: 'nowrap', color: '#512b1d' }}
+                        >
+                          换一批
+                        </Button>
+                      </Stack>
+                    </Stack>
+
+                    <TextField
+                      fullWidth
+                      size="small"
+                      placeholder="输入用户名或邮箱"
+                      value={userKeyword}
+                      onChange={(event) => {
+                        setUserKeyword(event.target.value);
+                        setUserSearchSkip(0);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          void reloadAvailableUsers(0);
+                        }
+                      }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: 3,
+                          backgroundColor: alpha('#fff', 0.26),
+                        },
+                      }}
+                    />
+
+                    {availableUsers.length > 0 ? (
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gap: 1,
+                          gridTemplateColumns: {
+                            xs: '1fr',
+                            md: 'repeat(2, minmax(0, 1fr))',
+                            xl: 'repeat(3, minmax(0, 1fr))',
+                          },
+                        }}
+                      >
+                        {availableUsers.slice(0, 6).map((user) => (
+                          <Button
+                            key={user.id}
+                            onClick={() => openCreateContactDialogForUser(user)}
+                            sx={{
+                              justifyContent: 'flex-start',
+                              px: 1.2,
+                              py: 1.1,
+                              borderRadius: 3,
+                              textTransform: 'none',
+                              color: '#2f1d16',
+                              backgroundColor: alpha('#fff', 0.24),
+                            }}
+                          >
+                            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', width: '100%' }}>
+                              <Avatar src={user.avatarUrl ?? undefined} alt={user.username} sx={{ width: 38, height: 38 }}>
+                                {user.username.slice(0, 1).toUpperCase()}
+                              </Avatar>
+                              <Box sx={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
+                                <Typography sx={{ fontWeight: 700 }} noWrap>
+                                  {user.alias || user.username}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: alpha('#4d2d21', 0.62) }} noWrap>
+                                  {formatLastSeen(user.isOnline, user.lastSeenAt)}
+                                </Typography>
+                              </Box>
+                              {user.friendRequestStatus === 'pending' ? (
+                                <Chip
+                                  size="small"
+                                  color={user.friendRequestDirection === 'incoming' ? 'warning' : 'info'}
+                                  label={user.friendRequestDirection === 'incoming' ? '待你处理' : '已申请'}
+                                />
+                              ) : (
+                                <PersonAddRoundedIcon fontSize="small" sx={{ color: alpha('#6a3d29', 0.74) }} />
+                              )}
+                            </Stack>
+                          </Button>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" sx={{ color: alpha('#4d2d21', 0.65) }}>
+                        {messageStore.searchingUsers
+                          ? '推荐用户加载中...'
+                          : userKeyword.trim()
+                            ? '没有找到符合条件的可添加用户。'
+                            : '当前没有可添加的非联系人用户。'}
+                      </Typography>
+                    )}
+                  </Stack>
+                </Paper>
+
+                <Stack
+                  direction={{ xs: 'column-reverse', sm: 'row' }}
+                  spacing={1}
+                  sx={{ justifyContent: 'flex-end' }}
+                >
+                  <Button
+                    color="error"
+                    variant="text"
+                    startIcon={<DeleteOutlineRoundedIcon />}
+                    onClick={() => confirmDeleteContact(activeContact.contactUserId, getContactLabel(activeContact))}
+                  >
+                    删除联系人
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<EditRoundedIcon />}
+                    onClick={() => openEditContactDialog(activeContact.contactUserId)}
+                    sx={{
+                      borderRadius: 999,
+                      borderColor: alpha('#6e3a25', 0.18),
+                      color: '#412116',
+                    }}
+                  >
+                    编辑资料
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<ChatRoundedIcon />}
+                    disabled={!activeContact.isFriend && !activeContact.conversationId}
+                    onClick={() => void openConversation(activeContact)}
+                    sx={{
+                      borderRadius: 999,
+                      px: 2.6,
+                      backgroundColor: '#ef8b78',
+                      color: '#2b140e',
+                      boxShadow: 'none',
+                    }}
+                  >
+                    {activeContact.isFriend ? '发消息' : (activeContact.conversationId ? '查看会话' : '待对方同意')}
+                  </Button>
+                </Stack>
+              </>
+            ) : (
+              <Paper
+                elevation={0}
+                sx={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                  p: 4,
+                  borderRadius: 5,
+                  backgroundColor: alpha('#fff', 0.18),
+                  border: `1px solid ${alpha('#6e3a25', 0.08)}`,
+                }}
+              >
+                <Avatar
+                  sx={{
+                    width: 72,
+                    height: 72,
+                    mb: 2,
+                    backgroundColor: alpha(theme.palette.primary.main, 0.16),
+                    color: theme.palette.primary.main,
+                  }}
+                >
+                  <GroupRoundedIcon />
+                </Avatar>
+                <Typography variant="h5" sx={{ fontWeight: 800, color: '#241611' }}>
+                  先选择一个联系人
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 1, maxWidth: 420, color: alpha('#4d2d21', 0.68), lineHeight: 1.8 }}>
+                  左侧列表会展示你当前的联系人。没有联系人时，可以直接从推荐用户里添加，或者打开好友管理器搜索用户。
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} sx={{ mt: 2.5 }}>
+                  <Button variant="contained" startIcon={<PersonAddRoundedIcon />} onClick={() => void openCreateContactDialog()}>
+                    新增联系人
+                  </Button>
+                  <Button variant="outlined" startIcon={<RefreshRoundedIcon />} onClick={() => void reloadAvailableUsers(0)}>
+                    刷新推荐
+                  </Button>
+                </Stack>
               </Paper>
-            ))}
+            )}
           </Box>
-        </SectionCard>
-      )}
+        </Box>
+      </Paper>
 
       <MessageContactEditorDialog
         open={contactDialogOpen}
@@ -685,8 +1453,11 @@ const MessageContactsPage = observer(() => {
         onSelectUser={(user) => {
           setSelectedContactUserId(user.id);
           setSelectedContactPreview(user);
+          setContactAlias((current) => current || user.alias || user.username);
         }}
         selectedContactPreview={selectedContactPreview}
+        requestMessage={friendRequestMessage}
+        onRequestMessageChange={setFriendRequestMessage}
         alias={contactAlias}
         onAliasChange={setContactAlias}
         pinned={contactPinned}
@@ -698,6 +1469,16 @@ const MessageContactsPage = observer(() => {
         }}
         onSubmit={() => void saveContact()}
         saving={contactSaving}
+        submitLabel={
+          editingContactUserId
+            ? '保存'
+            : selectedIncomingFriendRequestId
+              ? '同意并加为好友'
+              : selectedOutgoingFriendRequestPending
+                ? '等待对方验证'
+                : '发送申请'
+        }
+        submitDisabled={contactSaving || !selectedContactUserId || Boolean(!editingContactUserId && selectedOutgoingFriendRequestPending)}
       />
 
       <MessageDeleteContactDialog
