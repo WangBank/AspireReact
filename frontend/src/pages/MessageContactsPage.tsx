@@ -51,6 +51,22 @@ const formatRequestDate = (value: string) => new Intl.DateTimeFormat('zh-CN', {
   day: '2-digit',
 }).format(new Date(value));
 
+const buildSuggestedUserSummary = (user: MessageUserSummary, currentUsername?: string | null) => {
+  if (user.friendRequestStatus === 'pending') {
+    if (user.friendRequestDirection === 'incoming') {
+      return `${user.username} 已向你发来好友申请。处理后就能进入联系人列表继续聊天。`;
+    }
+
+    return `你已经向 ${user.username} 发出了好友申请，等待对方确认后即可开始站内聊天。`;
+  }
+
+  if (user.isOnline) {
+    return `${user.username} 当前在线。现在就可以发起好友申请，等对方同意后开始聊天。`;
+  }
+
+  return `${formatLastSeen(user.isOnline, user.lastSeenAt)}。${currentUsername ? `可先以“${currentUsername}”的身份发起好友申请。` : '可先发起好友申请。'}`;
+};
+
 const MessageContactsPage = observer(() => {
   const { authStore, messageStore } = useStore();
   const theme = useTheme();
@@ -71,6 +87,7 @@ const MessageContactsPage = observer(() => {
   const [contactDeleting, setContactDeleting] = useState(false);
   const [userSearchSkip, setUserSearchSkip] = useState(0);
   const [contactSearchSkip, setContactSearchSkip] = useState(0);
+  const [availableUserMode, setAvailableUserMode] = useState<'recommended' | 'online' | 'pending'>('recommended');
 
   useEffect(() => {
     let disposed = false;
@@ -104,6 +121,35 @@ const MessageContactsPage = observer(() => {
     () => messageStore.userSearchResults.filter((item) => !item.isContact),
     [messageStore.userSearchResults],
   );
+  const filteredAvailableUsers = useMemo(() => {
+    const filtered = availableUsers.filter((user) => {
+      if (availableUserMode === 'online') {
+        return user.isOnline;
+      }
+
+      if (availableUserMode === 'pending') {
+        return user.friendRequestStatus === 'pending';
+      }
+
+      return true;
+    });
+
+    return filtered.sort((left, right) => {
+      if (left.friendRequestStatus === 'pending' && right.friendRequestStatus !== 'pending') {
+        return -1;
+      }
+
+      if (left.friendRequestStatus !== 'pending' && right.friendRequestStatus === 'pending') {
+        return 1;
+      }
+
+      if (left.isOnline !== right.isOnline) {
+        return left.isOnline ? -1 : 1;
+      }
+
+      return left.username.localeCompare(right.username, 'zh-CN');
+    });
+  }, [availableUserMode, availableUsers]);
   const recentConversations = useMemo(
     () => messageStore.conversations.slice(0, 5),
     [messageStore.conversations],
@@ -1224,7 +1270,7 @@ const MessageContactsPage = observer(() => {
                   sx={{
                     p: { xs: 1.6, md: 2 },
                     borderRadius: 4,
-                    backgroundColor: alpha('#fff', 0.16),
+                    backgroundColor: alpha('#fff7f4', 0.78),
                     border: `1px solid ${alpha('#6e3a25', 0.08)}`,
                   }}
                 >
@@ -1239,7 +1285,7 @@ const MessageContactsPage = observer(() => {
                           推荐添加
                         </Typography>
                         <Typography variant="body2" sx={{ mt: 0.35, color: alpha('#4d2d21', 0.66) }}>
-                          这里展示当前还不是联系人的用户，可直接搜索后添加。
+                          这里展示当前还不是联系人的用户，可直接搜索、查看状态并发起好友申请。
                         </Typography>
                       </Box>
                       <Stack direction="row" spacing={1}>
@@ -1283,69 +1329,177 @@ const MessageContactsPage = observer(() => {
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 3,
-                          backgroundColor: alpha('#fff', 0.26),
+                          backgroundColor: alpha('#fff', 0.9),
                         },
                       }}
                     />
 
-                    {availableUsers.length > 0 ? (
-                      <Box
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        display: 'inline-flex',
+                        alignSelf: 'flex-start',
+                        p: 0.45,
+                        borderRadius: 3,
+                        backgroundColor: alpha('#f3ebe8', 0.96),
+                        border: `1px solid ${alpha('#ccb2a8', 0.6)}`,
+                      }}
+                    >
+                      <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
+                        {[
+                          { key: 'recommended', label: '推荐' },
+                          { key: 'online', label: '在线' },
+                          { key: 'pending', label: '待处理' },
+                        ].map((item) => {
+                          const active = availableUserMode === item.key;
+                          return (
+                            <Button
+                              key={item.key}
+                              size="small"
+                              variant="text"
+                              onClick={() => setAvailableUserMode(item.key as 'recommended' | 'online' | 'pending')}
+                              sx={{
+                                minWidth: 72,
+                                px: 1.8,
+                                py: 0.7,
+                                borderRadius: 2.2,
+                                color: active ? '#3a2018' : alpha('#6f4f44', 0.88),
+                                backgroundColor: active ? alpha('#fff', 0.94) : 'transparent',
+                                fontWeight: active ? 800 : 700,
+                                boxShadow: active ? `0 4px 14px ${alpha('#7b4c39', 0.1)}` : 'none',
+                                '&:hover': {
+                                  backgroundColor: active ? alpha('#fff', 0.98) : alpha('#fff', 0.5),
+                                },
+                              }}
+                            >
+                              {item.label}
+                            </Button>
+                          );
+                        })}
+                      </Stack>
+                    </Paper>
+
+                    {filteredAvailableUsers.length > 0 ? (
+                      <Paper
+                        elevation={0}
                         sx={{
-                          display: 'grid',
-                          gap: 1,
-                          gridTemplateColumns: {
-                            xs: '1fr',
-                            md: 'repeat(2, minmax(0, 1fr))',
-                            xl: 'repeat(3, minmax(0, 1fr))',
-                          },
+                          borderRadius: 3.5,
+                          overflow: 'hidden',
+                          backgroundColor: alpha('#fff', 0.62),
+                          border: `1px solid ${alpha('#d7c2ba', 0.68)}`,
                         }}
                       >
-                        {availableUsers.slice(0, 6).map((user) => (
-                          <Button
-                            key={user.id}
-                            onClick={() => openCreateContactDialogForUser(user)}
-                            sx={{
-                              justifyContent: 'flex-start',
-                              px: 1.2,
-                              py: 1.1,
-                              borderRadius: 3,
-                              textTransform: 'none',
-                              color: '#2f1d16',
-                              backgroundColor: alpha('#fff', 0.24),
-                            }}
-                          >
-                            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', width: '100%' }}>
-                              <Avatar src={user.avatarUrl ?? undefined} alt={user.username} sx={{ width: 38, height: 38 }}>
-                                {user.username.slice(0, 1).toUpperCase()}
-                              </Avatar>
-                              <Box sx={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
-                                <Typography sx={{ fontWeight: 700 }} noWrap>
-                                  {user.alias || user.username}
-                                </Typography>
-                                <Typography variant="caption" sx={{ color: alpha('#4d2d21', 0.62) }} noWrap>
-                                  {formatLastSeen(user.isOnline, user.lastSeenAt)}
-                                </Typography>
+                        <Stack divider={<Divider sx={{ borderColor: alpha('#6e3a25', 0.08) }} />}>
+                          {filteredAvailableUsers.slice(0, 8).map((user) => {
+                            const isIncomingPending = user.friendRequestStatus === 'pending' && user.friendRequestDirection === 'incoming';
+                            const isOutgoingPending = user.friendRequestStatus === 'pending' && user.friendRequestDirection === 'outgoing';
+                            const actionLabel = isIncomingPending ? '处理' : isOutgoingPending ? '已申请' : '加入';
+
+                            return (
+                              <Box
+                                key={user.id}
+                                sx={{
+                                  px: { xs: 1.2, md: 1.6 },
+                                  py: { xs: 1.25, md: 1.5 },
+                                  backgroundColor: alpha('#fff', 0.45),
+                                }}
+                              >
+                                <Stack
+                                  direction={{ xs: 'column', sm: 'row' }}
+                                  spacing={1.35}
+                                  sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between' }}
+                                >
+                                  <Stack direction="row" spacing={1.4} sx={{ minWidth: 0, flex: 1 }}>
+                                    <Avatar src={user.avatarUrl ?? undefined} alt={user.username} sx={{ width: 52, height: 52 }}>
+                                      {user.username.slice(0, 1).toUpperCase()}
+                                    </Avatar>
+                                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                                      <Typography variant="h6" sx={{ fontWeight: 800, color: '#2a1812' }} noWrap>
+                                        {user.alias || user.username}
+                                      </Typography>
+                                      <Stack direction="row" spacing={0.75} sx={{ mt: 0.6, flexWrap: 'wrap', rowGap: 0.7 }}>
+                                        <Chip
+                                          size="small"
+                                          variant="outlined"
+                                          label={`@${user.username}`}
+                                          sx={{ backgroundColor: alpha('#fff', 0.7) }}
+                                        />
+                                        <Chip
+                                          size="small"
+                                          variant="outlined"
+                                          label={user.isOnline ? '在线' : '最近活跃'}
+                                          color={user.isOnline ? 'success' : 'default'}
+                                          sx={{ backgroundColor: alpha('#fff', 0.7) }}
+                                        />
+                                        {user.friendRequestStatus === 'pending' && (
+                                          <Chip
+                                            size="small"
+                                            color={isIncomingPending ? 'warning' : 'info'}
+                                            label={isIncomingPending ? '待你处理' : '等待验证'}
+                                            sx={{ backgroundColor: alpha('#fff', 0.7) }}
+                                          />
+                                        )}
+                                        <Chip
+                                          size="small"
+                                          variant="outlined"
+                                          label={formatLastSeen(user.isOnline, user.lastSeenAt)}
+                                          sx={{ backgroundColor: alpha('#fff', 0.7) }}
+                                        />
+                                      </Stack>
+                                      <Typography
+                                        variant="body2"
+                                        sx={{
+                                          mt: 0.95,
+                                          color: alpha('#533327', 0.74),
+                                          lineHeight: 1.7,
+                                          display: '-webkit-box',
+                                          overflow: 'hidden',
+                                          WebkitLineClamp: 2,
+                                          WebkitBoxOrient: 'vertical',
+                                        }}
+                                      >
+                                        {buildSuggestedUserSummary(user, authStore.username)}
+                                      </Typography>
+                                    </Box>
+                                  </Stack>
+
+                                  <Button
+                                    variant="outlined"
+                                    disabled={isOutgoingPending}
+                                    onClick={() => openCreateContactDialogForUser(user)}
+                                    sx={{
+                                      alignSelf: { xs: 'flex-end', sm: 'center' },
+                                      minWidth: 112,
+                                      px: 2.6,
+                                      py: 1,
+                                      borderRadius: 999,
+                                      borderColor: alpha('#bca49a', 0.9),
+                                      color: '#2f1811',
+                                      backgroundColor: alpha('#fff', 0.78),
+                                      fontWeight: 700,
+                                      '&:hover': {
+                                        borderColor: alpha('#9d7a6a', 0.9),
+                                        backgroundColor: alpha('#fff', 0.94),
+                                      },
+                                    }}
+                                  >
+                                    {actionLabel}
+                                  </Button>
+                                </Stack>
                               </Box>
-                              {user.friendRequestStatus === 'pending' ? (
-                                <Chip
-                                  size="small"
-                                  color={user.friendRequestDirection === 'incoming' ? 'warning' : 'info'}
-                                  label={user.friendRequestDirection === 'incoming' ? '待你处理' : '已申请'}
-                                />
-                              ) : (
-                                <PersonAddRoundedIcon fontSize="small" sx={{ color: alpha('#6a3d29', 0.74) }} />
-                              )}
-                            </Stack>
-                          </Button>
-                        ))}
-                      </Box>
+                            );
+                          })}
+                        </Stack>
+                      </Paper>
                     ) : (
                       <Typography variant="body2" sx={{ color: alpha('#4d2d21', 0.65) }}>
                         {messageStore.searchingUsers
                           ? '推荐用户加载中...'
-                          : userKeyword.trim()
-                            ? '没有找到符合条件的可添加用户。'
-                            : '当前没有可添加的非联系人用户。'}
+                          : availableUserMode === 'pending'
+                            ? '当前没有待处理的好友申请用户。'
+                            : userKeyword.trim()
+                              ? '没有找到符合条件的可添加用户。'
+                              : '当前没有可添加的非联系人用户。'}
                       </Typography>
                     )}
                   </Stack>
