@@ -125,13 +125,20 @@ public class AdminController : ControllerBase
             return BadRequest(new { success = false, message = "参数验证失败", errors = ModelState });
         }
 
-        var success = await _adminService.ResetUserPasswordAsync(id, request.NewPassword, cancellationToken);
-        if (!success)
+        try
         {
-            return NotFound(new { success = false, message = "用户不存在" });
-        }
+            var success = await _adminService.ResetUserPasswordAsync(id, request.NewPassword, cancellationToken);
+            if (!success)
+            {
+                return NotFound(new { success = false, message = "用户不存在" });
+            }
 
-        return Ok(new { success = true, message = "密码已重置" });
+            return Ok(new { success = true, message = "密码已重置" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
     }
 
     [HttpPut("users/batch/status")]
@@ -202,42 +209,6 @@ public class AdminController : ControllerBase
                 success = true,
                 data = result,
                 message = $"已批量设置 {result.UpdatedCount} 个用户为 {request.Role}"
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { success = false, message = ex.Message });
-        }
-    }
-
-    [HttpPut("users/batch/reset-password")]
-    public async Task<IActionResult> BatchResetUserPassword(
-        [FromBody] AdminUserBatchPasswordResetRequest request,
-        CancellationToken cancellationToken)
-    {
-        var guard = EnsureAdmin();
-        if (guard != null)
-        {
-            return guard;
-        }
-
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new { success = false, message = "参数验证失败", errors = ModelState });
-        }
-
-        try
-        {
-            var result = await _adminService.BatchResetUserPasswordAsync(
-                request.UserIds,
-                request.NewPassword,
-                cancellationToken);
-
-            return Ok(new
-            {
-                success = true,
-                data = result,
-                message = $"已批量重置 {result.UpdatedCount} 个用户的密码"
             });
         }
         catch (InvalidOperationException ex)

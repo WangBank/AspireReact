@@ -103,7 +103,6 @@ export class AuthStore {
   }
 
   fetchCaptcha = async () => {
-    this.error = null;
     try {
       const data = await authService.getCaptcha();
       runInAction(() => {

@@ -34,6 +34,21 @@ public class UserMessage
     [Column("image_file_name")]
     public string? ImageFileName { get; set; }
 
+    [MaxLength(255)]
+    [Column("file_name")]
+    public string? FileName { get; set; }
+
+    [MaxLength(255)]
+    [Column("file_content_type")]
+    public string? FileContentType { get; set; }
+
+    [Column("file_size_bytes")]
+    public long? FileSizeBytes { get; set; }
+
+    [MaxLength(600)]
+    [Column("file_storage_path")]
+    public string? FileStoragePath { get; set; }
+
     [Column("reply_to_message_id")]
     public int? ReplyToMessageId { get; set; }
 

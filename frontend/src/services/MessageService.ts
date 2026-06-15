@@ -55,6 +55,9 @@ export interface MessageItem {
   textContent: string | null;
   imageUrl: string | null;
   imageFileName: string | null;
+  fileName: string | null;
+  fileContentType: string | null;
+  fileSizeBytes: number | null;
   replyToMessageId: number | null;
   replyToMessage: MessageReplySummary | null;
   isRecalled: boolean;
@@ -68,6 +71,7 @@ export interface MessageReplySummary {
   senderUsername: string;
   textContent: string | null;
   imageFileName: string | null;
+  fileName: string | null;
   isRecalled: boolean;
 }
 
@@ -113,6 +117,7 @@ export interface UpdateConversationSettingsPayload {
 
 const UploadCompressionThresholdBytes = 2 * 1024 * 1024;
 const UploadMaxDimension = 1920;
+const ImageExtensions = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif']);
 
 const buildAuthHeaders = (contentType = false): HeadersInit => {
   const token = getAuthToken();
@@ -190,6 +195,26 @@ const maybeCompressImage = async (file: File): Promise<File> => {
     type: 'image/webp',
     lastModified: file.lastModified,
   });
+};
+
+const isImageLikeFile = (file: File): boolean => {
+  if (file.type.startsWith('image/')) {
+    return true;
+  }
+
+  const extension = file.name.split('.').pop()?.trim().toLowerCase() ?? '';
+  return ImageExtensions.has(extension);
+};
+
+const resolveDownloadFileName = (response: Response, fallback: string): string => {
+  const contentDisposition = response.headers.get('content-disposition') ?? '';
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+
+  const asciiMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  return asciiMatch?.[1] ?? fallback;
 };
 
 export class MessageService {
@@ -332,16 +357,20 @@ export class MessageService {
 
   async sendMessage(
     conversationId: number,
-    payload: { text?: string; image?: File | null; replyToMessageId?: number | null },
+    payload: { text?: string; attachment?: File | null; replyToMessageId?: number | null },
   ): Promise<MessageItem> {
     const token = getAuthToken();
     const formData = new FormData();
     if (payload.text?.trim()) {
       formData.append('text', payload.text.trim());
     }
-    if (payload.image) {
-      const preparedImage = await maybeCompressImage(payload.image);
-      formData.append('image', preparedImage);
+    if (payload.attachment) {
+      if (isImageLikeFile(payload.attachment)) {
+        const preparedImage = await maybeCompressImage(payload.attachment);
+        formData.append('image', preparedImage);
+      } else {
+        formData.append('file', payload.attachment);
+      }
     }
     if (payload.replyToMessageId) {
       formData.append('replyToMessageId', String(payload.replyToMessageId));
@@ -355,6 +384,34 @@ export class MessageService {
 
     const json = await parseJson<ApiResponse<MessageItem>>(response);
     return json.data;
+  }
+
+  async downloadMessageFile(messageId: number, preferredFileName: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/messages/${messageId}/file`, {
+      headers: buildAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      let message = '文件下载失败';
+      try {
+        const json = await response.json();
+        message = json.message || message;
+      } catch {
+        // ignore json parse failure
+      }
+
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = resolveDownloadFileName(response, preferredFileName);
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   }
 
   async recallMessage(messageId: number): Promise<MessageItem> {

@@ -37,10 +37,6 @@ public interface IAdminService
         int userId,
         string newPassword,
         CancellationToken cancellationToken = default);
-    Task<AdminBatchOperationResultResponse> BatchResetUserPasswordAsync(
-        IReadOnlyCollection<int> userIds,
-        string newPassword,
-        CancellationToken cancellationToken = default);
     Task<DatabaseExportResult> ExportDatabaseBackupAsync(CancellationToken cancellationToken = default);
 }
 
@@ -116,6 +112,8 @@ public class AdminService : IAdminService
             return null;
         }
 
+        EnsureUserIsNotAdminTarget(user);
+
         if (!isActive && string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase))
         {
             var activeAdminCount = await _db.Users.CountAsync(
@@ -153,6 +151,8 @@ public class AdminService : IAdminService
         {
             return null;
         }
+
+        EnsureUserIsNotAdminTarget(user);
 
         if (!string.Equals(normalizedRole, "Admin", StringComparison.OrdinalIgnoreCase)
             && string.Equals(user.Role, "Admin", StringComparison.OrdinalIgnoreCase))
@@ -198,6 +198,8 @@ public class AdminService : IAdminService
         {
             throw new InvalidOperationException("未找到选中的用户。");
         }
+
+        EnsureUsersDoNotContainAdminTargets(users);
 
         if (!isActive && users.Any(user => user.Id == currentAdminUserId))
         {
@@ -248,6 +250,8 @@ public class AdminService : IAdminService
             throw new InvalidOperationException("未找到选中的用户。");
         }
 
+        EnsureUsersDoNotContainAdminTargets(users);
+
         if (!IsAdminRole(normalizedRole) && users.Any(user => user.Id == currentAdminUserId))
         {
             throw new InvalidOperationException("不能在当前会话里批量取消自己的管理员权限。");
@@ -286,46 +290,12 @@ public class AdminService : IAdminService
             return false;
         }
 
+        EnsureUserIsNotAdminTarget(user);
+
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
         await RevokeQuickLoginTokensAsync(userId, cancellationToken);
         await _db.SaveChangesAsync(cancellationToken);
         return true;
-    }
-
-    public async Task<AdminBatchOperationResultResponse> BatchResetUserPasswordAsync(
-        IReadOnlyCollection<int> userIds,
-        string newPassword,
-        CancellationToken cancellationToken = default)
-    {
-        var normalizedIds = NormalizeUserIds(userIds);
-        if (normalizedIds.Count == 0)
-        {
-            throw new InvalidOperationException("请至少选择一个用户。");
-        }
-
-        var users = await _db.Users
-            .Where(item => normalizedIds.Contains(item.Id))
-            .ToListAsync(cancellationToken);
-
-        if (users.Count == 0)
-        {
-            throw new InvalidOperationException("未找到选中的用户。");
-        }
-
-        var passwordHash = BCrypt.Net.BCrypt.HashPassword(newPassword);
-        foreach (var user in users)
-        {
-            user.PasswordHash = passwordHash;
-        }
-
-        await RevokeQuickLoginTokensAsync(normalizedIds, cancellationToken);
-        await _db.SaveChangesAsync(cancellationToken);
-
-        return new AdminBatchOperationResultResponse
-        {
-            UpdatedCount = users.Count,
-            UserIds = users.Select(user => user.Id).OrderBy(id => id).ToList()
-        };
     }
 
     private async Task RevokeQuickLoginTokensAsync(int userId, CancellationToken cancellationToken)
@@ -371,89 +341,38 @@ public class AdminService : IAdminService
 
         var fileName = $"lies-db-backup-{DateTime.Now:yyyyMMdd-HHmmss}.dump";
         var tempFilePath = Path.Combine(Path.GetTempPath(), fileName);
-        var pgDumpPath = ResolvePgDumpPath();
-
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = pgDumpPath,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        foreach (var argument in BuildPgDumpArguments(builder, tempFilePath))
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        ApplyPgEnvironment(startInfo, builder);
-
-        using var process = new Process
-        {
-            StartInfo = startInfo,
-            EnableRaisingEvents = true
-        };
+        var attemptedPgDumpPaths = GetPgDumpCandidates().ToList();
 
         try
         {
-            if (!process.Start())
+            // 本地开发常见场景是数据库跑在 Docker 容器里，但宿主机没有安装 pg_dump。
+            if (!await TryExportDatabaseBackupWithLocalPgDumpAsync(
+                    builder,
+                    tempFilePath,
+                    attemptedPgDumpPaths,
+                    cancellationToken))
             {
-                throw new InvalidOperationException("Failed to start pg_dump.");
-            }
-        }
-        catch (Win32Exception ex)
-        {
-            throw new InvalidOperationException(
-                $"未找到 pg_dump，可通过配置 DatabaseBackup:PgDumpPath 指定路径。当前尝试路径: {pgDumpPath}",
-                ex);
-        }
-
-        using var registration = cancellationToken.Register(() =>
-        {
-            try
-            {
-                if (!process.HasExited)
+                var dockerContainer = await TryResolveDockerPostgresContainerAsync(builder, cancellationToken);
+                if (dockerContainer == null)
                 {
-                    process.Kill(entireProcessTree: true);
+                    throw new InvalidOperationException(
+                        $"未找到 pg_dump，可通过配置 DatabaseBackup:PgDumpPath 指定路径。当前尝试路径: {string.Join(", ", attemptedPgDumpPaths)}");
                 }
+
+                await ExportDatabaseBackupWithDockerPgDumpAsync(
+                    builder,
+                    tempFilePath,
+                    fileName,
+                    dockerContainer,
+                    cancellationToken);
             }
-            catch
-            {
-                // Ignore kill failures during cancellation.
-            }
-        });
 
-        var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-
-        await process.WaitForExitAsync(cancellationToken);
-
-        var standardOutput = await standardOutputTask;
-        var standardError = await standardErrorTask;
-
-        if (process.ExitCode != 0)
-        {
-            TryDeleteFile(tempFilePath);
-            var errorMessage = string.IsNullOrWhiteSpace(standardError)
-                ? string.IsNullOrWhiteSpace(standardOutput)
-                    ? "pg_dump exited with a non-zero status."
-                    : standardOutput.Trim()
-                : standardError.Trim();
-
-            _logger.LogError(
-                "pg_dump failed with exit code {ExitCode}. Output: {Output}",
-                process.ExitCode,
-                errorMessage);
-
-            throw new InvalidOperationException($"导出 PostgreSQL dump 失败: {errorMessage}");
+            EnsureDumpFileExists(tempFilePath);
         }
-
-        var fileInfo = new FileInfo(tempFilePath);
-        if (!fileInfo.Exists || fileInfo.Length <= 0)
+        catch
         {
             TryDeleteFile(tempFilePath);
-            throw new InvalidOperationException("导出的 dump 文件为空。");
+            throw;
         }
 
         return new DatabaseExportResult
@@ -464,18 +383,295 @@ public class AdminService : IAdminService
         };
     }
 
-    private string ResolvePgDumpPath()
+    private async Task<bool> TryExportDatabaseBackupWithLocalPgDumpAsync(
+        NpgsqlConnectionStringBuilder builder,
+        string outputPath,
+        IReadOnlyList<string> attemptedPgDumpPaths,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastStartException = null;
+
+        foreach (var pgDumpPath in attemptedPgDumpPaths)
+        {
+            try
+            {
+                await ExportDatabaseBackupWithLocalPgDumpAsync(builder, outputPath, pgDumpPath, cancellationToken);
+                _logger.LogInformation("Database dump exported via local pg_dump: {PgDumpPath}", pgDumpPath);
+                return true;
+            }
+            catch (Win32Exception ex)
+            {
+                lastStartException = ex;
+                _logger.LogDebug(ex, "pg_dump path is not available: {PgDumpPath}", pgDumpPath);
+            }
+        }
+
+        if (lastStartException != null)
+        {
+            _logger.LogWarning(
+                lastStartException,
+                "Local pg_dump is unavailable. Tried paths: {PgDumpPaths}",
+                string.Join(", ", attemptedPgDumpPaths));
+        }
+
+        return false;
+    }
+
+    private async Task ExportDatabaseBackupWithLocalPgDumpAsync(
+        NpgsqlConnectionStringBuilder builder,
+        string outputPath,
+        string pgDumpPath,
+        CancellationToken cancellationToken)
+    {
+        var startInfo = CreateProcessStartInfo(pgDumpPath);
+
+        foreach (var argument in BuildPgDumpArguments(builder, outputPath))
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        ApplyPgEnvironment(startInfo, builder);
+
+        var result = await RunProcessAsync(startInfo, cancellationToken);
+        EnsureProcessSucceeded("pg_dump", result);
+    }
+
+    private async Task ExportDatabaseBackupWithDockerPgDumpAsync(
+        NpgsqlConnectionStringBuilder builder,
+        string outputPath,
+        string fileName,
+        DockerContainerMatch dockerContainer,
+        CancellationToken cancellationToken)
+    {
+        var containerDumpPath = $"/tmp/{fileName}";
+
+        try
+        {
+            var exportStartInfo = CreateProcessStartInfo("docker");
+            exportStartInfo.ArgumentList.Add("exec");
+            ApplyDockerPgEnvironment(exportStartInfo, builder);
+            exportStartInfo.ArgumentList.Add(dockerContainer.ContainerId);
+            exportStartInfo.ArgumentList.Add("pg_dump");
+
+            foreach (var argument in BuildPgDumpArguments(
+                         builder,
+                         containerDumpPath,
+                         hostOverride: "127.0.0.1",
+                         portOverride: dockerContainer.ContainerPort))
+            {
+                exportStartInfo.ArgumentList.Add(argument);
+            }
+
+            var exportResult = await RunProcessAsync(exportStartInfo, cancellationToken);
+            EnsureProcessSucceeded("docker exec pg_dump", exportResult);
+
+            var copyStartInfo = CreateProcessStartInfo("docker");
+            copyStartInfo.ArgumentList.Add("cp");
+            copyStartInfo.ArgumentList.Add($"{dockerContainer.ContainerId}:{containerDumpPath}");
+            copyStartInfo.ArgumentList.Add(outputPath);
+
+            var copyResult = await RunProcessAsync(copyStartInfo, cancellationToken);
+            EnsureProcessSucceeded("docker cp", copyResult);
+
+            _logger.LogInformation(
+                "Database dump exported via docker container {ContainerName} ({ContainerId})",
+                dockerContainer.ContainerName,
+                dockerContainer.ContainerId);
+        }
+        finally
+        {
+            try
+            {
+                var cleanupStartInfo = CreateProcessStartInfo("docker");
+                cleanupStartInfo.ArgumentList.Add("exec");
+                cleanupStartInfo.ArgumentList.Add(dockerContainer.ContainerId);
+                cleanupStartInfo.ArgumentList.Add("rm");
+                cleanupStartInfo.ArgumentList.Add("-f");
+                cleanupStartInfo.ArgumentList.Add(containerDumpPath);
+                await RunProcessAsync(cleanupStartInfo, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(
+                    ex,
+                    "Failed to delete temporary dump file from docker container {ContainerId}",
+                    dockerContainer.ContainerId);
+            }
+        }
+    }
+
+    private static ProcessStartInfo CreateProcessStartInfo(string fileName)
+    {
+        return new ProcessStartInfo
+        {
+            FileName = fileName,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+    }
+
+    private async Task<DockerContainerMatch?> TryResolveDockerPostgresContainerAsync(
+        NpgsqlConnectionStringBuilder builder,
+        CancellationToken cancellationToken)
+    {
+        if (!IsLocalDockerHost(builder.Host))
+        {
+            return null;
+        }
+
+        ProcessExecutionResult dockerPsResult;
+        try
+        {
+            var dockerPsStartInfo = CreateProcessStartInfo("docker");
+            dockerPsStartInfo.ArgumentList.Add("ps");
+            dockerPsStartInfo.ArgumentList.Add("--format");
+            dockerPsStartInfo.ArgumentList.Add("{{.ID}}\t{{.Image}}\t{{.Names}}\t{{.Ports}}");
+            dockerPsResult = await RunProcessAsync(dockerPsStartInfo, cancellationToken);
+        }
+        catch (Win32Exception ex)
+        {
+            _logger.LogDebug(ex, "Docker CLI is not available while resolving PostgreSQL container.");
+            return null;
+        }
+
+        if (dockerPsResult.ExitCode != 0)
+        {
+            _logger.LogWarning("docker ps failed while resolving PostgreSQL container: {Output}", dockerPsResult.GetErrorMessage());
+            return null;
+        }
+
+        var candidates = dockerPsResult.StandardOutput
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(ParseDockerContainerMatch)
+            .Where(item => item != null && IsLikelyPostgresContainer(item))
+            .Cast<DockerContainerMatch>()
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return null;
+        }
+
+        var hostPortMatches = candidates
+            .Where(item => item.Ports.Contains($":{builder.Port}->", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (hostPortMatches.Count == 1)
+        {
+            return hostPortMatches[0];
+        }
+
+        if (hostPortMatches.Count > 1)
+        {
+            candidates = hostPortMatches;
+        }
+
+        if (candidates.Count == 1)
+        {
+            return candidates[0];
+        }
+
+        var exactNameMatches = candidates
+            .Where(item => string.Equals(item.ContainerName, builder.Host, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        return exactNameMatches.Count == 1 ? exactNameMatches[0] : null;
+    }
+
+    private static DockerContainerMatch? ParseDockerContainerMatch(string line)
+    {
+        var parts = line.Split('\t', 4, StringSplitOptions.None);
+        if (parts.Length < 4)
+        {
+            return null;
+        }
+
+        var ports = parts[3];
+        var internalPort = 5432;
+        var mapping = ports
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(item => item.Contains("->", StringComparison.Ordinal));
+
+        if (!string.IsNullOrWhiteSpace(mapping))
+        {
+            var portMapping = mapping.Split("->", 2, StringSplitOptions.TrimEntries);
+            if (portMapping.Length == 2)
+            {
+                var targetPortPart = portMapping[1].Split('/', 2, StringSplitOptions.TrimEntries)[0];
+                if (int.TryParse(targetPortPart, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedPort))
+                {
+                    internalPort = parsedPort;
+                }
+            }
+        }
+
+        return new DockerContainerMatch
+        {
+            ContainerId = parts[0],
+            Image = parts[1],
+            ContainerName = parts[2],
+            Ports = ports,
+            ContainerPort = internalPort
+        };
+    }
+
+    private static bool IsLikelyPostgresContainer(DockerContainerMatch? item)
+    {
+        if (item == null)
+        {
+            return false;
+        }
+
+        return item.Image.Contains("postgres", StringComparison.OrdinalIgnoreCase)
+            || item.ContainerName.Contains("postgres", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLocalDockerHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            return false;
+        }
+
+        return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(host, "host.docker.internal", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private IEnumerable<string> GetPgDumpCandidates()
     {
         var configuredPath = _configuration["DatabaseBackup:PgDumpPath"];
         if (!string.IsNullOrWhiteSpace(configuredPath))
         {
-            return configuredPath;
+            yield return configuredPath;
         }
 
-        return "pg_dump";
+        yield return "pg_dump";
+
+        foreach (var candidate in new[]
+                 {
+                     "/opt/homebrew/opt/libpq/bin/pg_dump",
+                     "/opt/homebrew/bin/pg_dump",
+                     "/usr/local/opt/libpq/bin/pg_dump",
+                     "/usr/local/bin/pg_dump",
+                     "/Applications/Postgres.app/Contents/Versions/latest/bin/pg_dump"
+                 })
+        {
+            if (File.Exists(candidate))
+            {
+                yield return candidate;
+            }
+        }
     }
 
-    private static List<string> BuildPgDumpArguments(NpgsqlConnectionStringBuilder builder, string outputPath)
+    private static List<string> BuildPgDumpArguments(
+        NpgsqlConnectionStringBuilder builder,
+        string outputPath,
+        string? hostOverride = null,
+        int? portOverride = null)
     {
         return
         [
@@ -484,8 +680,8 @@ public class AdminService : IAdminService
             "--no-owner",
             "--no-privileges",
             $"--file={outputPath}",
-            $"--host={builder.Host}",
-            $"--port={builder.Port.ToString(CultureInfo.InvariantCulture)}",
+            $"--host={hostOverride ?? builder.Host}",
+            $"--port={(portOverride ?? builder.Port).ToString(CultureInfo.InvariantCulture)}",
             $"--username={builder.Username}",
             $"--dbname={builder.Database}"
         ];
@@ -516,6 +712,45 @@ public class AdminService : IAdminService
         }
     }
 
+    private static void ApplyDockerPgEnvironment(ProcessStartInfo startInfo, NpgsqlConnectionStringBuilder builder)
+    {
+        foreach (var pair in BuildPgEnvironment(builder))
+        {
+            startInfo.ArgumentList.Add("-e");
+            startInfo.ArgumentList.Add($"{pair.Key}={pair.Value}");
+        }
+    }
+
+    private static Dictionary<string, string> BuildPgEnvironment(NpgsqlConnectionStringBuilder builder)
+    {
+        var environment = new Dictionary<string, string>
+        {
+            ["PGSSLMODE"] = MapSslMode(builder)
+        };
+
+        if (!string.IsNullOrWhiteSpace(builder.Password))
+        {
+            environment["PGPASSWORD"] = builder.Password;
+        }
+
+        if (!string.IsNullOrWhiteSpace(builder.RootCertificate))
+        {
+            environment["PGSSLROOTCERT"] = builder.RootCertificate;
+        }
+
+        if (!string.IsNullOrWhiteSpace(builder.SslCertificate))
+        {
+            environment["PGSSLCERT"] = builder.SslCertificate;
+        }
+
+        if (!string.IsNullOrWhiteSpace(builder.SslKey))
+        {
+            environment["PGSSLKEY"] = builder.SslKey;
+        }
+
+        return environment;
+    }
+
     private static string MapSslMode(NpgsqlConnectionStringBuilder builder)
     {
         return builder.SslMode switch
@@ -528,6 +763,76 @@ public class AdminService : IAdminService
             SslMode.VerifyFull => "verify-full",
             _ => "prefer"
         };
+    }
+
+    private async Task<ProcessExecutionResult> RunProcessAsync(
+        ProcessStartInfo startInfo,
+        CancellationToken cancellationToken)
+    {
+        using var process = new Process
+        {
+            StartInfo = startInfo,
+            EnableRaisingEvents = true
+        };
+
+        if (!process.Start())
+        {
+            throw new InvalidOperationException($"Failed to start process: {startInfo.FileName}");
+        }
+
+        using var registration = cancellationToken.Register(() =>
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch
+            {
+                // Ignore kill failures during cancellation.
+            }
+        });
+
+        var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+
+        await process.WaitForExitAsync(cancellationToken);
+
+        return new ProcessExecutionResult
+        {
+            ExitCode = process.ExitCode,
+            StandardOutput = await standardOutputTask,
+            StandardError = await standardErrorTask
+        };
+    }
+
+    private void EnsureProcessSucceeded(string commandName, ProcessExecutionResult result)
+    {
+        if (result.ExitCode == 0)
+        {
+            return;
+        }
+
+        var errorMessage = result.GetErrorMessage();
+
+        _logger.LogError(
+            "{CommandName} failed with exit code {ExitCode}. Output: {Output}",
+            commandName,
+            result.ExitCode,
+            errorMessage);
+
+        throw new InvalidOperationException($"导出 PostgreSQL dump 失败: {errorMessage}");
+    }
+
+    private static void EnsureDumpFileExists(string tempFilePath)
+    {
+        var fileInfo = new FileInfo(tempFilePath);
+        if (!fileInfo.Exists || fileInfo.Length <= 0)
+        {
+            throw new InvalidOperationException("导出的 dump 文件为空。");
+        }
     }
 
     private static void TryDeleteFile(string path)
@@ -750,6 +1055,22 @@ public class AdminService : IAdminService
         }
     }
 
+    private static void EnsureUserIsNotAdminTarget(User user)
+    {
+        if (IsAdminRole(user.Role))
+        {
+            throw new InvalidOperationException("不允许对管理员账号执行该操作。");
+        }
+    }
+
+    private static void EnsureUsersDoNotContainAdminTargets(IEnumerable<User> users)
+    {
+        if (users.Any(user => IsAdminRole(user.Role)))
+        {
+            throw new InvalidOperationException("所选用户中包含管理员账号，当前操作已被拒绝。");
+        }
+    }
+
     private static List<decimal> BuildPnLContributions(IReadOnlyList<TradeMetricSnapshot> orderedSnapshots)
     {
         var contributions = new List<decimal>();
@@ -887,5 +1208,36 @@ public class AdminService : IAdminService
     {
         public int? UserId { get; set; }
         public StockTrade Trade { get; set; } = new();
+    }
+
+    private sealed class ProcessExecutionResult
+    {
+        public int ExitCode { get; set; }
+        public string StandardOutput { get; set; } = string.Empty;
+        public string StandardError { get; set; } = string.Empty;
+
+        public string GetErrorMessage()
+        {
+            if (!string.IsNullOrWhiteSpace(StandardError))
+            {
+                return StandardError.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(StandardOutput))
+            {
+                return StandardOutput.Trim();
+            }
+
+            return "process exited with a non-zero status.";
+        }
+    }
+
+    private sealed class DockerContainerMatch
+    {
+        public string ContainerId { get; set; } = string.Empty;
+        public string Image { get; set; } = string.Empty;
+        public string ContainerName { get; set; } = string.Empty;
+        public string Ports { get; set; } = string.Empty;
+        public int ContainerPort { get; set; } = 5432;
     }
 }

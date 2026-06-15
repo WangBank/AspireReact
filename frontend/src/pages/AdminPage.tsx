@@ -47,7 +47,6 @@ const TAB_ITEMS: Array<{ key: AdminTab; label: string; description: string }> = 
   { key: 'reflection', label: '吾日三省', description: '维护统一的完整原文' },
 ];
 
-const DEFAULT_PASSWORD = '123456';
 const USER_PAGE_SIZE = 20;
 
 const formatDateTime = (value: string | null | undefined) =>
@@ -152,7 +151,6 @@ const AdminPage = () => {
   const [userSortOrder, setUserSortOrder] = useState<SortOrder>('desc');
   const [userPage, setUserPage] = useState(1);
   const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
-  const [bulkPassword, setBulkPassword] = useState(DEFAULT_PASSWORD);
 
   const [reflectionText, setReflectionText] = useState('');
   const [reflectionUpdatedAt, setReflectionUpdatedAt] = useState<string | null>(null);
@@ -202,11 +200,11 @@ const AdminPage = () => {
       setPasswordDrafts((current) => {
         const next = { ...current };
         data.forEach((user) => {
-          next[user.id] = next[user.id] ?? DEFAULT_PASSWORD;
+          next[user.id] = next[user.id] ?? '';
         });
         return next;
       });
-      setSelectedUserIds((current) => current.filter((id) => data.some((user) => user.id === id)));
+      setSelectedUserIds((current) => current.filter((id) => data.some((user) => user.id === id && !user.isAdmin)));
     } catch (err) {
       setUsersError(err instanceof Error ? err.message : '加载用户列表失败');
     } finally {
@@ -311,21 +309,21 @@ const AdminPage = () => {
     [selectedUserIds],
   );
 
-  const currentPageUserIds = useMemo(
-    () => pagedUsers.map((user) => user.id),
+  const currentPageSelectableUserIds = useMemo(
+    () => pagedUsers.filter((user) => !user.isAdmin).map((user) => user.id),
     [pagedUsers],
   );
 
   const currentPageSelectedCount = useMemo(
-    () => currentPageUserIds.filter((id) => selectedUserIdSet.has(id)).length,
-    [currentPageUserIds, selectedUserIdSet],
+    () => currentPageSelectableUserIds.filter((id) => selectedUserIdSet.has(id)).length,
+    [currentPageSelectableUserIds, selectedUserIdSet],
   );
 
-  const allCurrentPageSelected = currentPageUserIds.length > 0
-    && currentPageSelectedCount === currentPageUserIds.length;
+  const allCurrentPageSelected = currentPageSelectableUserIds.length > 0
+    && currentPageSelectedCount === currentPageSelectableUserIds.length;
 
   const filteredSelectedCount = useMemo(
-    () => filteredUsers.filter((user) => selectedUserIdSet.has(user.id)).length,
+    () => filteredUsers.filter((user) => !user.isAdmin && selectedUserIdSet.has(user.id)).length,
     [filteredUsers, selectedUserIdSet],
   );
 
@@ -411,6 +409,7 @@ const AdminPage = () => {
     try {
       await adminService.resetUserPassword(user.id, newPassword);
       setUsersSuccess(`${user.username} 的密码已重置`);
+      setPasswordDrafts((current) => ({ ...current, [user.id]: '' }));
     } catch (err) {
       setUsersError(err instanceof Error ? err.message : '重置密码失败');
     } finally {
@@ -419,6 +418,10 @@ const AdminPage = () => {
   };
 
   const toggleUserSelection = (userId: number) => {
+    if (!users.some((user) => user.id === userId && !user.isAdmin)) {
+      return;
+    }
+
     setSelectedUserIds((current) => (
       current.includes(userId)
         ? current.filter((id) => id !== userId)
@@ -429,16 +432,16 @@ const AdminPage = () => {
   const handleToggleCurrentPage = (checked: boolean) => {
     setSelectedUserIds((current) => {
       if (checked) {
-        return Array.from(new Set([...current, ...currentPageUserIds]));
+        return Array.from(new Set([...current, ...currentPageSelectableUserIds]));
       }
 
-      return current.filter((id) => !currentPageUserIds.includes(id));
+      return current.filter((id) => !currentPageSelectableUserIds.includes(id));
     });
   };
 
   const handleSelectFiltered = () => {
     setSelectedUserIds((current) => (
-      Array.from(new Set([...current, ...filteredUsers.map((user) => user.id)]))
+      Array.from(new Set([...current, ...filteredUsers.filter((user) => !user.isAdmin).map((user) => user.id)]))
     ));
   };
 
@@ -451,13 +454,18 @@ const AdminPage = () => {
   };
 
   const requireSelectedUsers = () => {
-    if (selectedUserIds.length === 0) {
+    const operableUserIds = selectedUserIds.filter((id) => users.some((user) => user.id === id && !user.isAdmin));
+    if (operableUserIds.length !== selectedUserIds.length) {
+      setSelectedUserIds(operableUserIds);
+    }
+
+    if (operableUserIds.length === 0) {
       setUsersError('请先勾选至少一个用户');
       setUsersSuccess('');
       return null;
     }
 
-    return selectedUserIds;
+    return operableUserIds;
   };
 
   const handleBatchStatus = async (isActive: boolean) => {
@@ -497,33 +505,6 @@ const AdminPage = () => {
       await Promise.all([loadUsers(), loadSummary()]);
     } catch (err) {
       setUsersError(err instanceof Error ? err.message : '批量更新用户角色失败');
-    } finally {
-      setBatchBusy(false);
-    }
-  };
-
-  const handleBatchPasswordReset = async () => {
-    const userIds = requireSelectedUsers();
-    if (!userIds) {
-      return;
-    }
-
-    const newPassword = bulkPassword.trim();
-    if (!newPassword) {
-      setUsersError('请先输入批量重置密码');
-      setUsersSuccess('');
-      return;
-    }
-
-    setBatchBusy(true);
-    setUsersError('');
-    setUsersSuccess('');
-
-    try {
-      const result = await adminService.batchResetUserPassword(userIds, newPassword);
-      setUsersSuccess(`已批量重置 ${result.updatedCount} 个用户的密码`);
-    } catch (err) {
-      setUsersError(err instanceof Error ? err.message : '批量重置密码失败');
     } finally {
       setBatchBusy(false);
     }
@@ -806,23 +787,6 @@ const AdminPage = () => {
               </button>
             </div>
 
-            <div className="admin-page__bulk-actions admin-page__bulk-actions--password">
-              <input
-                type="text"
-                value={bulkPassword}
-                onChange={(event) => setBulkPassword(event.target.value)}
-                placeholder="批量重置密码"
-                className="admin-page__toolbar-input admin-page__toolbar-input--password"
-              />
-              <button
-                type="button"
-                className="admin-page__mini-btn admin-page__mini-btn--danger"
-                onClick={() => void handleBatchPasswordReset()}
-                disabled={usersLoading || batchBusy}
-              >
-                {batchBusy ? '处理中...' : '批量重置密码'}
-              </button>
-            </div>
           </div>
 
           {usersLoading && users.length === 0 ? (
@@ -875,7 +839,7 @@ const AdminPage = () => {
                       <SortableHeader field="netBankFlow" currentField={userSortField} currentOrder={userSortOrder} onSort={handleUserSort} className="admin-page__th-num">
                         净入金
                       </SortableHeader>
-                      <SortableHeader field="totalTrades" currentField={userSortField} currentOrder={userSortOrder} onSort={handleUserSort}>
+                      <SortableHeader field="totalTrades" currentField={userSortField} currentOrder={userSortOrder} onSort={handleUserSort} className="admin-page__th-record">
                         战绩
                       </SortableHeader>
                       <SortableHeader field="winRate" currentField={userSortField} currentOrder={userSortOrder} onSort={handleUserSort}>
@@ -893,13 +857,15 @@ const AdminPage = () => {
                   <tbody>
                     {pagedUsers.map((user) => {
                       const isBusy = busyUserId === user.id || batchBusy;
-                      const passwordDraft = passwordDrafts[user.id] ?? DEFAULT_PASSWORD;
+                      const passwordDraft = passwordDrafts[user.id] ?? '';
+                      const isProtectedAdmin = user.isAdmin;
 
                       return (
                         <tr key={user.id}>
                           <td className="admin-page__checkbox-col" data-label="选择">
                             <input
                               type="checkbox"
+                              disabled={isProtectedAdmin}
                               checked={selectedUserIdSet.has(user.id)}
                               onChange={() => toggleUserSelection(user.id)}
                               aria-label={`选择 ${user.username}`}
@@ -959,7 +925,7 @@ const AdminPage = () => {
                           <td data-label="净入金" className={`admin-page__td-num ${getPnLClassName(user.performance.netBankFlow)}`}>
                             {formatMoney(user.performance.netBankFlow)}
                           </td>
-                          <td data-label="战绩">
+                          <td data-label="战绩" className="admin-page__td-record">
                             <div className="admin-page__record-stack">
                               <strong>{user.performance.totalTrades} 轮</strong>
                               <span>盈 {user.performance.winTrades} / 亏 {user.performance.loseTrades}</span>
@@ -970,43 +936,52 @@ const AdminPage = () => {
                           <td data-label="注册时间">{formatDateTime(user.createdAt)}</td>
                           <td data-label="操作">
                             <div className="admin-page__table-actions">
-                              <div className="admin-page__button-row">
-                                <button
-                                  type="button"
-                                  className="admin-page__mini-btn"
-                                  onClick={() => void handleUserStatus(user, !user.isActive)}
-                                  disabled={isBusy}
-                                >
-                                  {user.isActive ? '停用' : '启用'}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="admin-page__mini-btn"
-                                  onClick={() => void handleUserRole(user, user.isAdmin ? 'User' : 'Admin')}
-                                  disabled={isBusy || (!user.isActive && !user.isAdmin)}
-                                >
-                                  {user.isAdmin ? '设为普通' : '设为管理员'}
-                                </button>
-                              </div>
-                              <div className="admin-page__password-row admin-page__password-row--table">
-                                <input
-                                  type="text"
-                                  value={passwordDraft}
-                                  onChange={(event) => {
-                                    const value = event.target.value;
-                                    setPasswordDrafts((current) => ({ ...current, [user.id]: value }));
-                                  }}
-                                  placeholder="新密码"
-                                />
-                                <button
-                                  type="button"
-                                  className="admin-page__mini-btn admin-page__mini-btn--danger"
-                                  onClick={() => void handleResetPassword(user)}
-                                  disabled={isBusy}
-                                >
-                                  {isBusy ? '处理中...' : '重置'}
-                                </button>
-                              </div>
+                              {isProtectedAdmin ? (
+                                <div className="admin-page__protected-note">
+                                  管理员账号受保护，不允许执行状态、角色或密码操作。
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="admin-page__button-row">
+                                    <button
+                                      type="button"
+                                      className="admin-page__mini-btn"
+                                      onClick={() => void handleUserStatus(user, !user.isActive)}
+                                      disabled={isBusy}
+                                    >
+                                      {user.isActive ? '停用' : '启用'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="admin-page__mini-btn"
+                                      onClick={() => void handleUserRole(user, 'Admin')}
+                                      disabled={isBusy || !user.isActive}
+                                    >
+                                      设为管理员
+                                    </button>
+                                  </div>
+                                  <div className="admin-page__password-row admin-page__password-row--table">
+                                    <input
+                                      type="password"
+                                      autoComplete="new-password"
+                                      value={passwordDraft}
+                                      onChange={(event) => {
+                                        const value = event.target.value;
+                                        setPasswordDrafts((current) => ({ ...current, [user.id]: value }));
+                                      }}
+                                      placeholder="输入新密码"
+                                    />
+                                    <button
+                                      type="button"
+                                      className="admin-page__mini-btn admin-page__mini-btn--danger"
+                                      onClick={() => void handleResetPassword(user)}
+                                      disabled={isBusy}
+                                    >
+                                      {isBusy ? '处理中...' : '重置'}
+                                    </button>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>

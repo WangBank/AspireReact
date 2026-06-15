@@ -51,6 +51,9 @@ public class MessageItemDto
     public string? TextContent { get; set; }
     public string? ImageUrl { get; set; }
     public string? ImageFileName { get; set; }
+    public string? FileName { get; set; }
+    public string? FileContentType { get; set; }
+    public long? FileSizeBytes { get; set; }
     public int? ReplyToMessageId { get; set; }
     public MessageReplySummaryDto? ReplyToMessage { get; set; }
     public bool IsRecalled { get; set; }
@@ -65,6 +68,7 @@ public class MessageReplySummaryDto
     public string SenderUsername { get; set; } = string.Empty;
     public string? TextContent { get; set; }
     public string? ImageFileName { get; set; }
+    public string? FileName { get; set; }
     public bool IsRecalled { get; set; }
 }
 
@@ -132,6 +136,8 @@ public class SendMessageRequest
     public string? Text { get; set; }
 
     public IFormFile? Image { get; set; }
+
+    public IFormFile? File { get; set; }
 
     public int? ReplyToMessageId { get; set; }
 }

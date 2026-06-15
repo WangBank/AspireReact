@@ -87,18 +87,6 @@ public class AdminUserBatchRoleUpdateRequest
     public string Role { get; set; } = "User";
 }
 
-public class AdminUserBatchPasswordResetRequest
-{
-    [Required(ErrorMessage = "请选择至少一个用户")]
-    [MinLength(1, ErrorMessage = "请选择至少一个用户")]
-    public List<int> UserIds { get; set; } = [];
-
-    [Required(ErrorMessage = "新密码不能为空")]
-    [MinLength(6, ErrorMessage = "新密码至少 6 个字符")]
-    [MaxLength(100, ErrorMessage = "新密码最多 100 个字符")]
-    public string NewPassword { get; set; } = string.Empty;
-}
-
 public class AdminBatchOperationResultResponse
 {
     public int UpdatedCount { get; set; }

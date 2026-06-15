@@ -19,9 +19,17 @@ public interface IMessageService
     Task<GlobalMessageSearchResultDto> SearchAllMessagesAsync(int currentUserId, string keyword, int skip, int take, CancellationToken cancellationToken = default);
     Task<MessageConversationSummaryDto?> UpdateConversationSettingsAsync(int currentUserId, int conversationId, UpdateConversationSettingsRequest request, CancellationToken cancellationToken = default);
     Task<MessageMutationResultDto?> SendMessageAsync(int currentUserId, int conversationId, SendMessageRequest request, CancellationToken cancellationToken = default);
+    Task<MessageFileDownloadResult?> GetMessageFileDownloadAsync(int currentUserId, int messageId, CancellationToken cancellationToken = default);
     Task<MessageMutationResultDto?> RecallMessageAsync(int currentUserId, int messageId, CancellationToken cancellationToken = default);
     Task<bool> MarkConversationReadAsync(int currentUserId, int conversationId, int? lastReadMessageId, CancellationToken cancellationToken = default);
     Task TouchPresenceAsync(int currentUserId, CancellationToken cancellationToken = default);
+}
+
+public sealed class MessageFileDownloadResult
+{
+    public required string AbsolutePath { get; init; }
+    public required string ContentType { get; init; }
+    public required string FileName { get; init; }
 }
 
 public class MessageService : IMessageService
@@ -36,7 +44,27 @@ public class MessageService : IMessageService
     };
 
     private const long MaxImageSizeBytes = 8 * 1024 * 1024;
+    private const long MaxFileSizeBytes = 25 * 1024 * 1024;
     private static readonly TimeSpan RecallWindow = TimeSpan.FromMinutes(2);
+    private static readonly HashSet<string> AllowedFileExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".pdf",
+        ".txt",
+        ".md",
+        ".csv",
+        ".tsv",
+        ".json",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".ppt",
+        ".pptx",
+        ".zip",
+        ".rar",
+        ".7z",
+        ".rtf"
+    };
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _environment;
     private readonly IMessagePresenceTracker _presenceTracker;
@@ -365,7 +393,8 @@ public class MessageService : IMessageService
             .AsNoTracking()
             .Where(item => item.ConversationId == conversationId && (
                 (item.TextContent != null && EF.Functions.ILike(item.TextContent, $"%{keyword.Trim()}%"))
-                || (item.ImageFileName != null && EF.Functions.ILike(item.ImageFileName, $"%{keyword.Trim()}%"))));
+                || (item.ImageFileName != null && EF.Functions.ILike(item.ImageFileName, $"%{keyword.Trim()}%"))
+                || (item.FileName != null && EF.Functions.ILike(item.FileName, $"%{keyword.Trim()}%"))));
 
         var total = await query.CountAsync(cancellationToken);
         var items = await query
@@ -435,7 +464,8 @@ public class MessageService : IMessageService
             .AsNoTracking()
             .Where(item => conversationIds.Contains(item.ConversationId) && (
                 (item.TextContent != null && EF.Functions.ILike(item.TextContent, pattern))
-                || (item.ImageFileName != null && EF.Functions.ILike(item.ImageFileName, pattern))));
+                || (item.ImageFileName != null && EF.Functions.ILike(item.ImageFileName, pattern))
+                || (item.FileName != null && EF.Functions.ILike(item.FileName, pattern))));
 
         var total = await query.CountAsync(cancellationToken);
         var messages = await query
@@ -519,9 +549,14 @@ public class MessageService : IMessageService
         await EnsureUsersAreFriendsAsync(currentUserId, peerUserId.Value, cancellationToken);
 
         var trimmedText = request.Text?.Trim();
-        if (string.IsNullOrWhiteSpace(trimmedText) && request.Image == null)
+        if (request.Image != null && request.File != null)
         {
-            throw new InvalidOperationException("消息内容和图片不能同时为空");
+            throw new InvalidOperationException("单条消息暂不支持同时上传图片和文件");
+        }
+
+        if (string.IsNullOrWhiteSpace(trimmedText) && request.Image == null && request.File == null)
+        {
+            throw new InvalidOperationException("消息内容、图片和文件不能同时为空");
         }
 
         var validation = await _sensitiveWordService.ValidateAsync(
@@ -549,12 +584,20 @@ public class MessageService : IMessageService
 
         string? imageUrl = null;
         string? imageFileName = null;
+        string? fileName = null;
+        string? fileContentType = null;
+        long? fileSizeBytes = null;
+        string? fileStoragePath = null;
         if (request.Image != null)
         {
             (imageUrl, imageFileName) = await SaveMessageImageAsync(currentUserId, request.Image, cancellationToken);
         }
+        else if (request.File != null)
+        {
+            (fileStoragePath, fileName, fileContentType, fileSizeBytes) = await SaveMessageFileAsync(currentUserId, request.File, cancellationToken);
+        }
 
-        var messageType = ResolveMessageType(trimmedText, imageUrl);
+        var messageType = ResolveMessageType(trimmedText, imageUrl, fileStoragePath);
         var now = DateTime.UtcNow;
         var message = new UserMessage
         {
@@ -564,6 +607,10 @@ public class MessageService : IMessageService
             TextContent = string.IsNullOrWhiteSpace(trimmedText) ? null : trimmedText,
             ImageUrl = imageUrl,
             ImageFileName = imageFileName,
+            FileName = fileName,
+            FileContentType = fileContentType,
+            FileSizeBytes = fileSizeBytes,
+            FileStoragePath = fileStoragePath,
             ReplyToMessageId = request.ReplyToMessageId,
             CreatedAt = now
         };
@@ -573,7 +620,7 @@ public class MessageService : IMessageService
         participant.Conversation.UpdatedAt = now;
         participant.Conversation.LastMessageAt = now;
         participant.Conversation.LastMessageType = messageType;
-        participant.Conversation.LastMessagePreview = BuildLastMessagePreview(trimmedText, imageFileName);
+        participant.Conversation.LastMessagePreview = BuildLastMessagePreview(trimmedText, imageFileName, fileName);
         await _db.SaveChangesAsync(cancellationToken);
 
         participant.LastReadMessageId = message.Id;
@@ -599,6 +646,44 @@ public class MessageService : IMessageService
             LastMessageAt = participant.Conversation.LastMessageAt,
             LastMessagePreview = participant.Conversation.LastMessagePreview,
             LastMessageType = participant.Conversation.LastMessageType
+        };
+    }
+
+    public async Task<MessageFileDownloadResult?> GetMessageFileDownloadAsync(int currentUserId, int messageId, CancellationToken cancellationToken = default)
+    {
+        var message = await _db.UserMessages
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == messageId, cancellationToken);
+
+        if (message == null
+            || message.IsRecalled
+            || string.IsNullOrWhiteSpace(message.FileStoragePath)
+            || string.IsNullOrWhiteSpace(message.FileName))
+        {
+            return null;
+        }
+
+        var isParticipant = await _db.MessageConversationParticipants
+            .AsNoTracking()
+            .AnyAsync(item => item.ConversationId == message.ConversationId && item.UserId == currentUserId, cancellationToken);
+        if (!isParticipant)
+        {
+            return null;
+        }
+
+        var absolutePath = Path.Combine(_environment.ContentRootPath, message.FileStoragePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(absolutePath))
+        {
+            return null;
+        }
+
+        return new MessageFileDownloadResult
+        {
+            AbsolutePath = absolutePath,
+            ContentType = string.IsNullOrWhiteSpace(message.FileContentType)
+                ? "application/octet-stream"
+                : message.FileContentType,
+            FileName = message.FileName
         };
     }
 
@@ -646,6 +731,10 @@ public class MessageService : IMessageService
         message.TextContent = null;
         message.ImageUrl = null;
         message.ImageFileName = null;
+        message.FileName = null;
+        message.FileContentType = null;
+        message.FileSizeBytes = null;
+        message.FileStoragePath = null;
 
         if (message.Conversation != null
             && message.Conversation.LastMessageAt == message.CreatedAt)
@@ -973,21 +1062,75 @@ public class MessageService : IMessageService
         return (url, fileName);
     }
 
-    private static string ResolveMessageType(string? trimmedText, string? imageUrl)
+    private async Task<(string StoragePath, string FileName, string ContentType, long FileSizeBytes)> SaveMessageFileAsync(
+        int currentUserId,
+        IFormFile file,
+        CancellationToken cancellationToken)
     {
-        if (!string.IsNullOrWhiteSpace(trimmedText) && !string.IsNullOrWhiteSpace(imageUrl))
+        if (file.Length <= 0)
+        {
+            throw new InvalidOperationException("文件不能为空");
+        }
+
+        if (file.Length > MaxFileSizeBytes)
+        {
+            throw new InvalidOperationException("文件大小不能超过 25MB");
+        }
+
+        var originalFileName = Path.GetFileName(file.FileName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(originalFileName))
+        {
+            throw new InvalidOperationException("文件名无效");
+        }
+
+        var extension = Path.GetExtension(originalFileName);
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedFileExtensions.Contains(extension))
+        {
+            throw new InvalidOperationException("当前仅支持 PDF、文档、表格、演示文稿、文本和常见压缩包文件");
+        }
+
+        var now = DateTime.UtcNow;
+        var relativeDirectory = Path.Combine("private_uploads", "messages", currentUserId.ToString(), now.ToString("yyyyMM"));
+        var absoluteDirectory = Path.Combine(_environment.ContentRootPath, relativeDirectory);
+        Directory.CreateDirectory(absoluteDirectory);
+
+        var storedFileName = $"file-{currentUserId}-{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
+        var absolutePath = Path.Combine(absoluteDirectory, storedFileName);
+        await using var stream = File.Create(absolutePath);
+        await file.CopyToAsync(stream, cancellationToken);
+
+        return (
+            Path.Combine(relativeDirectory, storedFileName).Replace(Path.DirectorySeparatorChar, '/'),
+            originalFileName,
+            string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            file.Length);
+    }
+
+    private static string ResolveMessageType(string? trimmedText, string? imageUrl, string? fileStoragePath)
+    {
+        if (!string.IsNullOrWhiteSpace(trimmedText) && (!string.IsNullOrWhiteSpace(imageUrl) || !string.IsNullOrWhiteSpace(fileStoragePath)))
         {
             return "mixed";
         }
 
-        return !string.IsNullOrWhiteSpace(imageUrl) ? "image" : "text";
+        if (!string.IsNullOrWhiteSpace(imageUrl))
+        {
+            return "image";
+        }
+
+        return !string.IsNullOrWhiteSpace(fileStoragePath) ? "file" : "text";
     }
 
-    private static string BuildLastMessagePreview(string? text, string? imageFileName)
+    private static string BuildLastMessagePreview(string? text, string? imageFileName, string? fileName)
     {
         if (!string.IsNullOrWhiteSpace(text) && !string.IsNullOrWhiteSpace(imageFileName))
         {
             return $"[图片] {TrimPreview(text)}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(text) && !string.IsNullOrWhiteSpace(fileName))
+        {
+            return $"[文件] {TrimPreview(text)}";
         }
 
         if (!string.IsNullOrWhiteSpace(text))
@@ -995,7 +1138,12 @@ public class MessageService : IMessageService
             return TrimPreview(text);
         }
 
-        return string.IsNullOrWhiteSpace(imageFileName) ? "[消息]" : $"[图片] {imageFileName}";
+        if (!string.IsNullOrWhiteSpace(imageFileName))
+        {
+            return $"[图片] {imageFileName}";
+        }
+
+        return string.IsNullOrWhiteSpace(fileName) ? "[消息]" : $"[文件] {fileName}";
     }
 
     private static string TrimPreview(string text)
@@ -1017,6 +1165,9 @@ public class MessageService : IMessageService
             TextContent = message.TextContent,
             ImageUrl = NormalizeAssetUrl(message.ImageUrl),
             ImageFileName = message.ImageFileName,
+            FileName = message.FileName,
+            FileContentType = message.FileContentType,
+            FileSizeBytes = message.FileSizeBytes,
             ReplyToMessageId = message.ReplyToMessageId,
             ReplyToMessage = MapReplySummary(message.ReplyToMessage),
             IsRecalled = message.IsRecalled,
@@ -1041,6 +1192,7 @@ public class MessageService : IMessageService
             SenderUsername = message.SenderUser?.Username ?? string.Empty,
             TextContent = message.IsRecalled ? null : message.TextContent,
             ImageFileName = message.IsRecalled ? null : message.ImageFileName,
+            FileName = message.IsRecalled ? null : message.FileName,
             IsRecalled = message.IsRecalled
         };
     }

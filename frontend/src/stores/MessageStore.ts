@@ -21,12 +21,22 @@ type IncomingNotice = {
 
 const buildConversationPreview = (message: MessageItem): string => {
   if (message.textContent?.trim()) {
-    return message.messageType === 'mixed'
-      ? `[图片] ${message.textContent.trim().slice(0, 80)}`
-      : message.textContent.trim().slice(0, 80);
+    if (message.imageUrl || message.imageFileName) {
+      return `[图片] ${message.textContent.trim().slice(0, 80)}`;
+    }
+
+    if (message.fileName) {
+      return `[文件] ${message.textContent.trim().slice(0, 80)}`;
+    }
+
+    return message.textContent.trim().slice(0, 80);
   }
 
-  return message.imageFileName ? `[图片] ${message.imageFileName}` : '[消息]';
+  if (message.imageFileName) {
+    return `[图片] ${message.imageFileName}`;
+  }
+
+  return message.fileName ? `[文件] ${message.fileName}` : '[消息]';
 };
 
 export class MessageStore {
@@ -397,7 +407,7 @@ export class MessageStore {
     this.messageSearchResult = null;
   };
 
-  sendMessage = async (text: string, image?: File | null, replyToMessageId?: number | null) => {
+  sendMessage = async (text: string, attachment?: File | null, replyToMessageId?: number | null) => {
     if (!this.selectedConversationId) {
       return false;
     }
@@ -411,7 +421,7 @@ export class MessageStore {
 
     this.sending = true;
     try {
-      const message = await messageService.sendMessage(this.selectedConversationId, { text, image, replyToMessageId });
+      const message = await messageService.sendMessage(this.selectedConversationId, { text, attachment, replyToMessageId });
       runInAction(() => {
         this.applyIncomingMessage(message);
         this.sending = false;
@@ -423,6 +433,16 @@ export class MessageStore {
         this.sending = false;
       });
       return false;
+    }
+  };
+
+  downloadMessageFile = async (messageId: number, preferredFileName: string) => {
+    try {
+      await messageService.downloadMessageFile(messageId, preferredFileName);
+    } catch (err) {
+      runInAction(() => {
+        this.error = err instanceof Error ? err.message : '文件下载失败';
+      });
     }
   };
 

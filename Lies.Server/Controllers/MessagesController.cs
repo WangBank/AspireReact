@@ -242,7 +242,7 @@ public class MessagesController : ControllerBase
     }
 
     [HttpPost("conversations/{conversationId:int}/messages")]
-    [RequestSizeLimit(10 * 1024 * 1024)]
+    [RequestSizeLimit(30 * 1024 * 1024)]
     public async Task<IActionResult> SendMessage(int conversationId, [FromForm] SendMessageRequest request, CancellationToken cancellationToken = default)
     {
         var authResult = this.RequireCurrentUser(out var userId);
@@ -272,6 +272,25 @@ public class MessagesController : ControllerBase
         {
             return BadRequest(new { success = false, message = ex.Message });
         }
+    }
+
+    [HttpGet("messages/{messageId:int}/file")]
+    public async Task<IActionResult> DownloadMessageFile(int messageId, CancellationToken cancellationToken = default)
+    {
+        var authResult = this.RequireCurrentUser(out var userId);
+        if (authResult != null)
+        {
+            return authResult;
+        }
+
+        var file = await _messageService.GetMessageFileDownloadAsync(userId, messageId, cancellationToken);
+        if (file == null)
+        {
+            return NotFound(new { success = false, message = "文件不存在、已撤回或无权访问" });
+        }
+
+        var stream = System.IO.File.OpenRead(file.AbsolutePath);
+        return File(stream, file.ContentType, file.FileName);
     }
 
     [HttpPost("messages/{messageId:int}/recall")]
@@ -338,6 +357,9 @@ public class MessagesController : ControllerBase
             TextContent = source.TextContent,
             ImageUrl = source.ImageUrl,
             ImageFileName = source.ImageFileName,
+            FileName = source.FileName,
+            FileContentType = source.FileContentType,
+            FileSizeBytes = source.FileSizeBytes,
             ReplyToMessageId = source.ReplyToMessageId,
             ReplyToMessage = source.ReplyToMessage,
             IsRecalled = source.IsRecalled,

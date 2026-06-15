@@ -21,6 +21,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded';
 import AddPhotoAlternateRoundedIcon from '@mui/icons-material/AddPhotoAlternateRounded';
 import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineRounded';
 import CircleRoundedIcon from '@mui/icons-material/CircleRounded';
@@ -49,6 +50,49 @@ import { useStore } from '../stores/StoreProvider';
 
 const QUICK_EMOJIS = ['😀', '😂', '😎', '🥳', '👍', '🙏', '🎉', '❤️'];
 
+const formatFileSize = (bytes?: number | null) => {
+  if (!bytes || bytes <= 0) {
+    return '未知大小';
+  }
+
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+};
+
+const isPreviewableImage = (file: File | null) => Boolean(file && file.type.startsWith('image/'));
+
+const describeMessageContent = (message: {
+  isRecalled?: boolean;
+  textContent?: string | null;
+  fileName?: string | null;
+  imageFileName?: string | null;
+}) => {
+  if (message.isRecalled) {
+    return '原消息已撤回';
+  }
+
+  if (message.textContent?.trim()) {
+    return message.textContent;
+  }
+
+  if (message.fileName) {
+    return `[文件] ${message.fileName}`;
+  }
+
+  if (message.imageFileName) {
+    return `[图片] ${message.imageFileName}`;
+  }
+
+  return '[附件消息]';
+};
+
 const MessagePage = observer(() => {
   const { authStore, messageStore } = useStore();
   const theme = useTheme();
@@ -58,8 +102,8 @@ const MessagePage = observer(() => {
   const [messageKeyword, setMessageKeyword] = useState('');
   const [globalMessageKeyword, setGlobalMessageKeyword] = useState('');
   const [composerText, setComposerText] = useState('');
-  const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [selectedImagePreviewUrl, setSelectedImagePreviewUrl] = useState<string | null>(null);
+  const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
+  const [selectedAttachmentPreviewUrl, setSelectedAttachmentPreviewUrl] = useState<string | null>(null);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [contactsPanelOpen, setContactsPanelOpen] = useState(false);
   const [contactSearchKeyword, setContactSearchKeyword] = useState('');
@@ -92,17 +136,17 @@ const MessagePage = observer(() => {
   }, [messageStore]);
 
   useEffect(() => {
-    if (!selectedImage) {
-      setSelectedImagePreviewUrl(null);
+    if (!selectedAttachment || !isPreviewableImage(selectedAttachment)) {
+      setSelectedAttachmentPreviewUrl(null);
       return undefined;
     }
 
-    const nextUrl = URL.createObjectURL(selectedImage);
-    setSelectedImagePreviewUrl(nextUrl);
+    const nextUrl = URL.createObjectURL(selectedAttachment);
+    setSelectedAttachmentPreviewUrl(nextUrl);
     return () => {
       URL.revokeObjectURL(nextUrl);
     };
-  }, [selectedImage]);
+  }, [selectedAttachment]);
 
   useEffect(() => {
     if (!messageStore.highlightedMessageId) {
@@ -171,7 +215,7 @@ const MessagePage = observer(() => {
         : '已断开';
   const canSubmitMessage = currentCanSend
     && !messageStore.sending
-    && (composerText.trim().length > 0 || Boolean(selectedImage));
+    && (composerText.trim().length > 0 || Boolean(selectedAttachment));
 
   useEffect(() => {
     if (!currentSummary) {
@@ -260,13 +304,13 @@ const MessagePage = observer(() => {
       return;
     }
 
-    const sent = await messageStore.sendMessage(composerText, selectedImage, replyTarget?.id);
+    const sent = await messageStore.sendMessage(composerText, selectedAttachment, replyTarget?.id);
     if (!sent) {
       return;
     }
 
     setComposerText('');
-    setSelectedImage(null);
+    setSelectedAttachment(null);
     setReplyTargetId(null);
     setComposerNotice(null);
   };
@@ -302,7 +346,7 @@ const MessagePage = observer(() => {
       const extension = mimeType.split('/')[1] || 'png';
       const file = new File([blob], `clipboard-${Date.now()}.${extension}`, { type: mimeType });
 
-      setSelectedImage(file);
+      setSelectedAttachment(file);
       setComposerNotice({
         severity: 'success',
         text: '已从剪贴板读取截图，可直接发送。',
@@ -315,8 +359,8 @@ const MessagePage = observer(() => {
     }
   };
 
-  const handleImagePicked = (file: File | null) => {
-    setSelectedImage(file);
+  const handleAttachmentPicked = (file: File | null) => {
+    setSelectedAttachment(file);
     if (file) {
       setComposerNotice(null);
     }
@@ -978,7 +1022,7 @@ const MessagePage = observer(() => {
                         <Typography variant="body2" sx={{ mt: 0.35 }}>
                           {message.isRecalled
                             ? '这条消息已撤回'
-                            : (message.textContent || message.imageFileName || '[图片消息]')}
+                            : describeMessageContent(message)}
                         </Typography>
                       </Paper>
                     ))}
@@ -1153,9 +1197,7 @@ const MessagePage = observer(() => {
                                       回复 {message.replyToMessage.senderUsername}
                                     </Typography>
                                     <Typography variant="body2" sx={{ mt: 0.2, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.82rem' }}>
-                                      {message.replyToMessage.isRecalled
-                                        ? '原消息已撤回'
-                                        : (message.replyToMessage.textContent || message.replyToMessage.imageFileName || '[图片消息]')}
+                                      {describeMessageContent(message.replyToMessage)}
                                     </Typography>
                                   </Paper>
                                 )}
@@ -1193,6 +1235,46 @@ const MessagePage = observer(() => {
                                       })}
                                     />
                                   </Box>
+                                )}
+
+                                {message.fileName && !message.isRecalled && (
+                                  <Paper
+                                    variant="outlined"
+                                    sx={{
+                                      mt: message.textContent || message.imageUrl ? 0.8 : 0,
+                                      px: 1,
+                                      py: 0.85,
+                                      borderRadius: 2,
+                                      backgroundColor: message.isMine
+                                        ? alpha(theme.palette.common.white, 0.22)
+                                        : alpha('#fff6ee', 0.86),
+                                      borderColor: message.isMine
+                                        ? alpha(theme.palette.common.white, 0.28)
+                                        : alpha(theme.palette.divider, 0.72),
+                                    }}
+                                  >
+                                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                                      <Stack direction="row" spacing={0.85} sx={{ alignItems: 'center', minWidth: 0, flex: 1 }}>
+                                        <AttachFileRoundedIcon sx={{ fontSize: 18, opacity: 0.85 }} />
+                                        <Box sx={{ minWidth: 0 }}>
+                                          <Typography variant="body2" noWrap sx={{ fontWeight: 700 }}>
+                                            {message.fileName}
+                                          </Typography>
+                                          <Typography variant="caption" sx={{ opacity: 0.8 }}>
+                                            {formatFileSize(message.fileSizeBytes)}
+                                          </Typography>
+                                        </Box>
+                                      </Stack>
+                                      <Button
+                                        size="small"
+                                        variant="text"
+                                        color="inherit"
+                                        onClick={() => void messageStore.downloadMessageFile(message.id, message.fileName ?? 'message-file')}
+                                      >
+                                        下载
+                                      </Button>
+                                    </Stack>
+                                  </Paper>
                                 )}
                               </Paper>
 
@@ -1269,9 +1351,7 @@ const MessagePage = observer(() => {
                             正在回复 {replyTarget.senderUsername}
                           </Typography>
                           <Typography variant="body2" noWrap>
-                            {replyTarget.isRecalled
-                              ? '原消息已撤回'
-                              : (replyTarget.textContent || replyTarget.imageFileName || '[图片消息]')}
+                            {describeMessageContent(replyTarget)}
                           </Typography>
                         </Box>
                         <Button color="inherit" onClick={() => setReplyTargetId(null)}>
@@ -1281,7 +1361,7 @@ const MessagePage = observer(() => {
                     </Paper>
                   )}
 
-                  {selectedImage && (
+                  {selectedAttachment && (
                     <Paper
                       variant="outlined"
                       sx={{
@@ -1297,11 +1377,11 @@ const MessagePage = observer(() => {
                         sx={{ alignItems: { xs: 'stretch', md: 'center' }, justifyContent: 'space-between' }}
                       >
                         <Stack direction="row" spacing={1.2} sx={{ alignItems: 'center', minWidth: 0 }}>
-                          {selectedImagePreviewUrl && (
+                          {selectedAttachmentPreviewUrl ? (
                             <Box
                               component="img"
-                              src={selectedImagePreviewUrl}
-                              alt={selectedImage.name}
+                              src={selectedAttachmentPreviewUrl}
+                              alt={selectedAttachment.name}
                               sx={{
                                 width: 64,
                                 height: 64,
@@ -1310,17 +1390,33 @@ const MessagePage = observer(() => {
                                 border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
                               }}
                             />
+                          ) : (
+                            <Box
+                              sx={{
+                                width: 64,
+                                height: 64,
+                                borderRadius: 2,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: alpha('#ffe2cf', 0.7),
+                                border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+                              }}
+                            >
+                              <AttachFileRoundedIcon />
+                            </Box>
                           )}
                           <Box sx={{ minWidth: 0 }}>
                             <Typography variant="body2" noWrap>
-                              已选择图片：{selectedImage.name}
+                              {selectedAttachmentPreviewUrl ? '已选择图片：' : '已选择文件：'}
+                              {selectedAttachment.name}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
-                              {(selectedImage.size / 1024 / 1024).toFixed(2)} MB
+                              {formatFileSize(selectedAttachment.size)}
                             </Typography>
                           </Box>
                         </Stack>
-                        <Button color="inherit" onClick={() => setSelectedImage(null)}>
+                        <Button color="inherit" onClick={() => setSelectedAttachment(null)}>
                           移除
                         </Button>
                       </Stack>
@@ -1370,7 +1466,19 @@ const MessagePage = observer(() => {
                               hidden
                               type="file"
                               accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                              onChange={(event) => handleImagePicked(event.target.files?.[0] ?? null)}
+                              onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
+                            />
+                          </IconButton>
+                        </Tooltip>
+
+                        <Tooltip title="选择文件">
+                          <IconButton size="small" component="label" disabled={!currentCanSend}>
+                            <AttachFileRoundedIcon fontSize="small" />
+                            <input
+                              hidden
+                              type="file"
+                              accept=".pdf,.txt,.md,.csv,.tsv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.rtf"
+                              onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
                             />
                           </IconButton>
                         </Tooltip>
@@ -1395,7 +1503,7 @@ const MessagePage = observer(() => {
                       maxRows={6}
                       fullWidth
                       disabled={!currentCanSend}
-                      placeholder={currentCanSend ? '输入消息，支持同时附带一张图片' : '待双方互相添加后，才可继续发送消息'}
+                      placeholder={currentCanSend ? '输入消息，支持同时附带一张图片或一个本地文件' : '待双方互相添加后，才可继续发送消息'}
                       value={composerText}
                       onChange={(event) => setComposerText(event.target.value)}
                       onKeyDown={(event) => {
@@ -1560,7 +1668,7 @@ const MessagePage = observer(() => {
                         <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                           {hit.message.isRecalled
                             ? '这条消息已撤回'
-                            : (hit.message.textContent || hit.message.imageFileName || '[图片消息]')}
+                            : describeMessageContent(hit.message)}
                         </Typography>
                       </Stack>
                     </Paper>

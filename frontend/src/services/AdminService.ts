@@ -170,21 +170,6 @@ export class AdminService {
     return json.data;
   }
 
-  async batchResetUserPassword(userIds: number[], newPassword: string): Promise<AdminBatchOperationResult> {
-    const response = await fetch(`${API_BASE}/users/batch/reset-password`, {
-      method: 'PUT',
-      headers: this.getAuthHeaders(true),
-      body: JSON.stringify({ userIds, newPassword }),
-    });
-    const json: ApiResponse<AdminBatchOperationResult> = await response.json();
-
-    if (!response.ok || !json.success || !json.data) {
-      throw new Error(json.message || '批量重置密码失败');
-    }
-
-    return json.data;
-  }
-
   async getReflectionContent(): Promise<ReflectionContent> {
     const response = await fetch(`${API_BASE}/reflection`, {
       headers: this.getAuthHeaders(false),
