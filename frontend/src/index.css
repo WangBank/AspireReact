@@ -720,6 +720,197 @@ input[type="radio"] {
   color-scheme: light;
 }
 
+/* Cross-page consistency overrides */
+.gnp-container,
+.snp-container,
+.profile-container,
+.config-container,
+.pia-container,
+.reflection-container,
+.shp-container,
+.admin-page {
+  background: transparent !important;
+}
+
+.gnp-header,
+.snp-header,
+.profile-header,
+.config-header,
+.pia-header,
+.reflection-header,
+.shp-header,
+.admin-page__hero {
+  margin-bottom: 18px !important;
+}
+
+.gnp-header-actions,
+.snp-header-actions,
+.profile-actions,
+.config-field-input,
+.pia-detail__actions,
+.reflection-header__actions,
+.admin-page__hero-actions,
+.admin-page__toolbar,
+.admin-page__bulk-actions {
+  gap: 10px !important;
+}
+
+.gnp-search-bar,
+.snp-search-bar,
+.snp-stock-input-bar,
+.profile-card,
+.config-card,
+.config-preview,
+.pia-toolbar,
+.pia-detail,
+.pia-list-item,
+.pia-mini-card,
+.pia-block,
+.reflection-banner,
+.reflection-prompt-card,
+.reflection-toolbar,
+.reflection-card,
+.admin-page__tab,
+.admin-page__notice-card,
+.admin-page__panel,
+.admin-page__metric-card,
+.admin-page__quick-card,
+.shp-overview,
+.shp-card,
+.shp-section,
+.shp-note-card {
+  border-radius: 18px !important;
+  border-color: var(--app-border) !important;
+  background: rgba(255, 255, 255, 0.96) !important;
+  box-shadow: var(--app-shadow-sm) !important;
+}
+
+.gnp-btn-primary,
+.snp-btn-primary,
+.profile-btn--primary,
+.config-save-btn,
+.pia-refresh-btn,
+.admin-page__primary-btn {
+  background: var(--app-accent) !important;
+  background-image: none !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.gnp-btn-primary:hover:not(:disabled),
+.snp-btn-primary:hover:not(:disabled),
+.profile-btn--primary:hover:not(:disabled),
+.config-save-btn:hover:not(:disabled),
+.pia-refresh-btn:hover:not(:disabled),
+.admin-page__primary-btn:hover:not(:disabled) {
+  background: var(--app-accent-strong) !important;
+}
+
+.gnp-btn-secondary,
+.gnp-btn-refresh,
+.gnp-btn-search-toggle,
+.gnp-btn-edit,
+.gnp-btn-danger,
+.snp-btn-secondary,
+.snp-btn-refresh,
+.snp-btn-search-toggle,
+.snp-btn-edit,
+.snp-btn-danger,
+.profile-btn--secondary,
+.config-error button,
+.admin-page__secondary-btn,
+.admin-page__mini-btn {
+  background: rgba(255, 255, 255, 0.98) !important;
+  color: var(--app-text-muted) !important;
+  border: 1px solid var(--app-border) !important;
+  box-shadow: none !important;
+}
+
+.gnp-btn-danger,
+.snp-btn-danger,
+.admin-page__mini-btn--danger {
+  color: var(--app-danger) !important;
+  border-color: rgba(207, 34, 46, 0.22) !important;
+}
+
+.gnp-search-bar,
+.snp-search-bar,
+.snp-stock-input-bar,
+.reflection-toolbar {
+  padding: 18px 20px !important;
+}
+
+.gnp-search-bar input[type="text"],
+.gnp-search-bar input[type="date"],
+.snp-search-bar input[type="text"],
+.snp-search-bar input[type="date"],
+.snp-stock-input-bar input[type="text"],
+.profile-field__input,
+.config-field-input input,
+.reflection-search input,
+.admin-page__toolbar-input,
+.admin-page__reflection-textarea {
+  border-radius: 12px !important;
+  border-color: var(--app-border) !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  color: var(--app-text) !important;
+  box-shadow: none !important;
+}
+
+.gnp-note-card,
+.snp-note-card {
+  padding: 18px !important;
+}
+
+.gnp-note-header,
+.snp-note-header,
+.shp-note-card__header {
+  align-items: flex-start !important;
+  gap: 12px !important;
+}
+
+.gnp-note-date,
+.snp-note-date,
+.shp-note-card__date,
+.reflection-prompt-card__index,
+.reflection-card__date,
+.admin-page__badge,
+.pia-status {
+  border-radius: 999px !important;
+}
+
+.gnp-modal,
+.snp-modal {
+  border-radius: 20px !important;
+  border: 1px solid var(--app-border) !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  box-shadow: var(--app-shadow-lg) !important;
+}
+
+.gnp-modal-overlay,
+.snp-modal-overlay {
+  background: rgba(15, 23, 42, 0.42) !important;
+  backdrop-filter: blur(10px);
+}
+
+.profile-avatar-section,
+.selected-stock-info,
+.form-fieldset,
+.reflection-save-meta,
+.admin-page__bulk-bar,
+.admin-page__table-wrap {
+  border-radius: 16px !important;
+  border-color: var(--app-border) !important;
+}
+
+.pia-info-banner,
+.reflection-banner {
+  border-color: rgba(9, 105, 218, 0.16) !important;
+  background: var(--app-accent-muted) !important;
+  color: var(--app-accent-strong) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

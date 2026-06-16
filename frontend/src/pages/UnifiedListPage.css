@@ -21,9 +21,7 @@
   padding: 24px 26px;
   border: 1px solid var(--app-border);
   border-radius: 22px;
-  background:
-    radial-gradient(circle at top right, rgba(9, 105, 218, 0.1), transparent 38%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 248, 250, 0.92));
+  background: rgba(255, 255, 255, 0.96);
   box-shadow: var(--app-shadow-sm);
 }
 
@@ -324,6 +322,7 @@
   min-height: 30px;
   padding: 5px 10px;
   border-radius: 999px;
+  border: 1px solid var(--app-border);
   background: var(--app-surface-muted);
   color: var(--app-text-muted);
   font-size: 0.82rem;
@@ -504,8 +503,7 @@
   padding: 18px;
   border: 1px solid var(--app-border);
   border-radius: 22px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 248, 250, 0.92));
+  background: rgba(255, 255, 255, 0.96);
   box-shadow: var(--app-shadow-sm);
 }
 

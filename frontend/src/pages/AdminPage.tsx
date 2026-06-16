@@ -1,5 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import {
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  Checkbox,
+  Chip,
+  MenuItem,
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import PageHeader from '../components/Page/PageHeader';
+import {
+  FilterToolbar,
+  ResponsiveTableShell,
+  SectionCard,
+} from '../components/Page';
 import SortableHeader from '../components/Table/SortableHeader';
 import TablePagination from '../components/Table/TablePagination';
 import ConfigPage from './ConfigPage';
@@ -124,6 +143,65 @@ const getUserSortDefaultOrder = (field: AdminUserSortField): SortOrder => {
       return 'desc';
   }
 };
+
+interface AdminMetricCardItem {
+  label: string;
+  value: string;
+  detail: string;
+  toneClassName?: string;
+}
+
+const AdminMetricGrid = ({ items }: { items: AdminMetricCardItem[] }) => (
+  <Box
+    sx={{
+      display: 'grid',
+      gap: 1.5,
+      gridTemplateColumns: {
+        xs: '1fr',
+        md: 'repeat(2, minmax(0, 1fr))',
+        xl: 'repeat(4, minmax(0, 1fr))',
+      },
+    }}
+  >
+    {items.map((item) => (
+      <Paper
+        key={item.label}
+        component="article"
+        elevation={0}
+        sx={(theme) => ({
+          p: 2.25,
+          borderRadius: 3,
+          border: `1px solid ${theme.palette.divider}`,
+          backgroundColor: theme.palette.background.default,
+        })}
+      >
+        <Typography
+          variant="caption"
+          sx={{
+            display: 'block',
+            mb: 1,
+            color: 'text.secondary',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {item.label}
+        </Typography>
+        <Typography
+          variant="h6"
+          className={item.toneClassName}
+          sx={{ fontWeight: 800, lineHeight: 1.3 }}
+        >
+          {item.value}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, lineHeight: 1.65 }}>
+          {item.detail}
+        </Typography>
+      </Paper>
+    ))}
+  </Box>
+);
 
 const AdminPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -555,239 +633,393 @@ const AdminPage = () => {
 
   return (
     <div className="admin-page">
-      <header className="admin-page__hero">
-        <div>
-          <h1 className="admin-page__title">管理员后台</h1>
-          <p className="admin-page__subtitle">统一管理系统配置、用户、图片识别审计与“吾日三省吾身”原文。</p>
-        </div>
-        <div className="admin-page__hero-actions">
-          <button
-            type="button"
-            className="admin-page__primary-btn"
-            onClick={handleExportDatabase}
-            disabled={exporting}
-          >
-            {exporting ? '导出中...' : '一键导出数据库备份'}
-          </button>
-          <button
-            type="button"
-            className="admin-page__secondary-btn"
-            onClick={() => void loadSummary()}
-            disabled={summaryLoading}
-          >
-            刷新概览
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow="管理工作台"
+        title="管理员后台"
+        subtitle="统一管理系统配置、用户、图片识别审计与“吾日三省吾身”原文。"
+        actions={(
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <Button
+              variant="contained"
+              onClick={handleExportDatabase}
+              disabled={exporting}
+              sx={{ minWidth: { xs: '100%', sm: 188 } }}
+            >
+              {exporting ? '导出中...' : '一键导出数据库备份'}
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => void loadSummary()}
+              disabled={summaryLoading}
+              sx={{ minWidth: { xs: '100%', sm: 120 } }}
+            >
+              刷新概览
+            </Button>
+          </Stack>
+        )}
+        stats={[
+          { label: '系统用户', value: summary ? String(summary.totalUsers) : '--' },
+          { label: '启用用户', value: summary ? String(summary.activeUsers) : '--' },
+          { label: '识别审计', value: summary ? String(summary.totalAudits) : '--' },
+          { label: '最近登录', value: summary ? formatDateTime(summary.lastUserLoginAt) : '--' },
+        ]}
+      />
 
-      <section className="admin-page__tabs">
+      <Paper
+        elevation={0}
+        sx={(theme) => ({
+          mb: 2.5,
+          p: { xs: 1.5, md: 2 },
+          borderRadius: 3,
+          border: `1px solid ${theme.palette.divider}`,
+          backgroundColor: theme.palette.background.paper,
+        })}
+      >
+        <Box
+          sx={{
+            display: 'grid',
+            gap: 1.5,
+            gridTemplateColumns: {
+              xs: '1fr',
+              md: 'repeat(2, minmax(0, 1fr))',
+              xl: `repeat(${TAB_ITEMS.length}, minmax(0, 1fr))`,
+            },
+          }}
+        >
         {TAB_ITEMS.map((item) => (
-          <button
+          <Button
             key={item.key}
-            type="button"
-            className={`admin-page__tab${activeTab === item.key ? ' admin-page__tab--active' : ''}`}
             onClick={() => handleTabChange(item.key)}
+            variant={activeTab === item.key ? 'contained' : 'outlined'}
+            color={activeTab === item.key ? 'primary' : 'inherit'}
+            sx={{
+              minHeight: 92,
+              px: 2,
+              py: 1.8,
+              alignItems: 'flex-start',
+              justifyContent: 'flex-start',
+              textAlign: 'left',
+              textTransform: 'none',
+              borderRadius: 3,
+            }}
           >
-            <span className="admin-page__tab-label">{item.label}</span>
-            <span className="admin-page__tab-desc">{item.description}</span>
-          </button>
+            <Stack spacing={0.75} sx={{ alignItems: 'flex-start' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                {item.label}
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  lineHeight: 1.6,
+                  color: activeTab === item.key ? 'rgba(255,255,255,0.82)' : 'text.secondary',
+                }}
+              >
+                {item.description}
+              </Typography>
+            </Stack>
+          </Button>
         ))}
-      </section>
+        </Box>
+      </Paper>
 
       {(exportError || exportSuccess || exportTempPath) && (
-        <section className="admin-page__notice-card">
-          {exportError && <div className="admin-page__notice admin-page__notice--error">{exportError}</div>}
-          {exportSuccess && <div className="admin-page__notice admin-page__notice--success">{exportSuccess}</div>}
+        <Stack spacing={1.5} sx={{ mb: 2.5 }}>
+          {exportError && <Alert severity="error">{exportError}</Alert>}
+          {exportSuccess && <Alert severity="success">{exportSuccess}</Alert>}
           {exportTempPath && (
-            <div className="admin-page__notice admin-page__notice--info">
+            <Alert severity="info">
               临时文件：<code>{exportTempPath}</code>
-            </div>
+            </Alert>
           )}
-        </section>
+        </Stack>
       )}
 
       {activeTab === 'overview' && (
-        <section className="admin-page__panel">
-          <div className="admin-page__panel-header">
-            <div>
-              <h2>系统概览</h2>
-              <p>优先看用户规模、数据量和最近一次活跃时间。</p>
-            </div>
-          </div>
-
-          {summaryError && <div className="admin-page__notice admin-page__notice--error">{summaryError}</div>}
+        <SectionCard
+          title="系统概览"
+          description="优先看用户规模、数据量和最近一次活跃时间。"
+        >
+          {summaryError && <Alert severity="error">{summaryError}</Alert>}
 
           {summaryLoading && !summary ? (
             <div className="admin-page__empty">正在加载系统概览...</div>
           ) : summary ? (
             <>
-              <div className="admin-page__metrics">
-                <article className="admin-page__metric-card">
-                  <span className="admin-page__metric-label">系统用户</span>
-                  <strong className="admin-page__metric-value">{summary.totalUsers}</strong>
-                  <span className="admin-page__metric-meta">启用 {summary.activeUsers} / 管理员 {summary.adminUsers}</span>
-                </article>
-                <article className="admin-page__metric-card">
-                  <span className="admin-page__metric-label">账户资金记录</span>
-                  <strong className="admin-page__metric-value">{summary.totalAccounts}</strong>
-                  <span className="admin-page__metric-meta">银证 {summary.totalBankFlows} / 交易 {summary.totalTrades}</span>
-                </article>
-                <article className="admin-page__metric-card">
-                  <span className="admin-page__metric-label">识别审计</span>
-                  <strong className="admin-page__metric-value">{summary.totalAudits}</strong>
-                  <span className="admin-page__metric-meta">最近识别 {formatDateTime(summary.lastAuditCreatedAt)}</span>
-                </article>
-                <article className="admin-page__metric-card">
-                  <span className="admin-page__metric-label">最近登录</span>
-                  <strong className="admin-page__metric-value admin-page__metric-value--small">
-                    {formatDateTime(summary.lastUserLoginAt)}
-                  </strong>
-                  <span className="admin-page__metric-meta">可用于判断当前系统活跃情况</span>
-                </article>
-              </div>
+              <AdminMetricGrid
+                items={[
+                  {
+                    label: '系统用户',
+                    value: String(summary.totalUsers),
+                    detail: `启用 ${summary.activeUsers} / 管理员 ${summary.adminUsers}`,
+                  },
+                  {
+                    label: '账户资金记录',
+                    value: String(summary.totalAccounts),
+                    detail: `银证 ${summary.totalBankFlows} / 交易 ${summary.totalTrades}`,
+                  },
+                  {
+                    label: '识别审计',
+                    value: String(summary.totalAudits),
+                    detail: `最近识别 ${formatDateTime(summary.lastAuditCreatedAt)}`,
+                  },
+                  {
+                    label: '最近登录',
+                    value: formatDateTime(summary.lastUserLoginAt),
+                    detail: '可用于判断当前系统活跃情况',
+                  },
+                ]}
+              />
 
-              <div className="admin-page__quick-grid">
-                <button type="button" className="admin-page__quick-card" onClick={() => handleTabChange('users')}>
-                  <strong>进入用户维护</strong>
-                  <span>表格筛选、批量维护、战绩收益总览</span>
-                </button>
-                <button type="button" className="admin-page__quick-card" onClick={() => handleTabChange('settings')}>
-                  <strong>进入系统设置</strong>
-                  <span>维护同花顺心魔详情页链接前缀</span>
-                </button>
-                <button type="button" className="admin-page__quick-card" onClick={() => handleTabChange('audits')}>
-                  <strong>进入识别审计</strong>
-                  <span>查看 OCR 原图、识别文本和最终提交载荷</span>
-                </button>
-                <button type="button" className="admin-page__quick-card" onClick={() => handleTabChange('reflection')}>
-                  <strong>维护吾日三省</strong>
-                  <span>统一编辑原文，普通用户页自动变成只读回看</span>
-                </button>
-              </div>
+              <Box
+                sx={{
+                  display: 'grid',
+                  gap: 1.5,
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    lg: 'repeat(2, minmax(0, 1fr))',
+                  },
+                }}
+              >
+                {[
+                  {
+                    key: 'users' as const,
+                    title: '进入用户维护',
+                    description: '表格筛选、批量维护、战绩收益总览',
+                  },
+                  {
+                    key: 'settings' as const,
+                    title: '进入系统设置',
+                    description: '维护同花顺心魔详情页链接前缀',
+                  },
+                  {
+                    key: 'audits' as const,
+                    title: '进入识别审计',
+                    description: '查看 OCR 原图、识别文本和最终提交载荷',
+                  },
+                  {
+                    key: 'reflection' as const,
+                    title: '维护吾日三省',
+                    description: '统一编辑原文，普通用户页自动变成只读回看',
+                  },
+                ].map((item) => (
+                  <Button
+                    key={item.key}
+                    variant="outlined"
+                    color="inherit"
+                    onClick={() => handleTabChange(item.key)}
+                    sx={{
+                      p: 2.25,
+                      borderRadius: 3,
+                      justifyContent: 'flex-start',
+                      textAlign: 'left',
+                      textTransform: 'none',
+                    }}
+                  >
+                    <Stack spacing={0.75} sx={{ alignItems: 'flex-start' }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                        {item.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
+                        {item.description}
+                      </Typography>
+                    </Stack>
+                  </Button>
+                ))}
+              </Box>
             </>
           ) : (
             <div className="admin-page__empty">当前没有可展示的系统概览数据。</div>
           )}
-        </section>
+        </SectionCard>
       )}
 
       {activeTab === 'users' && (
-        <section className="admin-page__panel">
-          <div className="admin-page__panel-header">
-            <div>
-              <h2>用户维护</h2>
-              <p>支持筛选、排序、多选批量处理，并直接查看每个人的战绩和收益。</p>
-            </div>
-            <button
-              type="button"
-              className="admin-page__secondary-btn"
+        <ResponsiveTableShell
+          title="用户维护"
+          description="支持筛选、排序、多选批量处理，并直接查看每个人的战绩和收益。"
+          actions={(
+            <Button
+              variant="outlined"
               onClick={() => void loadUsers()}
               disabled={usersLoading}
+              sx={{ minWidth: { xs: '100%', sm: 112 } }}
             >
               {usersLoading ? '刷新中...' : '刷新用户'}
-            </button>
-          </div>
+            </Button>
+          )}
+          toolbar={(
+            <Stack spacing={2}>
+              {usersError && <Alert severity="error">{usersError}</Alert>}
+              {usersSuccess && <Alert severity="success">{usersSuccess}</Alert>}
 
-          {usersError && <div className="admin-page__notice admin-page__notice--error">{usersError}</div>}
-          {usersSuccess && <div className="admin-page__notice admin-page__notice--success">{usersSuccess}</div>}
+              <AdminMetricGrid
+                items={[
+                  {
+                    label: '筛选用户',
+                    value: String(filteredUsers.length),
+                    detail: `启用 ${filteredUserStats.activeCount} / 有数据 ${filteredUserStats.withDataCount}`,
+                  },
+                  {
+                    label: '筛选资产',
+                    value: formatMoney(filteredUserStats.totalAssets),
+                    detail: '当前表格可见用户的最新总资产',
+                  },
+                  {
+                    label: '筛选累计收益',
+                    value: formatMoney(filteredUserStats.totalPnL),
+                    detail: '汇总当前筛选结果的累计收益',
+                    toneClassName: getPnLClassName(filteredUserStats.totalPnL),
+                  },
+                  {
+                    label: '筛选净入金',
+                    value: formatMoney(filteredUserStats.netBankFlow),
+                    detail: `共选中 ${selectedUserIds.length} 人，筛选内命中 ${filteredSelectedCount} 人`,
+                    toneClassName: getPnLClassName(filteredUserStats.netBankFlow),
+                  },
+                ]}
+              />
 
-          <div className="admin-page__metrics admin-page__metrics--users">
-            <article className="admin-page__metric-card">
-              <span className="admin-page__metric-label">筛选用户</span>
-              <strong className="admin-page__metric-value">{filteredUsers.length}</strong>
-              <span className="admin-page__metric-meta">启用 {filteredUserStats.activeCount} / 有数据 {filteredUserStats.withDataCount}</span>
-            </article>
-            <article className="admin-page__metric-card">
-              <span className="admin-page__metric-label">筛选资产</span>
-              <strong className="admin-page__metric-value admin-page__metric-value--small">
-                {formatMoney(filteredUserStats.totalAssets)}
-              </strong>
-              <span className="admin-page__metric-meta">当前表格可见用户的最新总资产</span>
-            </article>
-            <article className="admin-page__metric-card">
-              <span className="admin-page__metric-label">筛选累计收益</span>
-              <strong className={`admin-page__metric-value admin-page__metric-value--small ${getPnLClassName(filteredUserStats.totalPnL)}`}>
-                {formatMoney(filteredUserStats.totalPnL)}
-              </strong>
-              <span className="admin-page__metric-meta">汇总当前筛选结果的累计收益</span>
-            </article>
-            <article className="admin-page__metric-card">
-              <span className="admin-page__metric-label">筛选净入金</span>
-              <strong className={`admin-page__metric-value admin-page__metric-value--small ${getPnLClassName(filteredUserStats.netBankFlow)}`}>
-                {formatMoney(filteredUserStats.netBankFlow)}
-              </strong>
-              <span className="admin-page__metric-meta">共选中 {selectedUserIds.length} 人，筛选内命中 {filteredSelectedCount} 人</span>
-            </article>
-          </div>
+              <FilterToolbar
+                title="筛选条件"
+                description="按用户名、角色、状态和数据覆盖情况筛选，配合排序快速定位用户。"
+                actions={(
+                  <Button
+                    variant="outlined"
+                    onClick={handleResetUserFilters}
+                    disabled={usersLoading}
+                    sx={{ minWidth: { xs: '100%', sm: 112 } }}
+                  >
+                    重置筛选
+                  </Button>
+                )}
+              >
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gap: 1.5,
+                    gridTemplateColumns: {
+                      xs: '1fr',
+                      md: 'repeat(2, minmax(0, 1fr))',
+                      xl: 'minmax(280px, 1.4fr) repeat(3, minmax(180px, 1fr))',
+                    },
+                  }}
+                >
+                  <TextField
+                    size="small"
+                    label="搜索用户"
+                    value={userKeyword}
+                    onChange={(event) => setUserKeyword(event.target.value)}
+                    placeholder="用户名、邮箱或最近日期"
+                  />
+                  <TextField
+                    select
+                    size="small"
+                    label="角色"
+                    value={userRoleFilter}
+                    onChange={(event) => setUserRoleFilter(event.target.value as AdminUserRoleFilter)}
+                  >
+                    <MenuItem value="all">全部角色</MenuItem>
+                    <MenuItem value="Admin">管理员</MenuItem>
+                    <MenuItem value="User">普通用户</MenuItem>
+                  </TextField>
+                  <TextField
+                    select
+                    size="small"
+                    label="状态"
+                    value={userStatusFilter}
+                    onChange={(event) => setUserStatusFilter(event.target.value as AdminUserStatusFilter)}
+                  >
+                    <MenuItem value="all">全部状态</MenuItem>
+                    <MenuItem value="active">仅启用</MenuItem>
+                    <MenuItem value="inactive">仅停用</MenuItem>
+                  </TextField>
+                  <TextField
+                    select
+                    size="small"
+                    label="数据情况"
+                    value={userDataFilter}
+                    onChange={(event) => setUserDataFilter(event.target.value as AdminUserDataFilter)}
+                  >
+                    <MenuItem value="all">全部数据状态</MenuItem>
+                    <MenuItem value="with-data">仅看有数据</MenuItem>
+                    <MenuItem value="without-data">仅看无数据</MenuItem>
+                  </TextField>
+                </Box>
+              </FilterToolbar>
 
-          <div className="admin-page__toolbar">
-            <input
-              type="text"
-              value={userKeyword}
-              onChange={(event) => setUserKeyword(event.target.value)}
-              placeholder="搜索用户名、邮箱或最近日期"
-              className="admin-page__toolbar-input"
+              <Paper
+                elevation={0}
+                sx={(theme) => ({
+                  p: { xs: 2, md: 2.25 },
+                  borderRadius: 3,
+                  border: `1px solid ${theme.palette.divider}`,
+                  backgroundColor: theme.palette.background.default,
+                })}
+              >
+                <Stack spacing={1.5}>
+                  <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.25} useFlexGap sx={{ justifyContent: 'space-between' }}>
+                    <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                      <Chip label={`已选 ${selectedUserIds.length} 人`} color="primary" variant="outlined" />
+                      <Chip label={`当前页 ${pagedUsers.length} 人`} variant="outlined" />
+                      <Chip label={`筛选结果 ${filteredUsers.length} 人`} variant="outlined" />
+                    </Stack>
+                    <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => handleToggleCurrentPage(true)}
+                        disabled={usersLoading || batchBusy || pagedUsers.length === 0}
+                      >
+                        当前页全选
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={handleSelectFiltered}
+                        disabled={usersLoading || batchBusy || filteredUsers.length === 0}
+                      >
+                        全选筛选结果
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => setSelectedUserIds([])}
+                        disabled={usersLoading || batchBusy || selectedUserIds.length === 0}
+                      >
+                        清空选择
+                      </Button>
+                    </Stack>
+                  </Stack>
+
+                  <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                    <Button size="small" variant="contained" onClick={() => void handleBatchStatus(true)} disabled={usersLoading || batchBusy}>
+                      批量启用
+                    </Button>
+                    <Button size="small" variant="outlined" color="warning" onClick={() => void handleBatchStatus(false)} disabled={usersLoading || batchBusy}>
+                      批量停用
+                    </Button>
+                    <Button size="small" variant="outlined" color="secondary" onClick={() => void handleBatchRole('Admin')} disabled={usersLoading || batchBusy}>
+                      设为管理员
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => void handleBatchRole('User')} disabled={usersLoading || batchBusy}>
+                      设为普通用户
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Paper>
+            </Stack>
+          )}
+          footer={filteredUsers.length > 0 ? (
+            <TablePagination
+              page={userPage}
+              totalPages={userTotalPages}
+              totalItems={sortedUsers.length}
+              onPageChange={setUserPage}
+              infoText={`共 ${sortedUsers.length} 个用户，第 ${userPage}/${userTotalPages} 页`}
             />
-            <select value={userRoleFilter} onChange={(event) => setUserRoleFilter(event.target.value as AdminUserRoleFilter)}>
-              <option value="all">全部角色</option>
-              <option value="Admin">管理员</option>
-              <option value="User">普通用户</option>
-            </select>
-            <select value={userStatusFilter} onChange={(event) => setUserStatusFilter(event.target.value as AdminUserStatusFilter)}>
-              <option value="all">全部状态</option>
-              <option value="active">仅启用</option>
-              <option value="inactive">仅停用</option>
-            </select>
-            <select value={userDataFilter} onChange={(event) => setUserDataFilter(event.target.value as AdminUserDataFilter)}>
-              <option value="all">全部数据状态</option>
-              <option value="with-data">仅看有数据</option>
-              <option value="without-data">仅看无数据</option>
-            </select>
-            <button
-              type="button"
-              className="admin-page__secondary-btn"
-              onClick={handleResetUserFilters}
-              disabled={usersLoading}
-            >
-              重置筛选
-            </button>
-          </div>
-
-          <div className="admin-page__bulk-bar">
-            <div className="admin-page__bulk-meta">
-              <span className="admin-page__toolbar-tag">已选 {selectedUserIds.length} 人</span>
-              <span className="admin-page__toolbar-tag">当前页 {pagedUsers.length} 人</span>
-              <span className="admin-page__toolbar-tag">筛选结果 {filteredUsers.length} 人</span>
-            </div>
-
-            <div className="admin-page__bulk-actions">
-              <button type="button" className="admin-page__mini-btn" onClick={() => handleToggleCurrentPage(true)} disabled={usersLoading || batchBusy || pagedUsers.length === 0}>
-                当前页全选
-              </button>
-              <button type="button" className="admin-page__mini-btn" onClick={handleSelectFiltered} disabled={usersLoading || batchBusy || filteredUsers.length === 0}>
-                全选筛选结果
-              </button>
-              <button type="button" className="admin-page__mini-btn" onClick={() => setSelectedUserIds([])} disabled={usersLoading || batchBusy || selectedUserIds.length === 0}>
-                清空选择
-              </button>
-            </div>
-
-            <div className="admin-page__bulk-actions">
-              <button type="button" className="admin-page__mini-btn" onClick={() => void handleBatchStatus(true)} disabled={usersLoading || batchBusy}>
-                批量启用
-              </button>
-              <button type="button" className="admin-page__mini-btn" onClick={() => void handleBatchStatus(false)} disabled={usersLoading || batchBusy}>
-                批量停用
-              </button>
-              <button type="button" className="admin-page__mini-btn" onClick={() => void handleBatchRole('Admin')} disabled={usersLoading || batchBusy}>
-                设为管理员
-              </button>
-              <button type="button" className="admin-page__mini-btn" onClick={() => void handleBatchRole('User')} disabled={usersLoading || batchBusy}>
-                设为普通用户
-              </button>
-            </div>
-
-          </div>
+          ) : null}
+          tableMinWidth={1760}
+        >
 
           {usersLoading && users.length === 0 ? (
             <div className="admin-page__empty">正在加载用户列表...</div>
@@ -802,11 +1034,12 @@ const AdminPage = () => {
                   <thead>
                     <tr>
                       <th className="admin-page__checkbox-col">
-                        <input
-                          type="checkbox"
+                        <Checkbox
+                          size="small"
                           checked={allCurrentPageSelected}
                           onChange={(event) => handleToggleCurrentPage(event.target.checked)}
                           aria-label="全选当前页"
+                          sx={{ p: 0.25 }}
                         />
                       </th>
                       <SortableHeader field="username" currentField={userSortField} currentOrder={userSortOrder} onSort={handleUserSort}>
@@ -863,30 +1096,35 @@ const AdminPage = () => {
                       return (
                         <tr key={user.id}>
                           <td className="admin-page__checkbox-col" data-label="选择">
-                            <input
-                              type="checkbox"
+                            <Checkbox
+                              size="small"
                               disabled={isProtectedAdmin}
                               checked={selectedUserIdSet.has(user.id)}
                               onChange={() => toggleUserSelection(user.id)}
                               aria-label={`选择 ${user.username}`}
+                              sx={{ p: 0.25 }}
                             />
                           </td>
                           <td data-label="用户">
                             <div className="admin-page__table-user">
-                              <div className="admin-page__user-avatar admin-page__user-avatar--small">
+                              <Avatar
+                                src={user.avatarUrl || undefined}
+                                alt={`${user.username}头像`}
+                                sx={{ width: 42, height: 42, fontSize: '1rem', borderRadius: 2.5 }}
+                              >
                                 {user.avatarUrl ? (
-                                  <img src={user.avatarUrl} alt={`${user.username}头像`} />
+                                  undefined
                                 ) : (
                                   getInitial(user.username)
                                 )}
-                              </div>
+                              </Avatar>
                               <div className="admin-page__table-user-meta">
                                 <div className="admin-page__user-title-row">
                                   <strong>{user.username}</strong>
                                   {hasUserData(user) ? (
-                                    <span className="admin-page__badge admin-page__badge--data">有数据</span>
+                                    <Chip size="small" color="info" label="有数据" />
                                   ) : (
-                                    <span className="admin-page__badge">未录入</span>
+                                    <Chip size="small" variant="outlined" label="未录入" />
                                   )}
                                 </div>
                                 <span>{user.email}</span>
@@ -897,14 +1135,20 @@ const AdminPage = () => {
                             </div>
                           </td>
                           <td data-label="角色">
-                            <span className={`admin-page__badge${user.isAdmin ? ' admin-page__badge--admin' : ''}`}>
-                              {user.isAdmin ? '管理员' : '普通用户'}
-                            </span>
+                            <Chip
+                              size="small"
+                              color={user.isAdmin ? 'warning' : 'default'}
+                              variant={user.isAdmin ? 'filled' : 'outlined'}
+                              label={user.isAdmin ? '管理员' : '普通用户'}
+                            />
                           </td>
                           <td data-label="状态">
-                            <span className={`admin-page__badge${user.isActive ? ' admin-page__badge--active' : ' admin-page__badge--inactive'}`}>
-                              {user.isActive ? '已启用' : '已停用'}
-                            </span>
+                            <Chip
+                              size="small"
+                              color={user.isActive ? 'success' : 'default'}
+                              variant={user.isActive ? 'filled' : 'outlined'}
+                              label={user.isActive ? '已启用' : '已停用'}
+                            />
                           </td>
                           <td data-label="最近数据">{formatDate(user.performance.latestDataDate)}</td>
                           <td data-label="最新资产" className="admin-page__td-num">
@@ -937,31 +1181,33 @@ const AdminPage = () => {
                           <td data-label="操作">
                             <div className="admin-page__table-actions">
                               {isProtectedAdmin ? (
-                                <div className="admin-page__protected-note">
+                                <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.65 }}>
                                   管理员账号受保护，不允许执行状态、角色或密码操作。
-                                </div>
+                                </Typography>
                               ) : (
                                 <>
-                                  <div className="admin-page__button-row">
-                                    <button
-                                      type="button"
-                                      className="admin-page__mini-btn"
+                                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
                                       onClick={() => void handleUserStatus(user, !user.isActive)}
                                       disabled={isBusy}
                                     >
                                       {user.isActive ? '停用' : '启用'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="admin-page__mini-btn"
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="secondary"
                                       onClick={() => void handleUserRole(user, 'Admin')}
                                       disabled={isBusy || !user.isActive}
                                     >
                                       设为管理员
-                                    </button>
-                                  </div>
-                                  <div className="admin-page__password-row admin-page__password-row--table">
-                                    <input
+                                    </Button>
+                                  </Stack>
+                                  <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ alignItems: { md: 'center' } }}>
+                                    <TextField
+                                      size="small"
                                       type="password"
                                       autoComplete="new-password"
                                       value={passwordDraft}
@@ -970,16 +1216,19 @@ const AdminPage = () => {
                                         setPasswordDrafts((current) => ({ ...current, [user.id]: value }));
                                       }}
                                       placeholder="输入新密码"
+                                      fullWidth
                                     />
-                                    <button
-                                      type="button"
-                                      className="admin-page__mini-btn admin-page__mini-btn--danger"
+                                    <Button
+                                      size="small"
+                                      variant="contained"
+                                      color="error"
                                       onClick={() => void handleResetPassword(user)}
                                       disabled={isBusy}
+                                      sx={{ flexShrink: 0 }}
                                     >
                                       {isBusy ? '处理中...' : '重置'}
-                                    </button>
-                                  </div>
+                                    </Button>
+                                  </Stack>
                                 </>
                               )}
                             </div>
@@ -991,94 +1240,81 @@ const AdminPage = () => {
                 </table>
               </div>
 
-              <TablePagination
-                page={userPage}
-                totalPages={userTotalPages}
-                totalItems={sortedUsers.length}
-                onPageChange={setUserPage}
-                infoText={`共 ${sortedUsers.length} 个用户，第 ${userPage}/${userTotalPages} 页`}
-              />
             </>
           )}
-        </section>
+        </ResponsiveTableShell>
       )}
 
       {activeTab === 'settings' && (
-        <section className="admin-page__panel">
-          <div className="admin-page__panel-header">
-            <div>
-              <h2>系统设置</h2>
-              <p>这里接管原来的单独设置页。</p>
-            </div>
-          </div>
+        <SectionCard
+          title="系统设置"
+          description="这里接管原来的单独设置页。"
+        >
           <ConfigPage embedded />
-        </section>
+        </SectionCard>
       )}
 
       {activeTab === 'audits' && (
-        <section className="admin-page__panel">
-          <div className="admin-page__panel-header">
-            <div>
-              <h2>图片识别审计</h2>
-              <p>审计功能已经迁到后台，支持从录入页按审计 ID 直接跳进来。</p>
-            </div>
-          </div>
+        <SectionCard
+          title="图片识别审计"
+          description="审计功能已经迁到后台，支持从录入页按审计 ID 直接跳进来。"
+        >
           <PortfolioImportAuditPage embedded />
-        </section>
+        </SectionCard>
       )}
 
       {activeTab === 'reflection' && (
-        <section className="admin-page__panel">
-          <div className="admin-page__panel-header">
-            <div>
-              <h2>吾日三省吾身原文维护</h2>
-              <p>这里维护的是全量原文；普通用户页面会自动按日期分组、按句拆分并只读展示。</p>
-            </div>
-            <button
-              type="button"
-              className="admin-page__secondary-btn"
+        <SectionCard
+          title="吾日三省吾身原文维护"
+          description="这里维护的是全量原文；普通用户页面会自动按日期分组、按句拆分并只读展示。"
+          actions={(
+            <Button
+              variant="outlined"
               onClick={() => void loadReflection()}
               disabled={reflectionLoading}
+              sx={{ minWidth: { xs: '100%', sm: 112 } }}
             >
               {reflectionLoading ? '刷新中...' : '刷新原文'}
-            </button>
-          </div>
+            </Button>
+          )}
+        >
 
-          {reflectionError && <div className="admin-page__notice admin-page__notice--error">{reflectionError}</div>}
-          {reflectionSuccess && <div className="admin-page__notice admin-page__notice--success">{reflectionSuccess}</div>}
+          {reflectionError && <Alert severity="error">{reflectionError}</Alert>}
+          {reflectionSuccess && <Alert severity="success">{reflectionSuccess}</Alert>}
 
           {reflectionLoading && !reflectionLoaded ? (
             <div className="admin-page__empty">正在加载吾日三省吾身原文...</div>
           ) : (
             <>
-              <div className="admin-page__reflection-meta">
-                <span>最近维护：{formatDateTime(reflectionUpdatedAt)}</span>
-                <span>维护人：{reflectionUpdatedBy || '未记录'}</span>
-                <span>日期段：{dateCount}</span>
-                <span>句子数：{sentenceCount}</span>
-              </div>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+                <Chip label={`最近维护：${formatDateTime(reflectionUpdatedAt)}`} variant="outlined" />
+                <Chip label={`维护人：${reflectionUpdatedBy || '未记录'}`} variant="outlined" />
+                <Chip label={`日期段：${dateCount}`} variant="outlined" />
+                <Chip label={`句子数：${sentenceCount}`} variant="outlined" />
+              </Stack>
 
-              <textarea
-                className="admin-page__reflection-textarea"
+              <TextField
+                multiline
+                minRows={24}
                 value={reflectionText}
                 onChange={(event) => setReflectionText(event.target.value)}
                 placeholder="请输入完整原文，建议保留每个日期单独一行，正文一行一句。"
-                rows={24}
+                fullWidth
               />
 
-              <div className="admin-page__reflection-actions">
-                <button
-                  type="button"
-                  className="admin-page__primary-btn"
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <Button
+                  variant="contained"
                   onClick={handleSaveReflection}
                   disabled={reflectionSaving || !reflectionText.trim()}
+                  sx={{ minWidth: { xs: '100%', sm: 120 } }}
                 >
                   {reflectionSaving ? '保存中...' : '保存原文'}
-                </button>
-              </div>
+                </Button>
+              </Stack>
             </>
           )}
-        </section>
+        </SectionCard>
       )}
     </div>
   );

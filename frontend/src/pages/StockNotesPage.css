@@ -1,9 +1,8 @@
 /* ===== Container ===== */
 .snp-container {
-  max-width: 960px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 28px 32px;
-  min-height: 100vh;
+  padding: 28px 32px 40px;
 }
 
 /* ===== Header ===== */
@@ -11,9 +10,9 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 20px;
 }
 
 .snp-title {
@@ -238,6 +237,9 @@
 /* ===== Main ===== */
 .snp-main {
   min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* ===== Status ===== */

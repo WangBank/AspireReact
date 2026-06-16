@@ -35,11 +35,10 @@ const PageHeader = ({
         mb: 2.5,
         px: { xs: 2.25, md: 3 },
         py: { xs: 2.25, md: 3 },
-        borderRadius: 4,
-        background: [
-          `radial-gradient(circle at top right, ${alpha(theme.palette.primary.main, 0.12)}, transparent 34%)`,
-          `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.98)}, ${alpha('#f8fafc', 0.94)})`,
-        ].join(','),
+        borderRadius: 3,
+        border: `1px solid ${alpha(theme.palette.divider, 0.92)}`,
+        backgroundColor: alpha(theme.palette.background.paper, 0.96),
+        boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}`,
       }}
     >
       <Stack spacing={2.5}>
@@ -54,13 +53,14 @@ const PageHeader = ({
           <Stack spacing={1.1} sx={{ minWidth: 0 }}>
             {eyebrow ? (
               <Box
-                sx={{
+              sx={{
                   display: 'inline-flex',
                   alignSelf: 'flex-start',
                   px: 1.2,
                   py: 0.5,
                   borderRadius: 999,
-                  backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                  border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+                  backgroundColor: alpha(theme.palette.primary.main, 0.08),
                   color: 'primary.main',
                   fontSize: 12,
                   fontWeight: 700,
@@ -115,8 +115,9 @@ const PageHeader = ({
                 sx={{
                   px: 2,
                   py: 1.6,
-                  borderRadius: 3,
-                  backgroundColor: alpha(theme.palette.background.paper, 0.82),
+                  borderRadius: 2.5,
+                  border: `1px solid ${alpha(theme.palette.divider, 0.92)}`,
+                  backgroundColor: alpha(theme.palette.background.default, 0.54),
                 }}
               >
                 <Typography

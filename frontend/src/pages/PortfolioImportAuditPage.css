@@ -1,8 +1,7 @@
 .pia-container {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #f3f4f6;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 28px 32px 40px;
 }
 
 .pia-header {
@@ -10,11 +9,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  max-width: 1440px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 24px 32px 0;
-  box-sizing: border-box;
+  margin-bottom: 18px;
 }
 
 .pia-title {
@@ -41,12 +36,7 @@
 }
 
 .pia-main {
-  flex: 1;
-  max-width: 1440px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 20px 32px 32px;
-  box-sizing: border-box;
+  padding: 0;
   display: grid;
   grid-template-columns: 360px minmax(0, 1fr);
   gap: 20px;

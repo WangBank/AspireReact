@@ -146,7 +146,12 @@ const LoginPage = observer(() => {
         minHeight: '100vh',
         display: 'flex',
         alignItems: 'center',
+        px: 2,
         py: { xs: 4, md: 6 },
+        background: [
+          `radial-gradient(circle at top, ${alpha(theme.palette.primary.main, 0.05)}, transparent 40%)`,
+          `linear-gradient(180deg, ${alpha(theme.palette.background.default, 0.98)} 0%, ${theme.palette.background.default} 100%)`,
+        ].join(','),
       }}
     >
       <Container maxWidth="sm">
@@ -154,7 +159,9 @@ const LoginPage = observer(() => {
           elevation={0}
           sx={{
             overflow: 'hidden',
-            borderRadius: { xs: 4, md: 5 },
+            borderRadius: { xs: 3, md: 4 },
+            border: `1px solid ${alpha(theme.palette.divider, 0.92)}`,
+            boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.06)}`,
           }}
         >
           <Box
@@ -162,11 +169,7 @@ const LoginPage = observer(() => {
               px: { xs: 2.5, sm: 4 },
               pt: { xs: 2.75, sm: 3.5 },
               pb: 2.5,
-              background: [
-                `radial-gradient(circle at top right, ${alpha(theme.palette.secondary.main, 0.14)}, transparent 26%)`,
-                `radial-gradient(circle at top left, ${alpha(theme.palette.primary.main, 0.16)}, transparent 28%)`,
-                'linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%)',
-              ].join(','),
+              backgroundColor: alpha(theme.palette.background.default, 0.7),
               borderBottom: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
             }}
           >
@@ -175,9 +178,10 @@ const LoginPage = observer(() => {
                 sx={{
                   width: 48,
                   height: 48,
-                  borderRadius: 3,
+                  borderRadius: 2.5,
                   overflow: 'hidden',
-                  boxShadow: '0 12px 24px rgba(9, 105, 218, 0.16)',
+                  border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
+                  backgroundColor: theme.palette.background.paper,
                 }}
               >
                 <Box
@@ -220,8 +224,8 @@ const LoginPage = observer(() => {
                   sx={{
                     p: 2,
                     borderRadius: 3,
-                    backgroundColor: alpha(theme.palette.primary.main, 0.035),
-                    borderColor: alpha(theme.palette.primary.main, 0.16),
+                    backgroundColor: alpha(theme.palette.background.default, 0.72),
+                    borderColor: alpha(theme.palette.divider, 0.96),
                   }}
                 >
                   <Stack spacing={1.25}>
@@ -376,7 +380,7 @@ const LoginPage = observer(() => {
                               height: 48,
                               p: 0,
                               overflow: 'hidden',
-                              borderRadius: 2,
+                              borderRadius: 1.75,
                               border: `1px solid ${alpha(theme.palette.divider, 0.9)}`,
                             }}
                           >
@@ -412,7 +416,7 @@ const LoginPage = observer(() => {
                 variant="contained"
                 size="large"
                 disabled={authStore.loading}
-                sx={{ mt: 0.5, minHeight: 48 }}
+                sx={{ mt: 0.5, minHeight: 48, boxShadow: 'none' }}
               >
                 {authStore.loading
                   ? (isRegister ? '注册中...' : '登录中...')
@@ -431,7 +435,11 @@ const LoginPage = observer(() => {
                 <Typography variant="body2" color="text.secondary">
                   {isRegister ? '已经有账户了？' : '还没有账户？'}
                 </Typography>
-                <Button variant="text" onClick={toggleMode} sx={{ alignSelf: { xs: 'flex-start', sm: 'auto' } }}>
+                <Button
+                  variant="text"
+                  onClick={toggleMode}
+                  sx={{ alignSelf: { xs: 'flex-start', sm: 'auto' }, fontWeight: 700 }}
+                >
                   {isRegister ? '返回登录' : '立即注册'}
                 </Button>
               </Stack>

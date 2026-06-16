@@ -1,8 +1,7 @@
 .sp-container {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #f3f4f6;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 28px 32px 40px;
 }
 
 /* Header */
@@ -226,11 +225,9 @@
 
 /* Main */
 .sp-main {
-  flex: 1;
-  max-width: 1400px;
   width: 100%;
   margin: 0 auto;
-  padding: 16px 328px 32px 32px;
+  padding: 0 328px 0 0;
   box-sizing: border-box;
   position: relative;
 }

@@ -19,6 +19,7 @@ type IncomingNotice = {
   senderLabel: string;
   preview: string;
 };
+const RealtimeConnectTimeoutMs = 10000;
 
 const buildConversationPreview = (message: MessageItem): string => {
   if (message.textContent?.trim()) {
@@ -38,6 +39,29 @@ const buildConversationPreview = (message: MessageItem): string => {
   }
 
   return message.fileName ? `[文件] ${message.fileName}` : '[消息]';
+};
+
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> => {
+  let timer = 0;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(() => {
+          reject(new Error(timeoutMessage));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      window.clearTimeout(timer);
+    }
+  }
 };
 
 export class MessageStore {
@@ -66,6 +90,7 @@ export class MessageStore {
   messagePageActive = false;
   private connection: HubConnection | null = null;
   private bootstrapPromise: Promise<void> | null = null;
+  private realtimeConnectPromise: Promise<void> | null = null;
 
   constructor() {
     makeAutoObservable(this, {}, { autoBind: true });
@@ -84,7 +109,8 @@ export class MessageStore {
   }
 
   bootstrap = async () => {
-    if (this.connection && this.conversations.length > 0) {
+    if (this.conversations.length > 0) {
+      this.startRealtime();
       return;
     }
 
@@ -93,37 +119,40 @@ export class MessageStore {
       return;
     }
 
-    this.bootstrapPromise = (async () => {
-      await this.loadConversations();
-      await this.connectRealtime();
-    })();
+    this.bootstrapPromise = this.loadConversations();
 
     try {
       await this.bootstrapPromise;
     } finally {
       this.bootstrapPromise = null;
     }
+
+    this.startRealtime();
   };
 
   initialize = async () => {
+    if (this.loading) {
+      return;
+    }
+
     this.loading = true;
     this.error = null;
     try {
-      await Promise.all([
+      await Promise.allSettled([
         this.bootstrap(),
-        this.loadConversations(),
         this.loadContacts(),
         this.loadFriendRequests(),
       ]);
+
       if (!this.selectedConversationId && this.conversations.length > 0) {
         await this.selectConversation(this.conversations[0].conversationId);
       }
-      runInAction(() => {
-        this.loading = false;
-      });
     } catch (err) {
       runInAction(() => {
         this.error = err instanceof Error ? err.message : '消息模块加载失败';
+      });
+    } finally {
+      runInAction(() => {
         this.loading = false;
       });
     }
@@ -162,6 +191,8 @@ export class MessageStore {
       this.incomingNotice = null;
       this.messagePageActive = false;
       this.connection = null;
+      this.bootstrapPromise = null;
+      this.realtimeConnectPromise = null;
       this.realtimeStatus = 'disconnected';
     });
   };
@@ -605,6 +636,27 @@ export class MessageStore {
     this.messagePageActive = active;
   };
 
+  private startRealtime() {
+    void this.ensureRealtimeConnected().catch(() => {
+      // 实时通道失败不阻塞首屏，保留手动刷新能力。
+    });
+  }
+
+  private async ensureRealtimeConnected() {
+    if (this.connection || this.realtimeConnectPromise) {
+      await this.realtimeConnectPromise;
+      return;
+    }
+
+    this.realtimeConnectPromise = this.connectRealtime();
+
+    try {
+      await this.realtimeConnectPromise;
+    } finally {
+      this.realtimeConnectPromise = null;
+    }
+  }
+
   private async connectRealtime() {
     if (this.connection) {
       return;
@@ -612,6 +664,7 @@ export class MessageStore {
 
     const connection = messageService.createHubConnection();
     runInAction(() => {
+      this.connection = connection;
       this.realtimeStatus = 'connecting';
     });
 
@@ -636,6 +689,9 @@ export class MessageStore {
 
     connection.onclose(() => {
       runInAction(() => {
+        if (this.connection === connection) {
+          this.connection = null;
+        }
         this.realtimeStatus = 'disconnected';
       });
     });
@@ -697,12 +753,30 @@ export class MessageStore {
       void this.refreshSelectedConversation();
     });
 
-    await connection.start();
+    try {
+      await withTimeout(connection.start(), RealtimeConnectTimeoutMs, '消息实时连接超时，请稍后手动刷新重试');
 
-    runInAction(() => {
-      this.connection = connection;
-      this.realtimeStatus = 'connected';
-    });
+      runInAction(() => {
+        if (this.connection === connection) {
+          this.realtimeStatus = 'connected';
+        }
+      });
+    } catch (err) {
+      try {
+        await connection.stop();
+      } catch {
+        // ignore
+      }
+
+      runInAction(() => {
+        if (this.connection === connection) {
+          this.connection = null;
+        }
+        this.realtimeStatus = 'disconnected';
+      });
+
+      throw err;
+    }
   }
 
   private applyIncomingMessage(message: MessageItem) {

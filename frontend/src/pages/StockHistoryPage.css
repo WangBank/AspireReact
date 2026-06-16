@@ -61,7 +61,7 @@
 .shp-status {
   border: 1px solid var(--app-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.96);
   box-shadow: var(--app-shadow-sm);
 }
 

@@ -27,6 +27,8 @@ import ChatBubbleOutlineRoundedIcon from '@mui/icons-material/ChatBubbleOutlineR
 import CircleRoundedIcon from '@mui/icons-material/CircleRounded';
 import DeleteOutlineRoundedIcon from '@mui/icons-material/DeleteOutlineRounded';
 import EditRoundedIcon from '@mui/icons-material/EditRounded';
+import FavoriteBorderRoundedIcon from '@mui/icons-material/FavoriteBorderRounded';
+import GifBoxRoundedIcon from '@mui/icons-material/GifBoxRounded';
 import GroupRoundedIcon from '@mui/icons-material/GroupRounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import ManageSearchRoundedIcon from '@mui/icons-material/ManageSearchRounded';
@@ -51,7 +53,31 @@ import RouteLoadingFallback from '../components/Page/RouteLoadingFallback';
 import type { MessageUserSummary } from '../services/MessageService';
 import { useStore } from '../stores/StoreProvider';
 
-const QUICK_EMOJIS = ['😀', '😂', '😎', '🥳', '👍', '🙏', '🎉', '❤️'];
+type EmojiPanelTab = 'emoji' | 'favorite' | 'gif';
+
+const RECENT_EMOJI_LIMIT = 22;
+const INITIAL_RECENT_EMOJIS = [
+  '🦁', '😭', '🥹', '👍', '🔪', '🥺', '🥵', '🤩', '🙄', '😳', '🤣',
+  '🤭', '😊', '😎', '😰', '😥', '🥰', '😘', '😇', '🤔', '🙏', '🎉',
+];
+const SUPER_EMOJIS = [
+  '😭', '🤣', '😊', '😎', '🦁', '🥺', '🥰', '🥳', '😚', '😱', '🤯',
+  '🤭', '😘', '👋', '🤖', '🧀', '🥹', '😋', '🙏', '🤔', '🌞', '🌙',
+  '🥮', '🥲', '🫂', '🤡', '🏀', '📸', '🎂', '🎀', '🎆', '📍', '🥷',
+  '🐉', '🥸', '🫣', '🌹', '🚃', '🐤', '😄', '😁', '😆', '🙂', '😉',
+  '😌', '😍', '😗', '😜', '🤪', '😝', '😏', '🙃', '😮', '😤', '😴',
+  '🤤', '😵', '🥶', '😈', '👻', '💀', '💪', '👌', '✌️', '🤞', '👏',
+  '🙌', '🫶', '💖', '💝', '🎈', '🎁', '🍓', '🍉', '🍔', '☕', '🌈',
+  '⭐', '⚡', '🎵', '🎮', '🐶', '🐱', '🦊', '🐻', '🐼', '🐸',
+];
+const FAVORITE_EMOJIS = [
+  '❤️', '🔥', '👍', '👏', '🥳', '🎉', '🙏', '😊', '😎', '🥹', '🌹', '✨',
+  '🫶', '💖', '😘', '🥰', '😍', '🤝', '👌', '🎈', '🎁', '🌈', '⭐', '☕',
+];
+const EMOJI_GRID_COLUMNS = {
+  xs: 'repeat(6, minmax(0, 1fr))',
+  sm: 'repeat(11, minmax(0, 1fr))',
+};
 
 const formatFileSize = (bytes?: number | null) => {
   if (!bytes || bytes <= 0) {
@@ -130,6 +156,8 @@ const MessagePage = observer(() => {
   const [replyTargetId, setReplyTargetId] = useState<number | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; label: string } | null>(null);
   const [emojiAnchorEl, setEmojiAnchorEl] = useState<HTMLElement | null>(null);
+  const [emojiPanelTab, setEmojiPanelTab] = useState<EmojiPanelTab>('emoji');
+  const [recentEmojis, setRecentEmojis] = useState(INITIAL_RECENT_EMOJIS);
   const [friendRequestAnchorEl, setFriendRequestAnchorEl] = useState<HTMLElement | null>(null);
   const [conversationActionsAnchorEl, setConversationActionsAnchorEl] = useState<HTMLElement | null>(null);
   const [composerNotice, setComposerNotice] = useState<{
@@ -320,7 +348,9 @@ const MessagePage = observer(() => {
 
   const appendEmoji = (emoji: string) => {
     setComposerText((value) => `${value}${emoji}`);
+    setRecentEmojis((current) => [emoji, ...current.filter((item) => item !== emoji)].slice(0, RECENT_EMOJI_LIMIT));
     setEmojiAnchorEl(null);
+    setEmojiPanelTab('emoji');
   };
 
   const readClipboardScreenshot = async () => {
@@ -1042,7 +1072,10 @@ const MessagePage = observer(() => {
                           <IconButton
                             size="small"
                             disabled={!currentCanSend}
-                            onClick={(event) => setEmojiAnchorEl(event.currentTarget)}
+                            onClick={(event) => {
+                              setEmojiPanelTab('emoji');
+                              setEmojiAnchorEl(event.currentTarget);
+                            }}
                           >
                             <SentimentSatisfiedAltRoundedIcon fontSize="small" />
                           </IconButton>
@@ -1354,12 +1387,201 @@ const MessagePage = observer(() => {
         anchorEl={emojiAnchorEl}
         open={Boolean(emojiAnchorEl)}
         onClose={() => setEmojiAnchorEl(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        slotProps={{
+          paper: {
+            sx: {
+              mt: -1,
+              width: 744,
+              maxWidth: 'calc(100vw - 24px)',
+              borderRadius: 3.5,
+              overflow: 'hidden',
+              backgroundColor: '#f9f6f4',
+              backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(249,246,244,1) 100%)',
+              border: `1px solid ${alpha('#6e3a25', 0.06)}`,
+              boxShadow: `0 24px 56px ${alpha('#7b4c39', 0.14)}`,
+            },
+          },
+          list: {
+            sx: {
+              p: 0,
+            },
+          },
+        }}
       >
-        {QUICK_EMOJIS.map((emoji) => (
-          <MenuItem key={emoji} onClick={() => appendEmoji(emoji)} sx={{ minWidth: 56, justifyContent: 'center' }}>
-            <Typography sx={{ fontSize: '1.1rem' }}>{emoji}</Typography>
-          </MenuItem>
-        ))}
+        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+          <Box
+            sx={{
+              px: { xs: 2, sm: 2.6 },
+              pt: { xs: 1.9, sm: 2.4 },
+              pb: 1.4,
+              maxHeight: { xs: 420, sm: 540 },
+              overflowY: 'auto',
+            }}
+          >
+            {emojiPanelTab === 'emoji' && (
+              <Stack spacing={2.5}>
+                {[
+                  { label: '最近表情', items: recentEmojis },
+                  { label: '超级表情', items: SUPER_EMOJIS },
+                ].map((section) => (
+                  <Box key={section.label}>
+                    <Typography
+                      variant="subtitle1"
+                      sx={{
+                        mb: 1.35,
+                        fontWeight: 800,
+                        color: '#6a483d',
+                        letterSpacing: '-0.02em',
+                      }}
+                    >
+                      {section.label}
+                    </Typography>
+                    <Box
+                      sx={{
+                        display: 'grid',
+                        gap: { xs: 0.5, sm: 0.75 },
+                        gridTemplateColumns: EMOJI_GRID_COLUMNS,
+                        justifyItems: 'center',
+                      }}
+                    >
+                      {section.items.map((emoji) => (
+                        <Button
+                          key={`${section.label}-${emoji}`}
+                          onClick={() => appendEmoji(emoji)}
+                          sx={{
+                            minWidth: 0,
+                            width: '100%',
+                            height: { xs: 52, sm: 58 },
+                            borderRadius: 2.4,
+                            p: 0,
+                            fontSize: { xs: '1.95rem', sm: '2.2rem' },
+                            lineHeight: 1,
+                            backgroundColor: 'transparent',
+                            transition: 'background-color 160ms ease, transform 160ms ease',
+                            '&:hover': {
+                              backgroundColor: alpha('#fff', 0.72),
+                              transform: 'translateY(-1px)',
+                            },
+                          }}
+                        >
+                          {emoji}
+                        </Button>
+                      ))}
+                    </Box>
+                  </Box>
+                ))}
+              </Stack>
+            )}
+
+            {emojiPanelTab === 'favorite' && (
+              <Box>
+                <Typography
+                  variant="subtitle1"
+                  sx={{
+                    mb: 1.2,
+                    fontWeight: 800,
+                    color: '#6a483d',
+                    letterSpacing: '-0.02em',
+                  }}
+                >
+                  收藏表情
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gap: { xs: 0.5, sm: 0.75 },
+                    gridTemplateColumns: EMOJI_GRID_COLUMNS,
+                    justifyItems: 'center',
+                  }}
+                >
+                  {FAVORITE_EMOJIS.map((emoji) => (
+                    <Button
+                      key={`favorite-${emoji}`}
+                      onClick={() => appendEmoji(emoji)}
+                      sx={{
+                        minWidth: 0,
+                        width: '100%',
+                        height: { xs: 52, sm: 58 },
+                        borderRadius: 2.4,
+                        p: 0,
+                        fontSize: { xs: '1.95rem', sm: '2.2rem' },
+                        lineHeight: 1,
+                        backgroundColor: 'transparent',
+                        transition: 'background-color 160ms ease, transform 160ms ease',
+                        '&:hover': {
+                          backgroundColor: alpha('#fff', 0.72),
+                          transform: 'translateY(-1px)',
+                        },
+                      }}
+                    >
+                      {emoji}
+                    </Button>
+                  ))}
+                </Box>
+              </Box>
+            )}
+
+            {emojiPanelTab === 'gif' && (
+              <Paper
+                elevation={0}
+                sx={{
+                  px: 2.2,
+                  py: 2.4,
+                  borderRadius: 3,
+                  backgroundColor: alpha('#fff', 0.58),
+                  border: `1px solid ${alpha('#6e3a25', 0.08)}`,
+                }}
+              >
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: '#6a483d' }}>
+                  GIF 面板
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 0.75, color: alpha('#4d2d21', 0.68), lineHeight: 1.8 }}>
+                  这里预留给 GIF 表情。当前先统一成和 QQ 类似的面板布局，后续可以继续接入真实 GIF 数据。
+                </Typography>
+              </Paper>
+            )}
+          </Box>
+
+          <Divider sx={{ borderColor: alpha('#6e3a25', 0.07) }} />
+
+          <Stack direction="row" spacing={1} sx={{ px: 1.4, py: 1.1 }}>
+            {[
+              { key: 'emoji', label: '表情', icon: <SentimentSatisfiedAltRoundedIcon fontSize="large" /> },
+              { key: 'favorite', label: '收藏', icon: <FavoriteBorderRoundedIcon fontSize="large" /> },
+              { key: 'gif', label: 'GIF', icon: <GifBoxRoundedIcon fontSize="large" /> },
+            ].map((item) => {
+              const active = emojiPanelTab === item.key;
+
+              return (
+                <Button
+                  key={item.key}
+                  onClick={() => setEmojiPanelTab(item.key as EmojiPanelTab)}
+                  sx={{
+                    minWidth: 78,
+                    px: 1.8,
+                    py: 1.2,
+                    borderRadius: 3,
+                    color: active ? '#2f1811' : alpha('#6b4b40', 0.86),
+                    backgroundColor: active ? alpha('#ede5e1', 0.92) : 'transparent',
+                    boxShadow: active ? `inset 0 0 0 1px ${alpha('#6e3a25', 0.05)}` : 'none',
+                    '&:hover': {
+                      backgroundColor: active ? alpha('#ede5e1', 0.98) : alpha('#fff', 0.42),
+                    },
+                  }}
+                >
+                  <Stack spacing={0.45} sx={{ alignItems: 'center' }}>
+                    {item.icon}
+                    <Typography variant="caption" sx={{ fontWeight: 700 }}>
+                      {item.label}
+                    </Typography>
+                  </Stack>
+                </Button>
+              );
+            })}
+          </Stack>
+        </Box>
       </Menu>
 
       <MessageContactEditorDialog

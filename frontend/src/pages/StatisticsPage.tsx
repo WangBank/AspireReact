@@ -1,6 +1,6 @@
 import { observer } from 'mobx-react-lite';
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, Stack, TextField } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Paper, Stack, TextField, Typography } from '@mui/material';
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded';
 import { useStore } from '../stores/StoreProvider';
 import type {
@@ -69,6 +69,92 @@ const getToneClass = (value: number | null | undefined) => {
 
   return value >= 0 ? 'sp-positive' : 'sp-negative';
 };
+
+type StatisticsMetricVariant = 'summary' | 'analysis' | 'compact';
+
+interface StatisticsMetricCardItem {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: string;
+  extra?: string;
+}
+
+const STATISTICS_METRIC_GRID_TEMPLATES: Record<StatisticsMetricVariant, Record<string, string>> = {
+  summary: {
+    xs: '1fr',
+    sm: 'repeat(2, minmax(0, 1fr))',
+    xl: 'repeat(4, minmax(0, 1fr))',
+  },
+  analysis: {
+    xs: '1fr',
+    lg: 'repeat(2, minmax(0, 1fr))',
+  },
+  compact: {
+    xs: '1fr',
+    sm: 'repeat(2, minmax(0, 1fr))',
+    xl: 'repeat(4, minmax(0, 1fr))',
+  },
+};
+
+const StatisticsMetricGrid = ({
+  items,
+  variant = 'summary',
+}: {
+  items: StatisticsMetricCardItem[];
+  variant?: StatisticsMetricVariant;
+}) => (
+  <Box
+    sx={{
+      display: 'grid',
+      gap: 1.5,
+      gridTemplateColumns: STATISTICS_METRIC_GRID_TEMPLATES[variant],
+    }}
+  >
+    {items.map((item) => (
+      <Paper
+        key={`${variant}-${item.label}`}
+        component="article"
+        elevation={0}
+        sx={(theme) => ({
+          p: variant === 'summary' ? 2.4 : 2.15,
+          borderRadius: 3,
+          border: `1px solid ${theme.palette.divider}`,
+          backgroundColor: theme.palette.background.default,
+        })}
+      >
+        <Typography
+          variant="caption"
+          sx={{
+            display: 'block',
+            mb: 1,
+            color: 'text.secondary',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {item.label}
+        </Typography>
+        <Typography
+          variant={variant === 'summary' ? 'h5' : 'h6'}
+          className={item.tone?.trim() || undefined}
+          sx={{ fontWeight: 800, lineHeight: 1.25 }}
+        >
+          {item.value}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1, lineHeight: 1.65 }}>
+          {item.detail}
+        </Typography>
+        {item.extra ? (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, lineHeight: 1.65 }}>
+            {item.extra}
+          </Typography>
+        ) : null}
+      </Paper>
+    ))}
+  </Box>
+);
 
 const CYCLE_PAGE_SIZE = 30;
 const T_TRADE_PAGE_SIZE = 30;
@@ -244,15 +330,15 @@ const StatisticsPage = observer(() => {
         title="核心指标"
         description="先看整体盈亏、净入金修正收益率和账户资金状态"
       >
-        <div className="sp-cards sp-cards--inside">
-          {cards.map((card) => (
-            <article className="sp-card" key={card.label}>
-              <p className="sp-card-label">{card.label}</p>
-              <p className={`sp-card-value ${card.tone}`.trim()}>{card.value}</p>
-              <p className="sp-card-sub">{card.sub}</p>
-            </article>
-          ))}
-        </div>
+        <StatisticsMetricGrid
+          variant="summary"
+          items={cards.map((card) => ({
+            label: card.label,
+            value: card.value,
+            detail: card.sub,
+            tone: card.tone,
+          }))}
+        />
       </SectionCard>
     );
   };
@@ -276,15 +362,7 @@ const StatisticsPage = observer(() => {
         title="交易周期统计"
         description="按一轮建仓到清仓的周期口径统计，不再按单日拆碎"
       >
-        <div className="sp-analysis-grid">
-          {cards.map((card) => (
-            <article className="sp-analysis-card" key={card.label}>
-              <p className="sp-analysis-card__label">{card.label}</p>
-              <p className={`sp-analysis-card__title ${card.tone}`.trim()}>{card.value}</p>
-              <p className="sp-analysis-card__detail">{card.detail}</p>
-            </article>
-          ))}
-        </div>
+        <StatisticsMetricGrid variant="analysis" items={cards} />
       </SectionCard>
     );
   };
@@ -349,47 +427,53 @@ const StatisticsPage = observer(() => {
         title="交易周期明细"
         description="把每一轮建仓到清仓拉直看，方便你复盘哪一轮做对了，哪一轮拖泥带水。"
         toolbar={(
-          <div className="sp-section-toolbar">
-            <div className="sp-chip-groups">
-              <div className="sp-chip-group">
-                <span className="sp-chip-group__label">状态</span>
-                <div className="sp-chip-list">
+          <Stack
+            direction={{ xs: 'column', xl: 'row' }}
+            spacing={1.5}
+            sx={{ justifyContent: 'space-between', alignItems: { xs: 'stretch', xl: 'center' } }}
+          >
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>状态</Typography>
+                <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
                   {CYCLE_STATUS_FILTERS.map((filter) => (
-                    <button
+                    <Chip
                       key={`cycle-status-${filter.key}`}
-                      type="button"
-                      className={`sp-chip ${cycleStatusFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                      label={filter.label}
+                      clickable
+                      color={cycleStatusFilter === filter.key ? 'primary' : 'default'}
+                      variant={cycleStatusFilter === filter.key ? 'filled' : 'outlined'}
                       onClick={() => {
                         setCycleStatusFilter(filter.key);
                         setCyclePage(1);
                       }}
-                    >
-                      {filter.label}
-                    </button>
+                    />
                   ))}
-                </div>
-              </div>
-              <div className="sp-chip-group">
-                <span className="sp-chip-group__label">盈亏</span>
-                <div className="sp-chip-list">
+                </Stack>
+              </Stack>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>盈亏</Typography>
+                <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
                   {PNL_FILTERS.map((filter) => (
-                    <button
+                    <Chip
                       key={`cycle-pnl-${filter.key}`}
-                      type="button"
-                      className={`sp-chip ${cyclePnLFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                      label={filter.label}
+                      clickable
+                      color={cyclePnLFilter === filter.key ? 'primary' : 'default'}
+                      variant={cyclePnLFilter === filter.key ? 'filled' : 'outlined'}
                       onClick={() => {
                         setCyclePnLFilter(filter.key);
                         setCyclePage(1);
                       }}
-                    >
-                      {filter.label}
-                    </button>
+                    />
                   ))}
-                </div>
-              </div>
-            </div>
-            <div className="sp-section-meta">当前 {sortedCycleDetails.length} / {store.data.cycleDetails.length} 个周期</div>
-          </div>
+                </Stack>
+              </Stack>
+            </Stack>
+            <Typography variant="body2" color="text.secondary">
+              当前 {sortedCycleDetails.length} / {store.data.cycleDetails.length} 个周期
+            </Typography>
+          </Stack>
         )}
         footer={sortedCycleDetails.length === 0 ? undefined : (
           <TablePagination
@@ -479,15 +563,7 @@ const StatisticsPage = observer(() => {
         title="做T专项分析"
         description="统计所有同日买卖的记录表现"
       >
-        <div className="sp-mini-grid">
-          {cards.map((card) => (
-            <article className="sp-mini-card" key={card.label}>
-              <p className="sp-mini-card__label">{card.label}</p>
-              <p className={`sp-mini-card__value ${card.tone}`.trim()}>{card.value}</p>
-              <p className="sp-mini-card__detail">{card.detail}</p>
-            </article>
-          ))}
-        </div>
+        <StatisticsMetricGrid variant="compact" items={cards} />
       </SectionCard>
     );
   };
@@ -558,47 +634,53 @@ const StatisticsPage = observer(() => {
         title="做T明细"
         description="按单日做T记录逐条展开，回看哪些日内动作真正改善了收益，哪些只是增加了波动。"
         toolbar={(
-          <div className="sp-section-toolbar">
-            <div className="sp-chip-groups">
-              <div className="sp-chip-group">
-                <span className="sp-chip-group__label">状态</span>
-                <div className="sp-chip-list">
+          <Stack
+            direction={{ xs: 'column', xl: 'row' }}
+            spacing={1.5}
+            sx={{ justifyContent: 'space-between', alignItems: { xs: 'stretch', xl: 'center' } }}
+          >
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} useFlexGap sx={{ flexWrap: 'wrap' }}>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>状态</Typography>
+                <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
                   {T_TRADE_STATUS_FILTERS.map((filter) => (
-                    <button
+                    <Chip
                       key={`ttrade-status-${filter.key}`}
-                      type="button"
-                      className={`sp-chip ${tTradeStatusFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                      label={filter.label}
+                      clickable
+                      color={tTradeStatusFilter === filter.key ? 'primary' : 'default'}
+                      variant={tTradeStatusFilter === filter.key ? 'filled' : 'outlined'}
                       onClick={() => {
                         setTTradeStatusFilter(filter.key);
                         setTTradePage(1);
                       }}
-                    >
-                      {filter.label}
-                    </button>
+                    />
                   ))}
-                </div>
-              </div>
-              <div className="sp-chip-group">
-                <span className="sp-chip-group__label">盈亏</span>
-                <div className="sp-chip-list">
+                </Stack>
+              </Stack>
+              <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>盈亏</Typography>
+                <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
                   {PNL_FILTERS.map((filter) => (
-                    <button
+                    <Chip
                       key={`ttrade-pnl-${filter.key}`}
-                      type="button"
-                      className={`sp-chip ${tTradePnLFilter === filter.key ? 'sp-chip--active' : ''}`.trim()}
+                      label={filter.label}
+                      clickable
+                      color={tTradePnLFilter === filter.key ? 'primary' : 'default'}
+                      variant={tTradePnLFilter === filter.key ? 'filled' : 'outlined'}
                       onClick={() => {
                         setTTradePnLFilter(filter.key);
                         setTTradePage(1);
                       }}
-                    >
-                      {filter.label}
-                    </button>
+                    />
                   ))}
-                </div>
-              </div>
-            </div>
-            <div className="sp-section-meta">当前 {sortedTTradeDetails.length} / {store.data.tTradeDetails.length} 条做T</div>
-          </div>
+                </Stack>
+              </Stack>
+            </Stack>
+            <Typography variant="body2" color="text.secondary">
+              当前 {sortedTTradeDetails.length} / {store.data.tTradeDetails.length} 条做T
+            </Typography>
+          </Stack>
         )}
         footer={sortedTTradeDetails.length === 0 ? undefined : (
           <TablePagination
@@ -778,15 +860,7 @@ const StatisticsPage = observer(() => {
         title="日度节奏"
         description="看哪几天在赚钱，哪几天更容易失控"
       >
-        <div className="sp-mini-grid">
-          {cards.map((card) => (
-            <article className="sp-mini-card" key={card.label}>
-              <p className="sp-mini-card__label">{card.label}</p>
-              <p className={`sp-mini-card__value ${card.tone}`.trim()}>{card.value}</p>
-              <p className="sp-mini-card__detail">{card.detail}</p>
-            </article>
-          ))}
-        </div>
+        <StatisticsMetricGrid variant="compact" items={cards} />
       </SectionCard>
     );
   };
@@ -804,7 +878,7 @@ const StatisticsPage = observer(() => {
     const cards = [
       {
         label: '胜率最高交易日',
-        title: bestWinRateDay
+        value: bestWinRateDay
           ? `${store.formatDate(bestWinRateDay.date)} · ${store.formatPercent(bestWinRateDay.winRate)}`
           : '暂无数据',
         detail: bestWinRateDay
@@ -814,7 +888,7 @@ const StatisticsPage = observer(() => {
       },
       {
         label: '胜率最低交易日',
-        title: worstWinRateDay
+        value: worstWinRateDay
           ? `${store.formatDate(worstWinRateDay.date)} · ${store.formatPercent(worstWinRateDay.winRate)}`
           : '暂无数据',
         detail: worstWinRateDay
@@ -824,7 +898,7 @@ const StatisticsPage = observer(() => {
       },
       {
         label: '最大盈利区间',
-        title: bestProfitInterval
+        value: bestProfitInterval
           ? `${store.formatDateRange(bestProfitInterval.startDate, bestProfitInterval.endDate)}`
           : '暂无数据',
         detail: bestProfitInterval
@@ -834,7 +908,7 @@ const StatisticsPage = observer(() => {
       },
       {
         label: '最大回撤区间',
-        title: maxDrawdownInterval
+        value: maxDrawdownInterval
           ? `${store.formatDateRange(maxDrawdownInterval.peakDate, maxDrawdownInterval.troughDate)}`
           : '暂无数据',
         detail: maxDrawdownInterval
@@ -854,16 +928,7 @@ const StatisticsPage = observer(() => {
         title="胜率与回撤"
         description="按当前统计区间的交易日和账户曲线自动计算"
       >
-        <div className="sp-analysis-grid">
-          {cards.map((card) => (
-            <article className="sp-analysis-card" key={card.label}>
-              <p className="sp-analysis-card__label">{card.label}</p>
-              <p className={`sp-analysis-card__title ${card.tone}`.trim()}>{card.title}</p>
-              <p className="sp-analysis-card__detail">{card.detail}</p>
-              {'extra' in card ? <p className="sp-analysis-card__extra">{card.extra}</p> : null}
-            </article>
-          ))}
-        </div>
+        <StatisticsMetricGrid variant="analysis" items={cards} />
       </SectionCard>
     );
   };
@@ -930,19 +995,18 @@ const StatisticsPage = observer(() => {
     if (!store.data) return null;
 
     return (
-      <section id="stats-distribution" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">盈亏分布</p>
-            <p className="sp-section-caption">按周、按月、按季度回看节奏变化</p>
-          </div>
-        </div>
+      <SectionCard
+        id="stats-distribution"
+        className="section-jump-anchor"
+        title="盈亏分布"
+        description="按周、按月、按季度回看节奏变化"
+      >
         <div className="sp-distribution-grid">
           {renderDistributionTable('按周分布', '最近 8 个周区间', store.data.weeklyPnL)}
           {renderDistributionTable('按月分布', '最近 8 个月区间', store.data.monthlyPnL)}
           {renderDistributionTable('按季度分布', '最近 8 个季度区间', store.data.quarterlyPnL)}
         </div>
-      </section>
+      </SectionCard>
     );
   };
 
@@ -950,13 +1014,12 @@ const StatisticsPage = observer(() => {
     if (!store.data || store.data.positions.length === 0) return null;
 
     return (
-      <section id="stats-holdings" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">当前持仓天龄</p>
-            <p className="sp-section-caption">识别哪些仓位已经拿得很久，哪些是“老仓”</p>
-          </div>
-        </div>
+      <SectionCard
+        id="stats-holdings"
+        className="section-jump-anchor"
+        title="当前持仓天龄"
+        description="识别哪些仓位已经拿得很久，哪些是“老仓”"
+      >
         <div className="sp-table-wrap">
           <table className="sp-table">
             <thead>
@@ -993,7 +1056,7 @@ const StatisticsPage = observer(() => {
             </tbody>
           </table>
         </div>
-      </section>
+      </SectionCard>
     );
   };
 
@@ -1001,13 +1064,12 @@ const StatisticsPage = observer(() => {
     if (!store.data || store.data.boardRotations.length === 0) return null;
 
     return (
-      <section id="stats-board-rotation" className="sp-section section-jump-anchor">
-        <div className="sp-section-heading">
-          <div>
-            <p className="sp-section-title">板块轮动复盘</p>
-            <p className="sp-section-caption">虽然主视图不常驻按板块汇总，这里保留为可选分析视角</p>
-          </div>
-        </div>
+      <SectionCard
+        id="stats-board-rotation"
+        className="section-jump-anchor"
+        title="板块轮动复盘"
+        description="虽然主视图不常驻按板块汇总，这里保留为可选分析视角"
+      >
         <div className="sp-table-wrap">
           <table className="sp-table">
             <thead>
@@ -1042,7 +1104,7 @@ const StatisticsPage = observer(() => {
             </tbody>
           </table>
         </div>
-      </section>
+      </SectionCard>
     );
   };
 
@@ -1126,101 +1188,97 @@ const StatisticsPage = observer(() => {
 
   return (
     <div className="sp-container">
-      <div className="sp-header">
-        <PageHeader
-          title="统计汇总"
-          subtitle={dateRangeText}
-          actions={(
-            <Button
-              onClick={handleRefresh}
-              disabled={store.loading}
-              type="button"
-              variant="contained"
-              startIcon={store.loading ? <CircularProgress size={16} color="inherit" /> : <RefreshRoundedIcon />}
-              sx={{ minWidth: 132 }}
-            >
-              刷新数据
-            </Button>
-          )}
-        />
-      </div>
+      <PageHeader
+        title="统计汇总"
+        subtitle={dateRangeText}
+        actions={(
+          <Button
+            onClick={handleRefresh}
+            disabled={store.loading}
+            type="button"
+            variant="contained"
+            startIcon={store.loading ? <CircularProgress size={16} color="inherit" /> : <RefreshRoundedIcon />}
+            sx={{ minWidth: 132 }}
+          >
+            刷新数据
+          </Button>
+        )}
+      />
 
-      <div className="sp-filter-bar">
-        <FilterToolbar
-          title="统计筛选"
-          description="先确定统计时间，再按盈亏方向缩小观察范围。自定义时间会直接回刷整页数据。"
-        >
-          <Stack spacing={2}>
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={1.25}
-              sx={{ alignItems: { xs: 'stretch', md: 'center' } }}
-            >
-              <Box sx={{ color: 'text.secondary', fontSize: 13, fontWeight: 700 }}>时间</Box>
-              <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
-                {DATE_FILTERS.map((filter) => (
-                  <Chip
-                    key={filter.key}
-                    label={filter.label}
-                    clickable
-                    color={store.dateFilterType === filter.key ? 'primary' : 'default'}
-                    variant={store.dateFilterType === filter.key ? 'filled' : 'outlined'}
-                    onClick={() => handleDateFilterClick(filter.key)}
-                  />
-                ))}
-              </Stack>
-            </Stack>
-
-            {store.dateFilterType === 'custom' ? (
-              <Stack
-                direction={{ xs: 'column', md: 'row' }}
-                spacing={1.5}
-                sx={{ alignItems: { xs: 'stretch', md: 'center' } }}
-              >
-                <TextField
-                  type="date"
-                  label="开始日期"
-                  size="small"
-                  value={customStart}
-                  onChange={(event) => setCustomStart(event.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
+      <FilterToolbar
+        title="统计筛选"
+        description="先确定统计时间，再按盈亏方向缩小观察范围。自定义时间会直接回刷整页数据。"
+      >
+        <Stack spacing={2}>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={1.25}
+            sx={{ alignItems: { xs: 'stretch', md: 'center' } }}
+          >
+            <Box sx={{ color: 'text.secondary', fontSize: 13, fontWeight: 700 }}>时间</Box>
+            <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+              {DATE_FILTERS.map((filter) => (
+                <Chip
+                  key={filter.key}
+                  label={filter.label}
+                  clickable
+                  color={store.dateFilterType === filter.key ? 'primary' : 'default'}
+                  variant={store.dateFilterType === filter.key ? 'filled' : 'outlined'}
+                  onClick={() => handleDateFilterClick(filter.key)}
                 />
-                <TextField
-                  type="date"
-                  label="结束日期"
-                  size="small"
-                  value={customEnd}
-                  onChange={(event) => setCustomEnd(event.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                />
-                <Button variant="contained" onClick={handleCustomSearch}>
-                  查询
-                </Button>
-              </Stack>
-            ) : null}
-
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={1.25}
-              sx={{ alignItems: { xs: 'stretch', md: 'center' } }}
-            >
-              <Box sx={{ color: 'text.secondary', fontSize: 13, fontWeight: 700 }}>盈亏</Box>
-              <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
-                {PNL_FILTERS.map((filter) => (
-                  <Chip
-                    key={filter.key}
-                    label={filter.label}
-                    clickable
-                    color={store.pnlFilter === filter.key ? 'primary' : 'default'}
-                    variant={store.pnlFilter === filter.key ? 'filled' : 'outlined'}
-                    onClick={() => handlePnlFilterClick(filter.key)}
-                  />
-                ))}
-              </Stack>
+              ))}
             </Stack>
           </Stack>
-        </FilterToolbar>
-      </div>
+
+          {store.dateFilterType === 'custom' ? (
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={1.5}
+              sx={{ alignItems: { xs: 'stretch', md: 'center' } }}
+            >
+              <TextField
+                type="date"
+                label="开始日期"
+                size="small"
+                value={customStart}
+                onChange={(event) => setCustomStart(event.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+              <TextField
+                type="date"
+                label="结束日期"
+                size="small"
+                value={customEnd}
+                onChange={(event) => setCustomEnd(event.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+              <Button variant="contained" onClick={handleCustomSearch}>
+                查询
+              </Button>
+            </Stack>
+          ) : null}
+
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={1.25}
+            sx={{ alignItems: { xs: 'stretch', md: 'center' } }}
+          >
+            <Box sx={{ color: 'text.secondary', fontSize: 13, fontWeight: 700 }}>盈亏</Box>
+            <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+              {PNL_FILTERS.map((filter) => (
+                <Chip
+                  key={filter.key}
+                  label={filter.label}
+                  clickable
+                  color={store.pnlFilter === filter.key ? 'primary' : 'default'}
+                  variant={store.pnlFilter === filter.key ? 'filled' : 'outlined'}
+                  onClick={() => handlePnlFilterClick(filter.key)}
+                />
+              ))}
+            </Stack>
+          </Stack>
+        </Stack>
+      </FilterToolbar>
 
       <div className="sp-main">
         {store.loading && (

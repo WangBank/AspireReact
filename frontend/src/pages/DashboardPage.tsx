@@ -1,11 +1,12 @@
 import { observer } from 'mobx-react-lite';
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Stack, Typography } from '@mui/material';
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded';
 import { alpha, useTheme } from '@mui/material/styles';
 import { useStore } from '../stores/StoreProvider';
 import SectionJumpNav, { type SectionJumpItem } from '../components/SectionJumpNav';
 import RouteLoadingFallback from '../components/Page/RouteLoadingFallback';
+import PageHeader from '../components/Page/PageHeader';
 import './DashboardPage.css';
 
 const PnLCalendarExplorer = lazy(() => import('../components/PnLCalendarExplorer'));
@@ -54,56 +55,10 @@ const DashboardPage = observer(() => {
 
   return (
     <div className="dashboard-container">
-      <header className="dashboard-header">
-        <Stack
-          direction={{ xs: 'column', lg: 'row' }}
-          spacing={2}
-          sx={{
-            width: '100%',
-            justifyContent: 'space-between',
-            alignItems: { xs: 'stretch', lg: 'flex-start' },
-          }}
-        >
-          <Stack spacing={1.3} sx={{ minWidth: 0 }}>
-            <Box>
-              <Typography className="dashboard-title" variant="h4">
-                首页概览
-              </Typography>
-              <Typography className="dashboard-subtitle" variant="body1">
-                用一眼能看懂的方式整理最近交易状态、盈亏节奏和录入入口。
-              </Typography>
-            </Box>
-
-            <Stack className="dashboard-insight-bar" direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-              <Paper className="dashboard-insight-card" sx={{ px: 2, py: 1.4, minWidth: 196 }}>
-                <Typography className="dashboard-insight-label" variant="caption">
-                  最近交易日期
-                </Typography>
-                <Typography className="dashboard-insight-value" variant="h6">
-                  {latestRecordDateText}
-                </Typography>
-              </Paper>
-
-              <Paper className="dashboard-insight-card" sx={{ px: 2, py: 1.4, minWidth: 196 }}>
-                <Typography className="dashboard-insight-label" variant="caption">
-                  当日盈亏
-                </Typography>
-                <Typography
-                  className={`dashboard-insight-value ${
-                    dashboardStore.data
-                      ? dashboardStore.isPnLPositive(dashboardStore.latestRecordDailyPnL)
-                        ? 'dashboard-insight-value--positive'
-                        : 'dashboard-insight-value--negative'
-                      : ''
-                  }`}
-                  variant="h6"
-                >
-                  {latestRecordDailyPnLText}
-                </Typography>
-              </Paper>
-            </Stack>
-          </Stack>
-
+      <PageHeader
+        title="首页概览"
+        subtitle="用一眼能看懂的方式整理最近交易状态、盈亏节奏和录入入口。"
+        actions={(
           <Button
             className="dashboard-refresh-btn"
             onClick={handleRefresh}
@@ -119,8 +74,31 @@ const DashboardPage = observer(() => {
           >
             {dashboardStore.loading && !dashboardStore.data ? '加载中...' : '刷新数据'}
           </Button>
-        </Stack>
-      </header>
+        )}
+        stats={[
+          {
+            label: '最近交易日期',
+            value: latestRecordDateText,
+          },
+          {
+            label: '当日盈亏',
+            value: (
+              <Box
+                component="span"
+                className={
+                  dashboardStore.data
+                    ? dashboardStore.isPnLPositive(dashboardStore.latestRecordDailyPnL)
+                      ? 'dashboard-insight-value--positive'
+                      : 'dashboard-insight-value--negative'
+                    : ''
+                }
+              >
+                {latestRecordDailyPnLText}
+              </Box>
+            ),
+          },
+        ]}
+      />
 
       <main className="dashboard-main">
         {dashboardStore.loading && !dashboardStore.data && (
@@ -198,12 +176,6 @@ const DashboardPage = observer(() => {
           </>
         )}
       </main>
-
-      <footer className="dashboard-footer">
-        <Typography variant="caption" color="text.secondary">
-          Lies v1.1
-        </Typography>
-      </footer>
     </div>
   );
 });

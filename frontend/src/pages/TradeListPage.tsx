@@ -8,7 +8,6 @@ import StockLink from '../components/StockLink';
 import StockHistoryLink from '../components/StockHistoryLink';
 import TradeTagList from '../components/TradeTagList';
 import { extractDatePart } from '../utils/date';
-import './TradeListPage.css';
 
 const TradeListPage = observer(() => {
   const { tradeListStore: store } = useStore();

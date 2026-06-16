@@ -856,7 +856,7 @@ const UnifiedListPage = observer(() => {
   return (
     <div className="ulp-container">
       <PageHeader
-        eyebrow="Unified Workspace"
+        eyebrow="统一工作台"
         title="数据列表"
         subtitle="把账户、银证流水和交易记录放进同一个工作台里，筛选、修正和批量处理都会更顺手。"
         stats={[

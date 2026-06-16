@@ -1,5 +1,18 @@
 import { observer } from 'mobx-react-lite';
 import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  Alert,
+  Avatar,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import { alpha } from '@mui/material/styles';
+import { PageHeader, SectionCard } from '../components/Page';
 import { useStore } from '../stores/StoreProvider';
 import './ProfilePage.css';
 
@@ -7,26 +20,22 @@ const ProfilePage = observer(() => {
   const { authStore } = useStore();
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 个人信息表单
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [profileSuccess, setProfileSuccess] = useState<string | null>(null);
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [avatarSubmitting, setAvatarSubmitting] = useState(false);
 
-  // 密码表单
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
 
-  // 加载个人信息
   useEffect(() => {
-    authStore.fetchProfile();
+    void authStore.fetchProfile();
   }, [authStore]);
 
-  // 回填表单
   useEffect(() => {
     if (authStore.profile) {
       setUsername((current) => current || authStore.profile?.username || '');
@@ -34,8 +43,8 @@ const ProfilePage = observer(() => {
     }
   }, [authStore.profile]);
 
-  const handleUpdateProfile = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleUpdateProfile = useCallback(async (event: React.FormEvent) => {
+    event.preventDefault();
     setProfileSuccess(null);
     authStore.clearError();
 
@@ -47,15 +56,13 @@ const ProfilePage = observer(() => {
     try {
       await authStore.updateProfile(username.trim(), email.trim());
       setProfileSuccess('个人信息更新成功');
-    } catch {
-      // 错误已在 store 中设置
     } finally {
       setProfileSubmitting(false);
     }
-  }, [username, email, authStore]);
+  }, [authStore, email, username]);
 
-  const handleChangePassword = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleChangePassword = useCallback(async (event: React.FormEvent) => {
+    event.preventDefault();
     setPasswordSuccess(null);
     authStore.clearError();
 
@@ -70,12 +77,10 @@ const ProfilePage = observer(() => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-    } catch {
-      // 错误已在 store 中设置
     } finally {
       setPasswordSubmitting(false);
     }
-  }, [currentPassword, newPassword, confirmPassword, authStore]);
+  }, [authStore, confirmPassword, currentPassword, newPassword]);
 
   const handleAvatarChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -90,8 +95,6 @@ const ProfilePage = observer(() => {
     try {
       await authStore.uploadAvatar(file);
       setProfileSuccess('头像更新成功');
-    } catch {
-      // 错误已在 store 中设置
     } finally {
       setAvatarSubmitting(false);
       event.target.value = '';
@@ -99,219 +102,228 @@ const ProfilePage = observer(() => {
   }, [authStore]);
 
   const avatarLetter = (authStore.username ?? authStore.profile?.username ?? '?').charAt(0).toUpperCase();
+  const profileRoleLabel = authStore.isAdmin ? '管理员' : (authStore.role || '普通用户');
+  const latestLoginText = authStore.profile?.lastLoginAt
+    ? new Date(authStore.profile.lastLoginAt).toLocaleString('zh-CN')
+    : '未记录';
+  const createdAtText = authStore.profile?.createdAt
+    ? new Date(authStore.profile.createdAt).toLocaleString('zh-CN')
+    : '-';
+  const roleText = authStore.isAdmin ? 'Admin / 管理员' : (authStore.role || 'User / 普通用户');
+  const passwordMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
 
   if (!authStore.profile && !authStore.error) {
     return (
       <div className="profile-container">
-        <div className="profile-loading">
-          <div className="profile-spinner" />
-          <span>加载中...</span>
-        </div>
+        <Stack
+          className="profile-loading"
+          spacing={1.5}
+          sx={{ alignItems: 'center', justifyContent: 'center' }}
+        >
+          <CircularProgress size={30} />
+          <Typography variant="body2" color="text.secondary">
+            加载中...
+          </Typography>
+        </Stack>
       </div>
     );
   }
 
   return (
     <div className="profile-container">
-      <header className="profile-header">
-        <div>
-          <h1 className="profile-title">个人信息</h1>
-          <p className="profile-subtitle">查看和修改您的账户信息</p>
-        </div>
-      </header>
+      <PageHeader
+        title="个人信息"
+        subtitle="查看账户资料、头像和安全设置。"
+        stats={[
+          { label: '账户角色', value: profileRoleLabel },
+          { label: '最近登录', value: latestLoginText },
+        ]}
+      />
 
       <main className="profile-main">
-        {/* 加载错误 */}
         {authStore.error && !authStore.profile && (
-          <div className="profile-banner profile-banner--error">
+          <Alert
+            severity="error"
+            action={(
+              <Button color="inherit" size="small" onClick={() => void authStore.fetchProfile()}>
+                重试
+              </Button>
+            )}
+          >
             加载失败：{authStore.error}
-            <button
-              className="profile-btn profile-btn--secondary"
-              style={{ marginLeft: 12, height: 32, padding: '0 12px', fontSize: '0.75rem' }}
-              onClick={() => authStore.fetchProfile()}
-              type="button"
-            >
-              重试
-            </button>
-          </div>
+          </Alert>
         )}
 
-        {/* 个人信息卡片 */}
-        <div className="profile-card">
-          <h2 className="profile-card__title">基本资料</h2>
-          {profileSuccess && (
-            <div className="profile-banner profile-banner--success">{profileSuccess}</div>
-          )}
-          {authStore.error && profileSubmitting && (
-            <div className="profile-banner profile-banner--error">{authStore.error}</div>
-          )}
-          <form className="profile-form" onSubmit={handleUpdateProfile}>
-            <div className="profile-avatar-section">
-              <div className="profile-avatar-section__media">
-                {authStore.avatarUrl ? (
-                  <img
-                    className="profile-avatar-section__image"
-                    src={authStore.avatarUrl}
-                    alt={`${authStore.username ?? '用户'}头像`}
-                  />
-                ) : (
-                  <div className="profile-avatar-section__fallback">{avatarLetter}</div>
-                )}
-              </div>
-              <div className="profile-avatar-section__body">
-                <div className="profile-avatar-section__title-row">
-                  <span className="profile-avatar-section__title">头像</span>
-                  <span className={`profile-role-badge${authStore.isAdmin ? ' profile-role-badge--admin' : ''}`}>
-                    {authStore.isAdmin ? '管理员' : (authStore.role || '普通用户')}
-                  </span>
-                </div>
-                <p className="profile-avatar-section__desc">支持 PNG、JPG、JPEG、WebP，建议上传清晰的方形图片。</p>
-                <div className="profile-avatar-section__actions">
-                  <button
-                    className="profile-btn profile-btn--secondary"
-                    type="button"
-                    onClick={() => avatarInputRef.current?.click()}
-                    disabled={avatarSubmitting}
-                  >
-                    {avatarSubmitting ? '上传中...' : '更换头像'}
-                  </button>
+        <SectionCard
+          title="基本资料"
+          description="维护头像、用户名和邮箱。头像上传后会在消息和后台页同步展示。"
+        >
+          <Stack component="form" spacing={2} onSubmit={handleUpdateProfile}>
+            {profileSuccess ? <Alert severity="success">{profileSuccess}</Alert> : null}
+            {authStore.error && profileSubmitting ? <Alert severity="error">{authStore.error}</Alert> : null}
+
+            <Box
+              sx={(theme) => ({
+                p: { xs: 2, md: 2.25 },
+                borderRadius: 3,
+                border: `1px solid ${alpha(theme.palette.divider, 0.92)}`,
+                backgroundColor: alpha(theme.palette.background.default, 0.7),
+              })}
+            >
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ alignItems: { xs: 'flex-start', sm: 'center' } }}>
+                <Avatar
+                  src={authStore.avatarUrl ?? undefined}
+                  alt={`${authStore.username ?? '用户'}头像`}
+                  sx={(theme) => ({
+                    width: 84,
+                    height: 84,
+                    borderRadius: 3,
+                    bgcolor: alpha(theme.palette.primary.main, 0.12),
+                    color: 'primary.main',
+                    fontSize: 32,
+                    fontWeight: 800,
+                    border: `1px solid ${alpha(theme.palette.primary.main, 0.14)}`,
+                  })}
+                >
+                  {avatarLetter}
+                </Avatar>
+
+                <Stack spacing={1.25} sx={{ minWidth: 0, flex: 1 }}>
+                  <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      头像
+                    </Typography>
+                    <Chip
+                      label={profileRoleLabel}
+                      color={authStore.isAdmin ? 'warning' : 'default'}
+                      variant={authStore.isAdmin ? 'filled' : 'outlined'}
+                      size="small"
+                    />
+                  </Stack>
+
+                  <Typography variant="body2" color="text.secondary">
+                    支持 PNG、JPG、JPEG、WebP，建议上传清晰的方形图片。
+                  </Typography>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => avatarInputRef.current?.click()}
+                      disabled={avatarSubmitting}
+                    >
+                      {avatarSubmitting ? '上传中...' : '更换头像'}
+                    </Button>
+                  </Stack>
                   <input
                     ref={avatarInputRef}
-                    className="profile-avatar-section__input"
                     type="file"
                     accept="image/png,image/jpeg,image/jpg,image/webp"
                     onChange={handleAvatarChange}
+                    style={{ display: 'none' }}
                   />
-                </div>
-              </div>
-            </div>
-            <div className="profile-field">
-              <label className="profile-field__label">用户名</label>
-              <input
-                className="profile-field__input"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                minLength={3}
-                maxLength={50}
-              />
-            </div>
-            <div className="profile-field">
-              <label className="profile-field__label">邮箱</label>
-              <input
-                className="profile-field__input"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="profile-field">
-              <label className="profile-field__label">账户角色</label>
-              <input
-                className="profile-field__input profile-field__input--readonly"
-                type="text"
-                value={authStore.isAdmin ? 'Admin / 管理员' : (authStore.role || 'User / 普通用户')}
-                readOnly
-              />
-            </div>
-            <div className="profile-field">
-              <label className="profile-field__label">注册时间</label>
-              <input
-                className="profile-field__input profile-field__input--readonly"
-                type="text"
-                value={authStore.profile?.createdAt
-                  ? new Date(authStore.profile.createdAt).toLocaleString('zh-CN')
-                  : '-'}
-                readOnly
-              />
-            </div>
-            <div className="profile-field">
-              <label className="profile-field__label">最后登录</label>
-              <input
-                className="profile-field__input profile-field__input--readonly"
-                type="text"
-                value={authStore.profile?.lastLoginAt
-                  ? new Date(authStore.profile.lastLoginAt).toLocaleString('zh-CN')
-                  : '-'}
-                readOnly
-              />
-            </div>
-            <div className="profile-actions">
-              <button
-                className="profile-btn profile-btn--primary"
-                type="submit"
-                disabled={profileSubmitting}
-              >
-                {profileSubmitting ? '保存中...' : '保存修改'}
-              </button>
-            </div>
-          </form>
-        </div>
+                </Stack>
+              </Stack>
+            </Box>
 
-        {/* 修改密码卡片 */}
-        <div className="profile-card">
-          <h2 className="profile-card__title">修改密码</h2>
-          {passwordSuccess && (
-            <div className="profile-banner profile-banner--success">{passwordSuccess}</div>
-          )}
-          {authStore.error && passwordSubmitting && (
-            <div className="profile-banner profile-banner--error">{authStore.error}</div>
-          )}
-          <form className="profile-form" onSubmit={handleChangePassword}>
-            <div className="profile-field">
-              <label className="profile-field__label">当前密码</label>
-              <input
-                className="profile-field__input"
-                type="password"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                required
-              />
-            </div>
-            <div className="profile-field">
-              <label className="profile-field__label">新密码</label>
-              <input
-                className="profile-field__input"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                minLength={6}
-              />
-              <span className="profile-field__hint">至少 6 个字符</span>
-            </div>
-            <div className="profile-field">
-              <label className="profile-field__label">确认新密码</label>
-              <input
-                className="profile-field__input"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-              />
-              {confirmPassword && newPassword !== confirmPassword && (
-                <span className="profile-field__error">两次密码输入不一致</span>
-              )}
-            </div>
-            <div className="profile-actions">
-              <button
-                className="profile-btn profile-btn--danger"
+            <TextField
+              label="用户名"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              required
+              slotProps={{ htmlInput: { minLength: 3, maxLength: 50 } }}
+              helperText="至少 3 个字符"
+              fullWidth
+            />
+            <TextField
+              label="邮箱"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              fullWidth
+            />
+            <TextField
+              label="账户角色"
+              value={roleText}
+              fullWidth
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <TextField
+              label="注册时间"
+              value={createdAtText}
+              fullWidth
+              slotProps={{ input: { readOnly: true } }}
+            />
+            <TextField
+              label="最后登录"
+              value={latestLoginText}
+              fullWidth
+              slotProps={{ input: { readOnly: true } }}
+            />
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} sx={{ justifyContent: 'flex-end' }}>
+              <Button type="submit" variant="contained" disabled={profileSubmitting}>
+                {profileSubmitting ? '保存中...' : '保存修改'}
+              </Button>
+            </Stack>
+          </Stack>
+        </SectionCard>
+
+        <SectionCard
+          title="修改密码"
+          description="修改当前账号密码。密码至少 6 个字符。"
+        >
+          <Stack component="form" spacing={2} onSubmit={handleChangePassword}>
+            {passwordSuccess ? <Alert severity="success">{passwordSuccess}</Alert> : null}
+            {authStore.error && passwordSubmitting ? <Alert severity="error">{authStore.error}</Alert> : null}
+
+            <TextField
+              label="当前密码"
+              type="password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              required
+              fullWidth
+            />
+            <TextField
+              label="新密码"
+              type="password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+              required
+              slotProps={{ htmlInput: { minLength: 6 } }}
+              helperText="至少 6 个字符"
+              fullWidth
+            />
+            <TextField
+              label="确认新密码"
+              type="password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              required
+              error={passwordMismatch}
+              helperText={passwordMismatch ? '两次密码输入不一致' : '再次确认本次修改密码'}
+              fullWidth
+            />
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} sx={{ justifyContent: 'flex-end' }}>
+              <Button
                 type="submit"
+                variant="contained"
+                color="error"
                 disabled={
-                  passwordSubmitting ||
-                  !currentPassword ||
-                  !newPassword ||
-                  !confirmPassword ||
-                  newPassword !== confirmPassword
+                  passwordSubmitting
+                  || !currentPassword
+                  || !newPassword
+                  || !confirmPassword
+                  || passwordMismatch
                 }
               >
                 {passwordSubmitting ? '修改中...' : '修改密码'}
-              </button>
-            </div>
-          </form>
-        </div>
+              </Button>
+            </Stack>
+          </Stack>
+        </SectionCard>
       </main>
     </div>
   );

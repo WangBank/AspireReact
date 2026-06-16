@@ -1,19 +1,14 @@
 .config-container {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #f3f4f6;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 28px 32px 40px;
 }
 
 .config-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 32px 0;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-  box-sizing: border-box;
+  margin-bottom: 18px;
 }
 
 .config-title {
@@ -30,12 +25,10 @@
 }
 
 .config-main {
-  flex: 1;
-  max-width: 900px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 24px 32px 32px;
-  box-sizing: border-box;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* Card */
@@ -209,15 +202,12 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-  .config-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-    padding: 16px 16px 0;
+  .config-container {
+    padding: 20px 16px 28px;
   }
 
   .config-main {
-    padding: 16px;
+    padding: 0;
   }
 
   .config-card {

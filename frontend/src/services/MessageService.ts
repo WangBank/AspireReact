@@ -3,6 +3,9 @@ import { getAuthToken } from '../utils/authToken';
 
 const API_BASE = '/api/messages';
 const HUB_URL = '/messagehub';
+const DefaultRequestTimeoutMs = 12000;
+const UploadRequestTimeoutMs = 45000;
+const DownloadRequestTimeoutMs = 45000;
 
 interface ApiResponse<T> {
   success: boolean;
@@ -157,6 +160,47 @@ const buildAuthHeaders = (contentType = false): HeadersInit => {
   };
 };
 
+const isAbortError = (error: unknown) =>
+  error instanceof DOMException && error.name === 'AbortError';
+
+const fetchWithTimeout = async (
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMessage = '请求超时，请稍后重试',
+  timeoutMs = DefaultRequestTimeoutMs,
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error(timeoutMessage);
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+};
+
+const requestJson = async <T>(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMessage = '请求超时，请稍后重试',
+  timeoutMs = DefaultRequestTimeoutMs,
+): Promise<T> => {
+  const response = await fetchWithTimeout(input, init, timeoutMessage, timeoutMs);
+  const json = await parseJson<ApiResponse<T>>(response);
+  return json.data;
+};
+
 const parseJson = async <T>(response: Response): Promise<T> => {
   const json = await response.json();
   if (!response.ok || !json.success) {
@@ -243,7 +287,7 @@ const resolveDownloadFileName = (response: Response, fallback: string): string =
     return decodeURIComponent(utf8Match[1]);
   }
 
-  const asciiMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  const asciiMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
   return asciiMatch?.[1] ?? fallback;
 };
 
@@ -254,170 +298,181 @@ export class MessageService {
       ? `?keyword=${encodeURIComponent(normalizedKeyword)}&skip=${Math.max(skip, 0)}&take=${Math.max(take, 1)}`
       : `?skip=${Math.max(skip, 0)}&take=${Math.max(take, 1)}`;
 
-    const response = await fetch(`${API_BASE}/users${query}`, {
-      headers: buildAuthHeaders(),
-    });
-
-    const json = await parseJson<ApiResponse<MessageUserSummary[]>>(response);
-    return json.data;
+    return requestJson<MessageUserSummary[]>(
+      `${API_BASE}/users${query}`,
+      {
+        headers: buildAuthHeaders(),
+      },
+      '搜索用户超时，请稍后重试',
+    );
   }
 
   async getContacts(keyword = ''): Promise<MessageContact[]> {
     const query = keyword ? `?keyword=${encodeURIComponent(keyword)}` : '';
-    const response = await fetch(`${API_BASE}/contacts${query}`, {
-      headers: buildAuthHeaders(),
-    });
-
-    const json = await parseJson<ApiResponse<MessageContact[]>>(response);
-    return json.data;
+    return requestJson<MessageContact[]>(
+      `${API_BASE}/contacts${query}`,
+      {
+        headers: buildAuthHeaders(),
+      },
+      '加载联系人超时，请稍后重试',
+    );
   }
 
   async getFriendRequests(): Promise<MessageFriendRequest[]> {
-    const response = await fetch(`${API_BASE}/friend-requests`, {
-      headers: buildAuthHeaders(),
-    });
-
-    const json = await parseJson<ApiResponse<MessageFriendRequest[]>>(response);
-    return json.data;
+    return requestJson<MessageFriendRequest[]>(
+      `${API_BASE}/friend-requests`,
+      {
+        headers: buildAuthHeaders(),
+      },
+      '加载好友通知超时，请稍后重试',
+    );
   }
 
   async createFriendRequest(payload: CreateFriendRequestPayload): Promise<MessageFriendRequest> {
-    const response = await fetch(`${API_BASE}/friend-requests`, {
-      method: 'POST',
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify({
-        targetUserId: payload.targetUserId,
-        requestMessage: payload.requestMessage?.trim() || null,
-        alias: payload.alias?.trim() || null,
-      }),
-    });
-
-    const json = await parseJson<ApiResponse<MessageFriendRequest>>(response);
-    return json.data;
+    return requestJson<MessageFriendRequest>(
+      `${API_BASE}/friend-requests`,
+      {
+        method: 'POST',
+        headers: buildAuthHeaders(true),
+        body: JSON.stringify({
+          targetUserId: payload.targetUserId,
+          requestMessage: payload.requestMessage?.trim() || null,
+          alias: payload.alias?.trim() || null,
+        }),
+      },
+      '发送好友申请超时，请稍后重试',
+    );
   }
 
   async respondFriendRequest(requestId: number, payload: RespondFriendRequestPayload): Promise<MessageFriendRequest> {
-    const response = await fetch(`${API_BASE}/friend-requests/${requestId}/respond`, {
-      method: 'POST',
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify(payload),
-    });
-
-    const json = await parseJson<ApiResponse<MessageFriendRequest>>(response);
-    return json.data;
+    return requestJson<MessageFriendRequest>(
+      `${API_BASE}/friend-requests/${requestId}/respond`,
+      {
+        method: 'POST',
+        headers: buildAuthHeaders(true),
+        body: JSON.stringify(payload),
+      },
+      '处理好友申请超时，请稍后重试',
+    );
   }
 
   async upsertContact(payload: UpsertContactPayload): Promise<MessageContact> {
-    const response = await fetch(`${API_BASE}/contacts`, {
-      method: 'POST',
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify({
-        contactUserId: payload.contactUserId,
-        alias: payload.alias ?? null,
-        isPinned: payload.isPinned ?? false,
-      }),
-    });
-
-    const json = await parseJson<ApiResponse<MessageContact>>(response);
-    return json.data;
+    return requestJson<MessageContact>(
+      `${API_BASE}/contacts`,
+      {
+        method: 'POST',
+        headers: buildAuthHeaders(true),
+        body: JSON.stringify({
+          contactUserId: payload.contactUserId,
+          alias: payload.alias ?? null,
+          isPinned: payload.isPinned ?? false,
+        }),
+      },
+      '保存联系人超时，请稍后重试',
+    );
   }
 
   async updateContact(contactUserId: number, payload: UpdateContactPayload): Promise<MessageContact> {
-    const response = await fetch(`${API_BASE}/contacts/${contactUserId}`, {
-      method: 'PUT',
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify({
-        alias: payload.alias ?? null,
-        isPinned: payload.isPinned ?? false,
-      }),
-    });
-
-    const json = await parseJson<ApiResponse<MessageContact>>(response);
-    return json.data;
+    return requestJson<MessageContact>(
+      `${API_BASE}/contacts/${contactUserId}`,
+      {
+        method: 'PUT',
+        headers: buildAuthHeaders(true),
+        body: JSON.stringify({
+          alias: payload.alias ?? null,
+          isPinned: payload.isPinned ?? false,
+        }),
+      },
+      '更新联系人超时，请稍后重试',
+    );
   }
 
   async deleteContact(contactUserId: number): Promise<void> {
-    const response = await fetch(`${API_BASE}/contacts/${contactUserId}`, {
-      method: 'DELETE',
-      headers: buildAuthHeaders(),
-    });
-
-    await parseJson<ApiResponse<null>>(response);
+    await requestJson<null>(
+      `${API_BASE}/contacts/${contactUserId}`,
+      {
+        method: 'DELETE',
+        headers: buildAuthHeaders(),
+      },
+      '删除联系人超时，请稍后重试',
+    );
   }
 
   async createOrGetDirectConversation(targetUserId: number): Promise<MessageConversationSummary> {
-    const response = await fetch(`${API_BASE}/conversations/direct`, {
-      method: 'POST',
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify({ targetUserId }),
-    });
-
-    const json = await parseJson<ApiResponse<MessageConversationSummary>>(response);
-    return json.data;
+    return requestJson<MessageConversationSummary>(
+      `${API_BASE}/conversations/direct`,
+      {
+        method: 'POST',
+        headers: buildAuthHeaders(true),
+        body: JSON.stringify({ targetUserId }),
+      },
+      '发起会话超时，请稍后重试',
+    );
   }
 
   async getConversations(keyword = ''): Promise<MessageConversationSummary[]> {
     const query = keyword ? `?keyword=${encodeURIComponent(keyword)}` : '';
-    const response = await fetch(`${API_BASE}/conversations${query}`, {
-      headers: buildAuthHeaders(),
-    });
-
-    const json = await parseJson<ApiResponse<MessageConversationSummary[]>>(response);
-    return json.data;
+    return requestJson<MessageConversationSummary[]>(
+      `${API_BASE}/conversations${query}`,
+      {
+        headers: buildAuthHeaders(),
+      },
+      '加载会话超时，请稍后重试',
+    );
   }
 
   async getConversation(conversationId: number, beforeMessageId?: number | null): Promise<MessageConversationDetail> {
     const query = beforeMessageId ? `?beforeMessageId=${beforeMessageId}&take=50` : '?take=50';
-    const response = await fetch(`${API_BASE}/conversations/${conversationId}${query}`, {
-      headers: buildAuthHeaders(),
-    });
-
-    const json = await parseJson<ApiResponse<MessageConversationDetail>>(response);
-    return json.data;
+    return requestJson<MessageConversationDetail>(
+      `${API_BASE}/conversations/${conversationId}${query}`,
+      {
+        headers: buildAuthHeaders(),
+      },
+      '加载会话详情超时，请稍后重试',
+    );
   }
 
   async searchConversationMessages(conversationId: number, keyword: string): Promise<MessageSearchResult> {
-    const response = await fetch(
+    return requestJson<MessageSearchResult>(
       `${API_BASE}/conversations/${conversationId}/search?keyword=${encodeURIComponent(keyword)}&take=30`,
       { headers: buildAuthHeaders() },
+      '搜索消息超时，请稍后重试',
     );
-
-    const json = await parseJson<ApiResponse<MessageSearchResult>>(response);
-    return json.data;
   }
 
   async searchAllMessages(keyword: string, skip = 0, take = 20): Promise<GlobalMessageSearchResult> {
-    const response = await fetch(
+    return requestJson<GlobalMessageSearchResult>(
       `${API_BASE}/search?keyword=${encodeURIComponent(keyword.trim())}&skip=${Math.max(skip, 0)}&take=${Math.max(take, 1)}`,
       { headers: buildAuthHeaders() },
+      '全局搜索消息超时，请稍后重试',
     );
-
-    const json = await parseJson<ApiResponse<GlobalMessageSearchResult>>(response);
-    return json.data;
   }
 
   async updateConversationSettings(
     conversationId: number,
     payload: UpdateConversationSettingsPayload,
   ): Promise<MessageConversationSummary> {
-    const response = await fetch(`${API_BASE}/conversations/${conversationId}/settings`, {
-      method: 'PUT',
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify(payload),
-    });
-
-    const json = await parseJson<ApiResponse<MessageConversationSummary>>(response);
-    return json.data;
+    return requestJson<MessageConversationSummary>(
+      `${API_BASE}/conversations/${conversationId}/settings`,
+      {
+        method: 'PUT',
+        headers: buildAuthHeaders(true),
+        body: JSON.stringify(payload),
+      },
+      '更新会话设置超时，请稍后重试',
+    );
   }
 
   async markConversationRead(conversationId: number, lastReadMessageId?: number | null): Promise<void> {
-    const response = await fetch(`${API_BASE}/conversations/${conversationId}/read`, {
-      method: 'POST',
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify({ lastReadMessageId: lastReadMessageId ?? null }),
-    });
-
-    await parseJson<ApiResponse<null>>(response);
+    await requestJson<null>(
+      `${API_BASE}/conversations/${conversationId}/read`,
+      {
+        method: 'POST',
+        headers: buildAuthHeaders(true),
+        body: JSON.stringify({ lastReadMessageId: lastReadMessageId ?? null }),
+      },
+      '同步已读状态超时，请稍后重试',
+    );
   }
 
   async sendMessage(
@@ -441,20 +496,27 @@ export class MessageService {
       formData.append('replyToMessageId', String(payload.replyToMessageId));
     }
 
-    const response = await fetch(`${API_BASE}/conversations/${conversationId}/messages`, {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
-    });
-
-    const json = await parseJson<ApiResponse<MessageItem>>(response);
-    return json.data;
+    return requestJson<MessageItem>(
+      `${API_BASE}/conversations/${conversationId}/messages`,
+      {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      },
+      '发送消息超时，请稍后重试',
+      UploadRequestTimeoutMs,
+    );
   }
 
   async downloadMessageFile(messageId: number, preferredFileName: string): Promise<void> {
-    const response = await fetch(`${API_BASE}/messages/${messageId}/file`, {
-      headers: buildAuthHeaders(),
-    });
+    const response = await fetchWithTimeout(
+      `${API_BASE}/messages/${messageId}/file`,
+      {
+        headers: buildAuthHeaders(),
+      },
+      '文件下载超时，请稍后重试',
+      DownloadRequestTimeoutMs,
+    );
 
     if (!response.ok) {
       let message = '文件下载失败';
@@ -480,22 +542,26 @@ export class MessageService {
   }
 
   async recallMessage(messageId: number): Promise<MessageItem> {
-    const response = await fetch(`${API_BASE}/messages/${messageId}/recall`, {
-      method: 'POST',
-      headers: buildAuthHeaders(),
-    });
-
-    const json = await parseJson<ApiResponse<MessageItem>>(response);
-    return json.data;
+    return requestJson<MessageItem>(
+      `${API_BASE}/messages/${messageId}/recall`,
+      {
+        method: 'POST',
+        headers: buildAuthHeaders(),
+      },
+      '撤回消息超时，请稍后重试',
+    );
   }
 
   async heartbeat(): Promise<void> {
-    const response = await fetch(`${API_BASE}/presence/heartbeat`, {
-      method: 'POST',
-      headers: buildAuthHeaders(),
-    });
-
-    await parseJson<ApiResponse<null>>(response);
+    await requestJson<null>(
+      `${API_BASE}/presence/heartbeat`,
+      {
+        method: 'POST',
+        headers: buildAuthHeaders(),
+      },
+      '在线状态同步超时，请稍后重试',
+      8000,
+    );
   }
 
   createHubConnection(): signalR.HubConnection {

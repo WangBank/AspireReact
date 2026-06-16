@@ -869,10 +869,6 @@ const UnifiedEntryPage = observer(() => {
               ) : null}
             </Stack>
           ) : undefined}
-          sx={{
-            background: 'linear-gradient(180deg, #fffdf7 0%, #ffffff 100%)',
-            borderColor: '#fde7c2',
-          }}
         >
 
           <div className="image-import-panel__grid">

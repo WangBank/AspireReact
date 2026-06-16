@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Box, Paper, Stack, Typography } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 
 interface FilterToolbarProps {
   title?: ReactNode;
@@ -19,12 +20,15 @@ const FilterToolbar = ({
   <Paper
     className={className}
     elevation={0}
-    sx={{
+    sx={(theme) => ({
       mb: 2,
       px: { xs: 2, md: 2.5 },
       py: { xs: 2, md: 2.25 },
-      borderRadius: 4,
-    }}
+      borderRadius: 3,
+      border: `1px solid ${alpha(theme.palette.divider, 0.92)}`,
+      backgroundColor: alpha(theme.palette.background.paper, 0.96),
+      boxShadow: `0 1px 2px ${alpha(theme.palette.common.black, 0.04)}`,
+    })}
   >
     <Stack spacing={2}>
       {(title || description || actions) ? (
