@@ -1,5 +1,5 @@
 import { observer } from 'mobx-react-lite';
-import { useEffect, useMemo, useState } from 'react';
+import { type MouseEvent, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Avatar,
@@ -19,7 +19,6 @@ import {
   Paper,
   Stack,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import AttachFileRoundedIcon from '@mui/icons-material/AttachFileRounded';
@@ -31,6 +30,8 @@ import EditRoundedIcon from '@mui/icons-material/EditRounded';
 import GroupRoundedIcon from '@mui/icons-material/GroupRounded';
 import LockRoundedIcon from '@mui/icons-material/LockRounded';
 import ManageSearchRoundedIcon from '@mui/icons-material/ManageSearchRounded';
+import MoreHorizRoundedIcon from '@mui/icons-material/MoreHorizRounded';
+import NotificationsRoundedIcon from '@mui/icons-material/NotificationsRounded';
 import PersonAddAlt1RoundedIcon from '@mui/icons-material/PersonAddAlt1Rounded';
 import PushPinRoundedIcon from '@mui/icons-material/PushPinRounded';
 import RefreshRoundedIcon from '@mui/icons-material/RefreshRounded';
@@ -47,7 +48,7 @@ import MessageContactEditorDialog from '../components/Message/MessageContactEdit
 import MessageDeleteContactDialog from '../components/Message/MessageDeleteContactDialog';
 import { formatLastSeen, formatTime } from '../components/Message/messageFormatters';
 import RouteLoadingFallback from '../components/Page/RouteLoadingFallback';
-import type { MessageContact, MessageUserSummary } from '../services/MessageService';
+import type { MessageUserSummary } from '../services/MessageService';
 import { useStore } from '../stores/StoreProvider';
 
 const QUICK_EMOJIS = ['😀', '😂', '😎', '🥳', '👍', '🙏', '🎉', '❤️'];
@@ -95,19 +96,24 @@ const describeMessageContent = (message: {
   return '[附件消息]';
 };
 
+const formatFriendRequestNoticeTime = (value: string) => new Intl.DateTimeFormat('zh-CN', {
+  month: 'numeric',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+}).format(new Date(value));
+
 const MessagePage = observer(() => {
   const { authStore, messageStore } = useStore();
   const theme = useTheme();
   const navigate = useNavigate();
   const [conversationKeyword, setConversationKeyword] = useState('');
-  const [contactKeyword, setContactKeyword] = useState('');
   const [messageKeyword, setMessageKeyword] = useState('');
   const [globalMessageKeyword, setGlobalMessageKeyword] = useState('');
   const [composerText, setComposerText] = useState('');
   const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
   const [selectedAttachmentPreviewUrl, setSelectedAttachmentPreviewUrl] = useState<string | null>(null);
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
-  const [contactsPanelOpen, setContactsPanelOpen] = useState(false);
   const [contactSearchKeyword, setContactSearchKeyword] = useState('');
   const [friendRequestMessage, setFriendRequestMessage] = useState('');
   const [contactAlias, setContactAlias] = useState('');
@@ -123,8 +129,9 @@ const MessagePage = observer(() => {
   const [showConversationSearch, setShowConversationSearch] = useState(false);
   const [replyTargetId, setReplyTargetId] = useState<number | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; label: string } | null>(null);
-  const [hoveredConversationId, setHoveredConversationId] = useState<number | null>(null);
   const [emojiAnchorEl, setEmojiAnchorEl] = useState<HTMLElement | null>(null);
+  const [friendRequestAnchorEl, setFriendRequestAnchorEl] = useState<HTMLElement | null>(null);
+  const [conversationActionsAnchorEl, setConversationActionsAnchorEl] = useState<HTMLElement | null>(null);
   const [composerNotice, setComposerNotice] = useState<{
     severity: 'error' | 'info' | 'success';
     text: string;
@@ -172,24 +179,6 @@ const MessagePage = observer(() => {
     () => messageStore.conversations.reduce((total, item) => total + item.unreadCount, 0),
     [messageStore.conversations],
   );
-  const onlineCount = useMemo(
-    () => {
-      const peerIds = new Set<number>();
-      messageStore.conversations.forEach((item) => {
-        if (item.peer.isOnline) {
-          peerIds.add(item.peer.id);
-        }
-      });
-      messageStore.contacts.forEach((item) => {
-        if (item.isOnline) {
-          peerIds.add(item.contactUserId);
-        }
-      });
-      return peerIds.size;
-    },
-    [messageStore.contacts, messageStore.conversations],
-  );
-
   const currentSummary = messageStore.currentConversation?.summary ?? null;
   const currentPeerContact = useMemo(
     () => (
@@ -198,10 +187,6 @@ const MessagePage = observer(() => {
         : null
     ),
     [currentSummary, messageStore.contacts],
-  );
-  const pinnedContactCount = useMemo(
-    () => messageStore.contacts.filter((item) => item.isPinned).length,
-    [messageStore.contacts],
   );
   const replyTarget = useMemo(
     () => messageStore.currentConversation?.messages.find((item) => item.id === replyTargetId) ?? null,
@@ -219,13 +204,12 @@ const MessagePage = observer(() => {
     : null;
   const selectedOutgoingFriendRequestPending = selectedContactPreview?.friendRequestStatus === 'pending'
     && selectedContactPreview.friendRequestDirection === 'outgoing';
-  const compactRealtimeLabel = messageStore.realtimeStatus === 'connected'
-    ? '实时同步'
-    : messageStore.realtimeStatus === 'reconnecting'
-      ? '重连中'
-      : messageStore.realtimeStatus === 'connecting'
-        ? '连接中'
-        : '已断开';
+  const pendingIncomingFriendRequests = useMemo(
+    () => [...messageStore.friendRequests]
+      .filter((item) => item.direction === 'incoming' && item.status === 'pending')
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+    [messageStore.friendRequests],
+  );
   const canSubmitMessage = currentCanSend
     && !messageStore.sending
     && (composerText.trim().length > 0 || Boolean(selectedAttachment));
@@ -233,6 +217,7 @@ const MessagePage = observer(() => {
   useEffect(() => {
     if (!currentSummary) {
       setShowConversationSearch(false);
+      setConversationActionsAnchorEl(null);
     }
   }, [currentSummary]);
 
@@ -384,24 +369,31 @@ const MessagePage = observer(() => {
     }
   };
 
-  const openConversationForContact = async (contact: MessageContact) => {
-    if (contact.conversationId) {
-      setContactsPanelOpen(false);
-      await messageStore.selectConversation(contact.conversationId);
-      return;
-    }
-
-    if (!contact.isFriend) {
-      return;
-    }
-
-    setContactsPanelOpen(false);
-    await messageStore.startDirectConversation(contact.contactUserId);
-  };
-
   const openGlobalSearchHit = async (conversationId: number, messageId: number) => {
     setGlobalSearchOpen(false);
     await messageStore.focusMessage(conversationId, messageId);
+  };
+
+  const openFriendRequestMenu = (event: MouseEvent<HTMLElement>) => {
+    setFriendRequestAnchorEl(event.currentTarget);
+    if (!messageStore.friendRequests.length && !messageStore.friendRequestsLoading) {
+      void messageStore.loadFriendRequests();
+    }
+  };
+
+  const closeFriendRequestMenu = () => {
+    setFriendRequestAnchorEl(null);
+  };
+
+  const navigateToFriendRequest = (requestId: number, peerUserId: number) => {
+    closeFriendRequestMenu();
+    navigate('/messages/contacts', {
+      state: {
+        friendRequestId: requestId,
+        peerUserId,
+        focusSection: 'friendRequests',
+      },
+    });
   };
 
   const confirmDeleteContact = (userId: number, label: string) => {
@@ -417,6 +409,7 @@ const MessagePage = observer(() => {
     try {
       await messageStore.deleteContact(deleteContactTarget.userId);
       setDeleteContactTarget(null);
+      setConversationActionsAnchorEl(null);
     } finally {
       setContactDeleting(false);
     }
@@ -448,12 +441,7 @@ const MessagePage = observer(() => {
 
   const refreshWorkspace = () => {
     void messageStore.loadConversations(conversationKeyword);
-    void messageStore.loadContacts(contactKeyword);
-  };
-
-  const openContactsPanel = async () => {
-    setContactsPanelOpen(true);
-    await messageStore.loadContacts(contactKeyword);
+    void messageStore.loadContacts();
   };
 
   if (messageStore.loading && messageStore.conversations.length === 0 && messageStore.contacts.length === 0) {
@@ -468,182 +456,65 @@ const MessagePage = observer(() => {
         </Alert>
       )}
 
-      <Box
+      <Paper
+        variant="outlined"
         sx={{
           display: 'grid',
-          gap: { xs: 1.5, md: 0 },
-          gridTemplateColumns: {
-            xs: '1fr',
-            md: '76px 284px minmax(0, 1fr)',
-          },
-          minHeight: { xs: 'auto', lg: 760 },
-          borderRadius: { xs: 4, md: 5 },
+          gridTemplateColumns: { xs: '1fr', md: '320px minmax(0, 1fr)' },
+          minHeight: { md: 760 },
           overflow: 'hidden',
-          border: `1px solid ${alpha(theme.palette.divider, 0.64)}`,
-          boxShadow: `0 24px 64px ${alpha(theme.palette.common.black, 0.08)}`,
-          background: `linear-gradient(180deg, ${alpha('#f9dcc7', 0.58)} 0%, ${alpha('#fff7f0', 0.92)} 100%)`,
+          borderRadius: 3,
         }}
       >
         <Box
           sx={{
             display: 'flex',
-            flexDirection: { xs: 'row', md: 'column' },
-            justifyContent: 'space-between',
-            gap: 1.25,
-            px: { xs: 1.25, md: 1.1 },
-            py: { xs: 1.1, md: 1.4 },
-            background: `linear-gradient(180deg, ${alpha('#f6c9a7', 0.42)} 0%, ${alpha('#f7d8c7', 0.72)} 100%)`,
-            borderRight: { md: `1px solid ${alpha(theme.palette.divider, 0.52)}` },
-            borderBottom: { xs: `1px solid ${alpha(theme.palette.divider, 0.52)}`, md: 'none' },
-          }}
-        >
-          <Stack direction={{ xs: 'row', md: 'column' }} spacing={1} sx={{ alignItems: 'center' }}>
-            <Badge color="error" badgeContent={unreadCount > 99 ? '99+' : unreadCount} invisible={unreadCount === 0}>
-              <IconButton
-                sx={{
-                  width: 42,
-                  height: 42,
-                  color: theme.palette.primary.main,
-                  backgroundColor: alpha(theme.palette.common.white, 0.78),
-                  boxShadow: `0 10px 24px ${alpha(theme.palette.common.black, 0.08)}`,
-                }}
-              >
-                <ChatBubbleOutlineRoundedIcon />
-              </IconButton>
-            </Badge>
-
-            <Tooltip title="联系人">
-              <Badge
-                color="error"
-                badgeContent={messageStore.pendingIncomingFriendRequestCount > 99 ? '99+' : messageStore.pendingIncomingFriendRequestCount}
-                invisible={messageStore.pendingIncomingFriendRequestCount === 0}
-              >
-                <IconButton
-                  onClick={() => void openContactsPanel()}
-                  sx={{
-                    width: 38,
-                    height: 38,
-                    color: alpha(theme.palette.text.primary, 0.84),
-                    backgroundColor: alpha(theme.palette.common.white, 0.5),
-                  }}
-                >
-                  <GroupRoundedIcon />
-                </IconButton>
-              </Badge>
-            </Tooltip>
-
-            <Tooltip title="全局搜索">
-              <IconButton
-                onClick={() => setGlobalSearchOpen(true)}
-                sx={{
-                  width: 38,
-                  height: 38,
-                  color: alpha(theme.palette.text.primary, 0.84),
-                  backgroundColor: alpha(theme.palette.common.white, 0.5),
-                }}
-              >
-                <ManageSearchRoundedIcon />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="添加联系人">
-              <IconButton
-                onClick={() => void openCreateContactDialog()}
-                sx={{
-                  width: 38,
-                  height: 38,
-                  color: alpha(theme.palette.text.primary, 0.84),
-                  backgroundColor: alpha(theme.palette.common.white, 0.5),
-                }}
-              >
-                <PersonAddAlt1RoundedIcon />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="刷新">
-              <IconButton
-                onClick={refreshWorkspace}
-                sx={{
-                  width: 38,
-                  height: 38,
-                  color: alpha(theme.palette.text.primary, 0.84),
-                  backgroundColor: alpha(theme.palette.common.white, 0.5),
-                }}
-              >
-                <RefreshRoundedIcon />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-
-          <Paper
-            elevation={0}
-            sx={{
-              px: 1,
-              py: 0.9,
-              borderRadius: 3,
-              backgroundColor: alpha(theme.palette.common.white, 0.52),
-              minWidth: { xs: 112, md: 0 },
-            }}
-          >
-            <Stack spacing={0.35}>
-              <Typography variant="caption" color="text.secondary">
-                {compactRealtimeLabel}
-              </Typography>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.1 }}>
-                {onlineCount}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                在线联系人
-              </Typography>
-            </Stack>
-          </Paper>
-        </Box>
-
-        <Box
-          sx={{
-            display: 'flex',
             flexDirection: 'column',
-            background: `linear-gradient(180deg, ${alpha('#f7d7c4', 0.8)} 0%, ${alpha('#f8e6db', 0.92)} 100%)`,
-            borderRight: { md: `1px solid ${alpha(theme.palette.divider, 0.52)}` },
-            minHeight: { md: 760 },
+            minHeight: 0,
+            borderRight: { md: `1px solid ${theme.palette.divider}` },
           }}
         >
-          <Box sx={{ px: 1.6, pt: 1.7, pb: 1.1 }}>
-            <Stack spacing={1.4}>
+          <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+            <Stack spacing={1.5}>
               <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>
-                    消息
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    聊天
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {messageStore.conversations.length} 个会话 · {unreadCount} 条未读
+                  <Typography variant="body2" color="text.secondary">
+                    {messageStore.conversations.length} 个会话，未读 {unreadCount}
                   </Typography>
                 </Box>
-                <Tooltip title="打开联系人管理页">
-                  <IconButton
-                    onClick={() => navigate('/messages/contacts')}
-                    sx={{
-                      width: 34,
-                      height: 34,
-                      backgroundColor: alpha(theme.palette.common.white, 0.56),
-                    }}
+                <Stack direction="row" spacing={0.5}>
+                  <Badge
+                    color="error"
+                    badgeContent={pendingIncomingFriendRequests.length > 99 ? '99+' : pendingIncomingFriendRequests.length}
+                    invisible={pendingIncomingFriendRequests.length === 0}
                   >
+                    <IconButton onClick={openFriendRequestMenu} size="small">
+                      <NotificationsRoundedIcon fontSize="small" />
+                    </IconButton>
+                  </Badge>
+                  <IconButton onClick={() => navigate('/messages/contacts')} size="small">
                     <GroupRoundedIcon fontSize="small" />
                   </IconButton>
-                </Tooltip>
+                  <IconButton onClick={() => void openCreateContactDialog()} size="small">
+                    <PersonAddAlt1RoundedIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton onClick={refreshWorkspace} size="small">
+                    <RefreshRoundedIcon fontSize="small" />
+                  </IconButton>
+                  <IconButton onClick={() => setGlobalSearchOpen(true)} size="small">
+                    <ManageSearchRoundedIcon fontSize="small" />
+                  </IconButton>
+                </Stack>
               </Stack>
 
-              <Box
-                sx={{
-                  display: 'grid',
-                  gap: 1,
-                  gridTemplateColumns: 'minmax(0, 1fr) auto',
-                }}
-              >
+              <Stack direction="row" spacing={1}>
                 <TextField
                   size="small"
                   fullWidth
-                  placeholder="搜索会话、备注或最后一条消息"
+                  placeholder="搜索会话"
                   value={conversationKeyword}
                   onChange={(event) => setConversationKeyword(event.target.value)}
                   onKeyDown={(event) => {
@@ -651,212 +522,92 @@ const MessagePage = observer(() => {
                       void messageStore.loadConversations(conversationKeyword);
                     }
                   }}
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      borderRadius: 3,
-                      backgroundColor: alpha(theme.palette.common.white, 0.62),
-                    },
-                  }}
                 />
-                <IconButton
-                  onClick={() => void messageStore.loadConversations(conversationKeyword)}
-                  sx={{
-                    width: 36,
-                    height: 36,
-                    backgroundColor: alpha(theme.palette.common.white, 0.62),
-                  }}
-                >
+                <IconButton onClick={() => void messageStore.loadConversations(conversationKeyword)}>
                   <SearchRoundedIcon fontSize="small" />
                 </IconButton>
-              </Box>
+              </Stack>
             </Stack>
           </Box>
 
-          <List disablePadding sx={{ flex: 1, overflowY: 'auto', px: 0.95, pb: 1 }}>
-            {messageStore.conversations.map((conversation) => (
-              <ListItemButton
-                key={conversation.conversationId}
-                selected={messageStore.selectedConversationId === conversation.conversationId}
-                onClick={() => void messageStore.selectConversation(conversation.conversationId)}
-                onMouseEnter={() => setHoveredConversationId(conversation.conversationId)}
-                onMouseLeave={() => {
-                  setHoveredConversationId((current) => (
-                    current === conversation.conversationId ? null : current
-                  ));
-                }}
-                sx={{
-                  mb: 0.7,
-                  px: 1,
-                  py: 0.95,
-                  borderRadius: 2.6,
-                  alignItems: 'flex-start',
-                  backgroundColor: messageStore.selectedConversationId === conversation.conversationId
-                    ? alpha(theme.palette.common.white, 0.6)
-                    : 'transparent',
-                  '&:hover': {
-                    backgroundColor: alpha(theme.palette.common.white, 0.48),
-                  },
-                }}
-              >
-                <Badge
-                  color="error"
-                  overlap="circular"
-                  badgeContent={conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
-                  invisible={conversation.unreadCount === 0}
-                >
-                  <Avatar
-                    src={conversation.peer.avatarUrl ?? undefined}
-                    alt={conversation.peer.username}
-                    sx={{ width: 42, height: 42 }}
-                  >
-                    {conversation.peer.username.slice(0, 1).toUpperCase()}
-                  </Avatar>
-                </Badge>
-
-                <Box sx={{ ml: 1.05, minWidth: 0, flex: 1 }}>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 800, lineHeight: 1.2 }} noWrap>
-                      {conversation.peer.alias || conversation.peer.username}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0, fontSize: '0.68rem' }}>
-                      {conversation.lastMessageAt
-                        ? formatTime(conversation.lastMessageAt)
-                        : formatLastSeen(conversation.peer.isOnline, conversation.peer.lastSeenAt)}
-                    </Typography>
-                  </Stack>
-
-                  <Stack direction="row" spacing={0.8} sx={{ mt: 0.55, alignItems: 'center', minWidth: 0 }}>
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      noWrap
-                      sx={{ flex: 1, minWidth: 0, fontSize: '0.82rem' }}
-                    >
-                      {conversation.lastMessagePreview || '还没有消息，点击开始对话'}
-                    </Typography>
-                    <Stack direction="row" spacing={0.35} sx={{ alignItems: 'center', flexShrink: 0 }}>
-                      {conversation.peer.isOnline && (
-                        <Tooltip title="在线">
-                          <CircleRoundedIcon sx={{ fontSize: 12, color: theme.palette.success.main }} />
-                        </Tooltip>
-                      )}
-                      {!conversation.peer.isFriend && (
-                        <Tooltip title="待对方同意">
-                          <PersonAddAlt1RoundedIcon sx={{ fontSize: 14, color: theme.palette.warning.main }} />
-                        </Tooltip>
-                      )}
-                    </Stack>
-                    <Stack
-                      direction="row"
-                      spacing={0.15}
-                      sx={{
-                        alignItems: 'center',
-                        flexShrink: 0,
-                        opacity: hoveredConversationId === conversation.conversationId
-                          || messageStore.selectedConversationId === conversation.conversationId
-                          || conversation.isPinned
-                          || conversation.isMuted
-                          ? 1
-                          : 0,
-                        transform: hoveredConversationId === conversation.conversationId
-                          || messageStore.selectedConversationId === conversation.conversationId
-                          || conversation.isPinned
-                          || conversation.isMuted
-                          ? 'translateX(0)'
-                          : 'translateX(4px)',
-                        transition: 'opacity 0.18s ease, transform 0.18s ease',
-                      }}
-                    >
-                      <Tooltip title={conversation.isPinned ? '取消置顶' : '置顶会话'}>
-                        <IconButton
-                          size="small"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void messageStore.updateConversationSettings(
-                              conversation.conversationId,
-                              !conversation.isPinned,
-                              conversation.isMuted,
-                            );
-                          }}
-                          sx={{
-                            width: 24,
-                            height: 24,
-                            color: conversation.isPinned ? theme.palette.primary.main : alpha(theme.palette.text.secondary, 0.68),
-                          }}
-                        >
-                          <PushPinRoundedIcon sx={{ fontSize: 14 }} />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title={conversation.isMuted ? '取消静音' : '静音会话'}>
-                        <IconButton
-                          size="small"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void messageStore.updateConversationSettings(
-                              conversation.conversationId,
-                              conversation.isPinned,
-                              !conversation.isMuted,
-                            );
-                          }}
-                          sx={{
-                            width: 24,
-                            height: 24,
-                            color: conversation.isMuted ? theme.palette.warning.dark : alpha(theme.palette.text.secondary, 0.68),
-                          }}
-                        >
-                          <VolumeOffRoundedIcon sx={{ fontSize: 14 }} />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  </Stack>
-                </Box>
-              </ListItemButton>
-            ))}
-
-            {messageStore.conversations.length === 0 && (
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 2,
-                  borderRadius: 3,
-                  backgroundColor: alpha(theme.palette.common.white, 0.48),
-                }}
-              >
+          <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            {messageStore.conversations.length === 0 ? (
+              <Box sx={{ p: 2.5 }}>
                 <Typography variant="body2" color="text.secondary">
-                  暂无会话。先添加联系人，双方互相添加后才能继续发起聊天。
+                  暂无会话。先添加联系人，双方互相添加后才能开始聊天。
                 </Typography>
-              </Paper>
+              </Box>
+            ) : (
+              <List disablePadding>
+                {messageStore.conversations.map((conversation, index) => (
+                  <Box key={conversation.conversationId}>
+                    <ListItemButton
+                      selected={messageStore.selectedConversationId === conversation.conversationId}
+                      onClick={() => void messageStore.selectConversation(conversation.conversationId)}
+                      sx={{ px: 2, py: 1.25, alignItems: 'flex-start' }}
+                    >
+                      <Badge
+                        color="error"
+                        overlap="circular"
+                        badgeContent={conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+                        invisible={conversation.unreadCount === 0}
+                      >
+                        <Avatar
+                          src={conversation.peer.avatarUrl ?? undefined}
+                          alt={conversation.peer.username}
+                          sx={{ width: 42, height: 42, mr: 1.25 }}
+                        >
+                          {conversation.peer.username.slice(0, 1).toUpperCase()}
+                        </Avatar>
+                      </Badge>
+
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', minWidth: 0 }}>
+                          <Typography noWrap sx={{ fontWeight: 700, flex: 1 }}>
+                            {conversation.peer.alias || conversation.peer.username}
+                          </Typography>
+                          {conversation.isPinned && <PushPinRoundedIcon sx={{ fontSize: 14, color: 'primary.main' }} />}
+                          {conversation.isMuted && <VolumeOffRoundedIcon sx={{ fontSize: 14, color: 'warning.main' }} />}
+                        </Stack>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {conversation.lastMessagePreview || '还没有消息'}
+                        </Typography>
+                        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', mt: 0.25 }}>
+                          {conversation.peer.isOnline && (
+                            <CircleRoundedIcon sx={{ fontSize: 12, color: 'success.main' }} />
+                          )}
+                          {!conversation.peer.isFriend && (
+                            <Typography variant="caption" color="warning.main">
+                              待互加
+                            </Typography>
+                          )}
+                          <Typography variant="caption" color="text.secondary" noWrap>
+                            {conversation.lastMessageAt
+                              ? formatTime(conversation.lastMessageAt)
+                              : formatLastSeen(conversation.peer.isOnline, conversation.peer.lastSeenAt)}
+                          </Typography>
+                        </Stack>
+                      </Box>
+                    </ListItemButton>
+                    {index < messageStore.conversations.length - 1 && <Divider />}
+                  </Box>
+                ))}
+              </List>
             )}
-          </List>
+          </Box>
         </Box>
 
-        <Paper
-          elevation={0}
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            minHeight: { md: 760 },
-            backgroundColor: alpha(theme.palette.background.paper, 0.9),
-          }}
-        >
+        <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: { md: 760 } }}>
           {currentSummary ? (
             <>
-              <Box
-                sx={{
-                  px: { xs: 1.6, md: 2.5 },
-                  py: { xs: 1.35, md: 1.8 },
-                  borderBottom: `1px solid ${alpha(theme.palette.divider, 0.58)}`,
-                  backgroundColor: alpha(theme.palette.common.white, 0.56),
-                  backdropFilter: 'blur(10px)',
-                }}
-              >
-                <Stack spacing={1.3}>
+              <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                <Stack spacing={1.5}>
                   <Stack
                     direction={{ xs: 'column', sm: 'row' }}
-                    spacing={1.2}
-                    sx={{ alignItems: { xs: 'stretch', sm: 'center' }, justifyContent: 'space-between' }}
+                    spacing={1.5}
+                    sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
                   >
-                    <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', minWidth: 0 }}>
+                    <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', minWidth: 0 }}>
                       <Avatar
                         src={currentSummary.peer.avatarUrl ?? undefined}
                         alt={currentSummary.peer.username}
@@ -865,12 +616,12 @@ const MessagePage = observer(() => {
                         {currentSummary.peer.username.slice(0, 1).toUpperCase()}
                       </Avatar>
                       <Box sx={{ minWidth: 0 }}>
-                        <Stack direction="row" spacing={0.8} sx={{ alignItems: 'center', minWidth: 0 }}>
-                          <Typography variant="h6" sx={{ fontWeight: 800 }} noWrap>
+                        <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                          <Typography variant="h6" sx={{ fontWeight: 700 }} noWrap>
                             {currentPeerLabel}
                           </Typography>
                           {currentSummary.peer.isOnline && (
-                            <CircleRoundedIcon sx={{ fontSize: 13, color: theme.palette.success.main }} />
+                            <CircleRoundedIcon sx={{ fontSize: 13, color: 'success.main' }} />
                           )}
                           {!currentCanSend && (
                             <Chip
@@ -878,46 +629,34 @@ const MessagePage = observer(() => {
                               color="warning"
                               icon={<LockRoundedIcon />}
                               label="未互为好友"
-                              sx={{ height: 24, fontWeight: 700 }}
                             />
                           )}
                         </Stack>
-                        <Typography variant="body2" color="text.secondary" noWrap>
+                        <Typography variant="body2" color="text.secondary">
                           {currentCanSend
                             ? formatLastSeen(currentSummary.peer.isOnline, currentSummary.peer.lastSeenAt)
-                            : '待双方互相添加后才能继续发送新消息'}
+                            : '待双方互相添加后才能继续发送消息'}
                         </Typography>
                       </Box>
                     </Stack>
 
-                    <Stack direction="row" spacing={0.65} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                      <Tooltip title={showConversationSearch ? '收起会话搜索' : '搜索当前会话'}>
-                        <IconButton
-                          onClick={() => setShowConversationSearch((value) => !value)}
-                          sx={{ backgroundColor: alpha(theme.palette.common.white, 0.72) }}
-                        >
-                          <SearchRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-
-                      <Tooltip title="联系人列表">
-                        <IconButton
-                          onClick={() => void openContactsPanel()}
-                          sx={{ backgroundColor: alpha(theme.palette.common.white, 0.72) }}
-                        >
-                          <GroupRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-
+                    <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                      <Button
+                        size="small"
+                        variant={showConversationSearch ? 'contained' : 'outlined'}
+                        startIcon={<SearchRoundedIcon />}
+                        onClick={() => setShowConversationSearch((value) => !value)}
+                      >
+                        搜索
+                      </Button>
                       <Button
                         size="small"
                         variant="outlined"
                         component="label"
                         disabled={!currentCanSend}
                         startIcon={<AddPhotoAlternateRoundedIcon fontSize="small" />}
-                        sx={{ borderRadius: 999, backgroundColor: alpha(theme.palette.common.white, 0.72), whiteSpace: 'nowrap' }}
                       >
-                        上传图片
+                        图片
                         <input
                           hidden
                           type="file"
@@ -925,16 +664,14 @@ const MessagePage = observer(() => {
                           onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
                         />
                       </Button>
-
                       <Button
                         size="small"
                         variant="outlined"
                         component="label"
                         disabled={!currentCanSend}
                         startIcon={<AttachFileRoundedIcon fontSize="small" />}
-                        sx={{ borderRadius: 999, backgroundColor: alpha(theme.palette.common.white, 0.72), whiteSpace: 'nowrap' }}
                       >
-                        上传文件
+                        文件
                         <input
                           hidden
                           type="file"
@@ -942,69 +679,12 @@ const MessagePage = observer(() => {
                           onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
                         />
                       </Button>
-
-                      {currentPeerContact ? (
-                        <Tooltip title="编辑联系人">
-                          <IconButton
-                            onClick={() => openEditContactDialog(currentPeerContact.contactUserId)}
-                            sx={{ backgroundColor: alpha(theme.palette.common.white, 0.72) }}
-                          >
-                            <EditRoundedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      ) : (
-                        <Tooltip title="添加联系人">
-                          <IconButton
-                            onClick={() => openCreateContactDialogForUser(currentSummary.peer)}
-                            sx={{ backgroundColor: alpha(theme.palette.common.white, 0.72) }}
-                          >
-                            <PersonAddAlt1RoundedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-
-                      {currentPeerContact && (
-                        <Tooltip title="删除联系人">
-                          <IconButton
-                            color="error"
-                            onClick={() => confirmDeleteContact(
-                              currentPeerContact.contactUserId,
-                              currentPeerContact.alias || currentPeerContact.username,
-                            )}
-                            sx={{ backgroundColor: alpha(theme.palette.common.white, 0.72) }}
-                          >
-                            <DeleteOutlineRoundedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-
-                      <Tooltip title={currentSummary.isPinned ? '取消会话置顶' : '置顶会话'}>
-                        <IconButton
-                          onClick={() => void toggleConversationPinned()}
-                          sx={{
-                            backgroundColor: currentSummary.isPinned
-                              ? alpha(theme.palette.primary.main, 0.16)
-                              : alpha(theme.palette.common.white, 0.72),
-                            color: currentSummary.isPinned ? theme.palette.primary.main : undefined,
-                          }}
-                        >
-                          <PushPinRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-
-                      <Tooltip title={currentSummary.isMuted ? '取消静音' : '静音会话'}>
-                        <IconButton
-                          onClick={() => void toggleConversationMuted()}
-                          sx={{
-                            backgroundColor: currentSummary.isMuted
-                              ? alpha(theme.palette.warning.main, 0.18)
-                              : alpha(theme.palette.common.white, 0.72),
-                            color: currentSummary.isMuted ? theme.palette.warning.dark : undefined,
-                          }}
-                        >
-                          <VolumeOffRoundedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
+                      <Button size="small" variant="outlined" onClick={() => navigate('/messages/contacts')}>
+                        联系人
+                      </Button>
+                      <IconButton onClick={(event) => setConversationActionsAnchorEl(event.currentTarget)} size="small">
+                        <MoreHorizRoundedIcon fontSize="small" />
+                      </IconButton>
                     </Stack>
                   </Stack>
 
@@ -1022,24 +702,16 @@ const MessagePage = observer(() => {
                       )}
                     >
                       {currentPeerContact
-                        ? '你已经添加了对方，但对方还没有把你加为联系人。上传文件和发送消息会在双方互相添加后开放。'
-                        : '你还没有添加对方为联系人。添加后仍需对方也添加你，双方互相添加后才能上传文件和发送消息。'}
+                        ? '你已经添加了对方，但对方还没有把你加为联系人。'
+                        : '你还没有添加对方为联系人。添加后仍需对方也添加你。'}
                     </Alert>
                   )}
 
                   {showConversationSearch && (
-                    <Box
-                      sx={{
-                        display: 'grid',
-                        gap: 1,
-                        gridTemplateColumns: {
-                          xs: '1fr',
-                          md: 'minmax(0, 1fr) auto auto',
-                        },
-                      }}
-                    >
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                       <TextField
                         size="small"
+                        fullWidth
                         placeholder="搜索当前会话历史"
                         value={messageKeyword}
                         onChange={(event) => setMessageKeyword(event.target.value)}
@@ -1048,67 +720,42 @@ const MessagePage = observer(() => {
                             void messageStore.searchMessages(messageKeyword);
                           }
                         }}
-                        sx={{
-                          '& .MuiOutlinedInput-root': {
-                            borderRadius: 3,
-                            backgroundColor: alpha(theme.palette.common.white, 0.78),
-                          },
-                        }}
                       />
                       <Button
                         variant="contained"
-                        startIcon={<SearchRoundedIcon />}
                         onClick={() => void messageStore.searchMessages(messageKeyword)}
                         disabled={messageStore.searchingMessages || !messageKeyword.trim()}
-                        sx={{ whiteSpace: 'nowrap' }}
                       >
-                        {messageStore.searchingMessages ? '搜索中...' : '查询'}
+                        {messageStore.searchingMessages ? '搜索中...' : '搜索'}
                       </Button>
-                      {messageStore.messageSearchResult ? (
-                        <Button variant="text" onClick={messageStore.clearMessageSearch} sx={{ whiteSpace: 'nowrap' }}>
+                      {messageStore.messageSearchResult && (
+                        <Button onClick={messageStore.clearMessageSearch}>
                           清空
                         </Button>
-                      ) : (
-                        <Box sx={{ display: { xs: 'none', md: 'block' } }} />
                       )}
-                    </Box>
+                    </Stack>
                   )}
                 </Stack>
               </Box>
 
               {messageStore.messageSearchResult && (
-                <Box
-                  sx={{
-                    px: { xs: 1.4, md: 2.4 },
-                    py: 1.3,
-                    borderBottom: `1px solid ${alpha(theme.palette.divider, 0.52)}`,
-                    backgroundColor: alpha(theme.palette.common.white, 0.42),
-                  }}
-                >
-                  <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1 }}>
-                    查询结果 {messageStore.messageSearchResult.total} 条
+                <Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
+                    搜索结果 {messageStore.messageSearchResult.total} 条
                   </Typography>
-                  <Stack spacing={0.85} sx={{ maxHeight: 180, overflowY: 'auto' }}>
+                  <Stack spacing={1} sx={{ maxHeight: 180, overflowY: 'auto' }}>
                     {messageStore.messageSearchResult.messages.map((message) => (
                       <Paper
                         key={message.id}
                         variant="outlined"
-                        sx={{
-                          px: 1.2,
-                          py: 1,
-                          borderRadius: 2.5,
-                          cursor: 'pointer',
-                          backgroundColor: alpha(theme.palette.common.white, 0.7),
-                        }}
+                        sx={{ p: 1.25, cursor: 'pointer' }}
                         onClick={() => void messageStore.focusMessage(message.conversationId, message.id)}
                       >
                         <Typography variant="caption" color="text.secondary">
                           {message.senderUsername} · {formatTime(message.createdAt)}
                         </Typography>
-                        <Typography variant="body2" sx={{ mt: 0.35 }}>
-                          {message.isRecalled
-                            ? '这条消息已撤回'
-                            : describeMessageContent(message)}
+                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                          {message.isRecalled ? '这条消息已撤回' : describeMessageContent(message)}
                         </Typography>
                       </Paper>
                     ))}
@@ -1116,315 +763,194 @@ const MessagePage = observer(() => {
                 </Box>
               )}
 
-              <Box
-                sx={{
-                  position: 'relative',
-                  flex: 1,
-                  overflow: 'hidden',
-                  background: [
-                    `radial-gradient(circle at 18% 16%, ${alpha('#fff6ee', 0.92)}, transparent 22%)`,
-                    `radial-gradient(circle at 78% 10%, ${alpha('#ffd8c0', 0.58)}, transparent 22%)`,
-                    `radial-gradient(circle at 72% 78%, ${alpha('#ffe8b6', 0.42)}, transparent 26%)`,
-                    `linear-gradient(180deg, ${alpha('#f5d6c8', 0.72)} 0%, ${alpha('#f9ebe0', 0.88)} 52%, ${alpha('#fff7ef', 0.96)} 100%)`,
-                  ].join(','),
-                }}
-              >
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    inset: 0,
-                    opacity: 0.4,
-                    backgroundImage: [
-                      `radial-gradient(${alpha(theme.palette.common.white, 0.75)} 1px, transparent 1px)`,
-                      `linear-gradient(135deg, transparent 40%, ${alpha('#f7c6aa', 0.18)} 50%, transparent 60%)`,
-                    ].join(','),
-                    backgroundSize: '28px 28px, 420px 420px',
-                    pointerEvents: 'none',
-                  }}
-                />
+              <Box sx={{ flex: 1, overflowY: 'auto', p: 2, backgroundColor: theme.palette.background.default }}>
+                <Stack spacing={1.5}>
+                  {messageStore.currentConversation?.hasMore && (
+                    <Box sx={{ textAlign: 'center' }}>
+                      <Button onClick={() => void messageStore.loadOlderMessages()} disabled={messageStore.messagesLoading}>
+                        {messageStore.messagesLoading ? '加载中...' : '加载更早消息'}
+                      </Button>
+                    </Box>
+                  )}
 
-                <Box
-                  sx={{
-                    position: 'relative',
-                    height: '100%',
-                    overflowY: 'auto',
-                    px: { xs: 1.35, md: 2.2 },
-                    py: { xs: 1.4, md: 1.8 },
-                  }}
-                >
-                  <Stack spacing={1.65}>
-                    {messageStore.currentConversation?.hasMore && (
-                      <Box sx={{ textAlign: 'center' }}>
-                        <Button
-                          variant="text"
-                          onClick={() => void messageStore.loadOlderMessages()}
-                          disabled={messageStore.messagesLoading}
+                  {messageStore.currentConversation?.messages.map((message, index, messages) => {
+                    const previousMessage = messages[index - 1];
+                    const showTimeDivider = index === 0
+                      || !previousMessage
+                      || Math.abs(new Date(message.createdAt).getTime() - new Date(previousMessage.createdAt).getTime()) >= 10 * 60 * 1000;
+
+                    return (
+                      <Stack key={message.id} spacing={0.5}>
+                        {showTimeDivider && (
+                          <Box sx={{ textAlign: 'center', py: 0.25 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              {formatTime(message.createdAt)}
+                            </Typography>
+                          </Box>
+                        )}
+
+                        <Stack
+                          data-message-id={message.id}
+                          direction="row"
+                          spacing={1}
+                          sx={{
+                            justifyContent: message.isMine ? 'flex-end' : 'flex-start',
+                            alignItems: 'flex-end',
+                            backgroundColor: messageStore.highlightedMessageId === message.id
+                              ? alpha(theme.palette.warning.main, 0.12)
+                              : 'transparent',
+                            borderRadius: 2,
+                            p: 0.25,
+                          }}
                         >
-                          {messageStore.messagesLoading ? '加载中...' : '加载更早消息'}
-                        </Button>
-                      </Box>
-                    )}
-
-                    {messageStore.currentConversation?.messages.map((message, index, messages) => {
-                      const previousMessage = messages[index - 1];
-                      const showTimeDivider = index === 0
-                        || !previousMessage
-                        || Math.abs(new Date(message.createdAt).getTime() - new Date(previousMessage.createdAt).getTime()) >= 10 * 60 * 1000;
-
-                      return (
-                        <Stack key={message.id} spacing={0.55}>
-                          {showTimeDivider && (
-                            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'center', py: 0.25 }}>
-                              <Box
-                                sx={{
-                                  width: { xs: 52, md: 84 },
-                                  height: '1px',
-                                  backgroundColor: alpha(theme.palette.text.secondary, 0.14),
-                                }}
-                              />
-                              <Typography
-                                variant="caption"
-                                sx={{
-                                  px: 0.9,
-                                  py: 0.15,
-                                  fontSize: '0.68rem',
-                                  color: alpha(theme.palette.text.secondary, 0.78),
-                                  backgroundColor: alpha(theme.palette.common.white, 0.38),
-                                  borderRadius: 999,
-                                  lineHeight: 1.5,
-                                }}
-                              >
-                                {formatTime(message.createdAt)}
-                              </Typography>
-                              <Box
-                                sx={{
-                                  width: { xs: 52, md: 84 },
-                                  height: '1px',
-                                  backgroundColor: alpha(theme.palette.text.secondary, 0.14),
-                                }}
-                              />
-                            </Stack>
+                          {!message.isMine && (
+                            <Avatar src={message.senderAvatarUrl ?? undefined} sx={{ width: 32, height: 32 }}>
+                              {message.senderUsername.slice(0, 1).toUpperCase()}
+                            </Avatar>
                           )}
 
                           <Stack
-                            data-message-id={message.id}
-                            direction="row"
-                            spacing={0.9}
+                            spacing={0.5}
                             sx={{
-                              justifyContent: message.isMine ? 'flex-end' : 'flex-start',
-                              alignItems: 'flex-end',
-                              px: 0.35,
-                              py: 0.18,
-                              borderRadius: 3,
-                              backgroundColor: messageStore.highlightedMessageId === message.id
-                                ? alpha(theme.palette.warning.main, 0.18)
-                                : 'transparent',
-                              transition: 'background-color 0.25s ease',
+                              maxWidth: { xs: '88%', md: '72%' },
+                              alignItems: message.isMine ? 'flex-end' : 'flex-start',
                             }}
                           >
-                            {!message.isMine && (
-                              <Avatar src={message.senderAvatarUrl ?? undefined} sx={{ width: 32, height: 32 }}>
-                                {message.senderUsername.slice(0, 1).toUpperCase()}
-                              </Avatar>
-                            )}
+                            <Typography variant="caption" color="text.secondary">
+                              {message.isMine ? '我' : message.senderUsername}
+                            </Typography>
 
-                            <Stack
-                              spacing={0.45}
+                            <Paper
+                              variant="outlined"
                               sx={{
-                                maxWidth: { xs: '86%', md: '70%' },
-                                alignItems: message.isMine ? 'flex-end' : 'flex-start',
+                                px: 1.25,
+                                py: 1,
+                                borderRadius: 2,
+                                backgroundColor: message.isMine
+                                  ? alpha(theme.palette.primary.main, 0.1)
+                                  : theme.palette.background.paper,
                               }}
                             >
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ px: 0.4, fontSize: '0.68rem', lineHeight: 1.2 }}
-                              >
-                                {message.isMine ? '我' : message.senderUsername}
-                              </Typography>
-
-                              <Paper
-                                elevation={0}
-                                sx={{
-                                  px: 1.2,
-                                  py: 0.95,
-                                  borderRadius: message.isMine ? '18px 18px 7px 18px' : '18px 18px 18px 7px',
-                                  backgroundColor: message.isMine
-                                    ? alpha('#ffa977', 0.92)
-                                    : alpha(theme.palette.common.white, 0.88),
-                                  color: message.isMine ? '#4b2508' : theme.palette.text.primary,
-                                  border: `0.75px solid ${
-                                    message.isMine
-                                      ? alpha('#f19155', 0.36)
-                                      : alpha(theme.palette.divider, 0.56)
-                                  }`,
-                                  boxShadow: message.isMine
-                                    ? `0 7px 16px ${alpha('#f19155', 0.14)}`
-                                    : `0 6px 14px ${alpha(theme.palette.common.black, 0.045)}`,
-                                }}
-                              >
-                                {message.replyToMessage && (
-                                  <Paper
-                                    variant="outlined"
-                                    sx={{
-                                      mb: 0.7,
-                                      px: 0.85,
-                                      py: 0.65,
-                                      borderRadius: 1.8,
-                                      backgroundColor: message.isMine
-                                        ? alpha(theme.palette.common.white, 0.24)
-                                        : alpha(theme.palette.primary.main, 0.045),
-                                      borderColor: message.isMine
-                                        ? alpha(theme.palette.common.white, 0.28)
-                                        : alpha(theme.palette.primary.main, 0.1),
-                                    }}
-                                  >
-                                    <Typography variant="caption" sx={{ opacity: 0.88, fontSize: '0.68rem' }}>
-                                      回复 {message.replyToMessage.senderUsername}
-                                    </Typography>
-                                    <Typography variant="body2" sx={{ mt: 0.2, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.82rem' }}>
-                                      {describeMessageContent(message.replyToMessage)}
-                                    </Typography>
-                                  </Paper>
-                                )}
-
-                                {message.isRecalled ? (
-                                  <Typography variant="body2" sx={{ fontStyle: 'italic', opacity: 0.78, fontSize: '0.86rem' }}>
-                                    {message.isMine ? '你撤回了一条消息' : `${message.senderUsername} 撤回了一条消息`}
+                              {message.replyToMessage && (
+                                <Paper
+                                  variant="outlined"
+                                  sx={{
+                                    mb: 0.8,
+                                    px: 1,
+                                    py: 0.75,
+                                    borderRadius: 1.5,
+                                    backgroundColor: alpha(theme.palette.primary.main, 0.04),
+                                  }}
+                                >
+                                  <Typography variant="caption" color="text.secondary">
+                                    回复 {message.replyToMessage.senderUsername}
                                   </Typography>
-                                ) : message.textContent ? (
-                                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.92rem', lineHeight: 1.48 }}>
-                                    {message.textContent}
+                                  <Typography variant="body2" sx={{ mt: 0.35, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                    {describeMessageContent(message.replyToMessage)}
                                   </Typography>
-                                ) : null}
+                                </Paper>
+                              )}
 
-                                {message.imageUrl && !message.isRecalled && (
-                                  <Box sx={{ mt: message.textContent ? 0.8 : 0 }}>
-                                    <Box
-                                      component="img"
-                                      src={message.imageUrl}
-                                      alt={message.imageFileName || '消息图片'}
-                                      sx={{
-                                        display: 'block',
-                                        maxWidth: '100%',
-                                        borderRadius: 2,
-                                        cursor: 'zoom-in',
-                                        border: `0.75px solid ${
-                                          message.isMine
-                                            ? alpha(theme.palette.common.white, 0.28)
-                                            : alpha(theme.palette.divider, 0.6)
-                                        }`,
-                                      }}
-                                      onClick={() => setPreviewImage({
-                                        url: message.imageUrl ?? '',
-                                        label: message.imageFileName || '消息图片',
-                                      })}
-                                    />
-                                  </Box>
-                                )}
+                              {message.isRecalled ? (
+                                <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+                                  {message.isMine ? '你撤回了一条消息' : `${message.senderUsername} 撤回了一条消息`}
+                                </Typography>
+                              ) : message.textContent ? (
+                                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                                  {message.textContent}
+                                </Typography>
+                              ) : null}
 
-                                {message.fileName && !message.isRecalled && (
-                                  <Paper
-                                    variant="outlined"
+                              {message.imageUrl && !message.isRecalled && (
+                                <Box sx={{ mt: message.textContent ? 1 : 0 }}>
+                                  <Box
+                                    component="img"
+                                    src={message.imageUrl}
+                                    alt={message.imageFileName || '消息图片'}
                                     sx={{
-                                      mt: message.textContent || message.imageUrl ? 0.8 : 0,
-                                      px: 1,
-                                      py: 0.85,
-                                      borderRadius: 2,
-                                      backgroundColor: message.isMine
-                                        ? alpha(theme.palette.common.white, 0.22)
-                                        : alpha('#fff6ee', 0.86),
-                                      borderColor: message.isMine
-                                        ? alpha(theme.palette.common.white, 0.28)
-                                        : alpha(theme.palette.divider, 0.72),
+                                      display: 'block',
+                                      maxWidth: '100%',
+                                      borderRadius: 1.5,
+                                      cursor: 'zoom-in',
+                                      border: `1px solid ${theme.palette.divider}`,
                                     }}
-                                  >
-                                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                                      <Stack direction="row" spacing={0.85} sx={{ alignItems: 'center', minWidth: 0, flex: 1 }}>
-                                        <AttachFileRoundedIcon sx={{ fontSize: 18, opacity: 0.85 }} />
-                                        <Box sx={{ minWidth: 0 }}>
-                                          <Typography variant="body2" noWrap sx={{ fontWeight: 700 }}>
-                                            {message.fileName}
-                                          </Typography>
-                                          <Typography variant="caption" sx={{ opacity: 0.8 }}>
-                                            {formatFileSize(message.fileSizeBytes)}
-                                          </Typography>
-                                        </Box>
-                                      </Stack>
-                                      <Button
-                                        size="small"
-                                        variant="text"
-                                        color="inherit"
-                                        onClick={() => void messageStore.downloadMessageFile(message.id, message.fileName ?? 'message-file')}
-                                      >
-                                        下载
-                                      </Button>
+                                    onClick={() => setPreviewImage({
+                                      url: message.imageUrl ?? '',
+                                      label: message.imageFileName || '消息图片',
+                                    })}
+                                  />
+                                </Box>
+                              )}
+
+                              {message.fileName && !message.isRecalled && (
+                                <Paper
+                                  variant="outlined"
+                                  sx={{
+                                    mt: message.textContent || message.imageUrl ? 1 : 0,
+                                    px: 1,
+                                    py: 0.85,
+                                    borderRadius: 1.5,
+                                  }}
+                                >
+                                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <Stack direction="row" spacing={0.85} sx={{ alignItems: 'center', minWidth: 0, flex: 1 }}>
+                                      <AttachFileRoundedIcon sx={{ fontSize: 18 }} />
+                                      <Box sx={{ minWidth: 0 }}>
+                                        <Typography variant="body2" noWrap sx={{ fontWeight: 700 }}>
+                                          {message.fileName}
+                                        </Typography>
+                                        <Typography variant="caption" color="text.secondary">
+                                          {formatFileSize(message.fileSizeBytes)}
+                                        </Typography>
+                                      </Box>
                                     </Stack>
-                                  </Paper>
-                                )}
-                              </Paper>
-
-                              <Stack direction="row" spacing={0.2} sx={{ alignItems: 'center', px: 0.1 }}>
-                                {!showTimeDivider && (
-                                  <Typography variant="caption" sx={{ color: alpha(theme.palette.text.secondary, 0.82), fontSize: '0.66rem' }}>
-                                    {formatTime(message.createdAt)}
-                                  </Typography>
-                                )}
-                                {!message.isRecalled && currentCanSend && (
-                                  <Tooltip title="引用">
-                                    <IconButton size="small" onClick={() => setReplyTargetId(message.id)} sx={{ width: 22, height: 22 }}>
-                                      <ReplyRoundedIcon fontSize="inherit" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
-                                {message.canRecall && (
-                                  <Tooltip title="撤回">
-                                    <IconButton
+                                    <Button
                                       size="small"
-                                      color="warning"
-                                      onClick={() => void messageStore.recallMessage(message.id)}
-                                      sx={{ width: 22, height: 22 }}
+                                      color="inherit"
+                                      onClick={() => void messageStore.downloadMessageFile(message.id, message.fileName ?? 'message-file')}
                                     >
-                                      <UndoRoundedIcon fontSize="inherit" />
-                                    </IconButton>
-                                  </Tooltip>
-                                )}
-                              </Stack>
-                            </Stack>
+                                      下载
+                                    </Button>
+                                  </Stack>
+                                </Paper>
+                              )}
+                            </Paper>
 
-                            {message.isMine && (
-                              <Avatar src={authStore.avatarUrl ?? message.senderAvatarUrl ?? undefined} sx={{ width: 32, height: 32 }}>
-                                {(authStore.username ?? message.senderUsername).slice(0, 1).toUpperCase()}
-                              </Avatar>
-                            )}
+                            <Stack direction="row" spacing={0.25} sx={{ alignItems: 'center' }}>
+                              {!showTimeDivider && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {formatTime(message.createdAt)}
+                                </Typography>
+                              )}
+                              {!message.isRecalled && currentCanSend && (
+                                <IconButton size="small" onClick={() => setReplyTargetId(message.id)}>
+                                  <ReplyRoundedIcon fontSize="inherit" />
+                                </IconButton>
+                              )}
+                              {message.canRecall && (
+                                <IconButton size="small" color="warning" onClick={() => void messageStore.recallMessage(message.id)}>
+                                  <UndoRoundedIcon fontSize="inherit" />
+                                </IconButton>
+                              )}
+                            </Stack>
                           </Stack>
+
+                          {message.isMine && (
+                            <Avatar src={authStore.avatarUrl ?? message.senderAvatarUrl ?? undefined} sx={{ width: 32, height: 32 }}>
+                              {(authStore.username ?? message.senderUsername).slice(0, 1).toUpperCase()}
+                            </Avatar>
+                          )}
                         </Stack>
-                      );
-                    })}
-                  </Stack>
-                </Box>
+                      </Stack>
+                    );
+                  })}
+                </Stack>
               </Box>
 
-              <Divider />
-
-              <Box
-                sx={{
-                  px: { xs: 1.4, md: 2.2 },
-                  py: { xs: 1.3, md: 1.65 },
-                  backgroundColor: alpha(theme.palette.common.white, 0.56),
-                }}
-              >
-                <Stack spacing={1.1}>
+              <Box sx={{ p: 2, borderTop: `1px solid ${theme.palette.divider}` }}>
+                <Stack spacing={1.25}>
                   {replyTarget && currentCanSend && (
-                    <Paper
-                      variant="outlined"
-                      sx={{
-                        px: 1.2,
-                        py: 0.9,
-                        borderRadius: 2.5,
-                        backgroundColor: alpha(theme.palette.common.white, 0.72),
-                      }}
-                    >
+                    <Paper variant="outlined" sx={{ p: 1.25 }}>
                       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
                         <Box sx={{ minWidth: 0, flex: 1 }}>
                           <Typography variant="caption" color="text.secondary">
@@ -1442,45 +968,36 @@ const MessagePage = observer(() => {
                   )}
 
                   {selectedAttachment && (
-                    <Paper
-                      variant="outlined"
-                      sx={{
-                        px: 1.2,
-                        py: 0.9,
-                        borderRadius: 2.5,
-                        backgroundColor: alpha(theme.palette.common.white, 0.72),
-                      }}
-                    >
+                    <Paper variant="outlined" sx={{ p: 1.25 }}>
                       <Stack
-                        direction={{ xs: 'column', md: 'row' }}
-                        spacing={1.2}
-                        sx={{ alignItems: { xs: 'stretch', md: 'center' }, justifyContent: 'space-between' }}
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={1.25}
+                        sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
                       >
-                        <Stack direction="row" spacing={1.2} sx={{ alignItems: 'center', minWidth: 0 }}>
+                        <Stack direction="row" spacing={1.25} sx={{ alignItems: 'center', minWidth: 0 }}>
                           {selectedAttachmentPreviewUrl ? (
                             <Box
                               component="img"
                               src={selectedAttachmentPreviewUrl}
                               alt={selectedAttachment.name}
                               sx={{
-                                width: 64,
-                                height: 64,
-                                borderRadius: 2,
+                                width: 56,
+                                height: 56,
+                                borderRadius: 1.5,
                                 objectFit: 'cover',
-                                border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+                                border: `1px solid ${theme.palette.divider}`,
                               }}
                             />
                           ) : (
                             <Box
                               sx={{
-                                width: 64,
-                                height: 64,
-                                borderRadius: 2,
+                                width: 56,
+                                height: 56,
+                                borderRadius: 1.5,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                backgroundColor: alpha('#ffe2cf', 0.7),
-                                border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
+                                border: `1px solid ${theme.palette.divider}`,
                               }}
                             >
                               <AttachFileRoundedIcon />
@@ -1488,7 +1005,6 @@ const MessagePage = observer(() => {
                           )}
                           <Box sx={{ minWidth: 0 }}>
                             <Typography variant="body2" noWrap>
-                              {selectedAttachmentPreviewUrl ? '已选择图片：' : '已选择文件：'}
                               {selectedAttachment.name}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
@@ -1515,21 +1031,14 @@ const MessagePage = observer(() => {
                     </Alert>
                   )}
 
-                  <Paper
-                    variant="outlined"
-                    sx={{
-                      p: 1,
-                      borderRadius: 3,
-                      backgroundColor: alpha(theme.palette.common.white, 0.78),
-                    }}
-                  >
-                    <Stack
-                      direction={{ xs: 'column', md: 'row' }}
-                      spacing={0.75}
-                      sx={{ mb: 0.8, alignItems: { xs: 'stretch', md: 'center' }, justifyContent: 'space-between' }}
-                    >
-                      <Stack direction="row" spacing={0.6} sx={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 0.6 }}>
-                        <Tooltip title="表情">
+                  <Paper variant="outlined" sx={{ p: 1.25 }}>
+                    <Stack spacing={1}>
+                      <Stack
+                        direction={{ xs: 'column', sm: 'row' }}
+                        spacing={1}
+                        sx={{ alignItems: { sm: 'center' }, justifyContent: 'space-between' }}
+                      >
+                        <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
                           <IconButton
                             size="small"
                             disabled={!currentCanSend}
@@ -1537,128 +1046,80 @@ const MessagePage = observer(() => {
                           >
                             <SentimentSatisfiedAltRoundedIcon fontSize="small" />
                           </IconButton>
-                        </Tooltip>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<ScreenshotMonitorRoundedIcon fontSize="small" />}
+                            disabled={!currentCanSend}
+                            onClick={() => void readClipboardScreenshot()}
+                          >
+                            截图
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            component="label"
+                            disabled={!currentCanSend}
+                            startIcon={<AddPhotoAlternateRoundedIcon fontSize="small" />}
+                          >
+                            图片
+                            <input
+                              hidden
+                              type="file"
+                              accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                              onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
+                            />
+                          </Button>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            component="label"
+                            disabled={!currentCanSend}
+                            startIcon={<AttachFileRoundedIcon fontSize="small" />}
+                          >
+                            文件
+                            <input
+                              hidden
+                              type="file"
+                              accept=".pdf,.txt,.md,.csv,.tsv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.rtf"
+                              onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
+                            />
+                          </Button>
+                        </Stack>
 
                         <Button
-                          size="small"
-                          variant="outlined"
-                          startIcon={<ScreenshotMonitorRoundedIcon fontSize="small" />}
-                          disabled={!currentCanSend}
-                          onClick={() => void readClipboardScreenshot()}
-                          sx={{ borderRadius: 999 }}
+                          variant="contained"
+                          endIcon={<SendRoundedIcon />}
+                          disabled={!canSubmitMessage}
+                          onClick={() => void sendMessage()}
                         >
-                          读取截图
-                        </Button>
-
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          component="label"
-                          disabled={!currentCanSend}
-                          startIcon={<AddPhotoAlternateRoundedIcon fontSize="small" />}
-                          sx={{ borderRadius: 999 }}
-                        >
-                          上传图片
-                          <input
-                            hidden
-                            type="file"
-                            accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
-                            onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
-                          />
-                        </Button>
-
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          component="label"
-                          disabled={!currentCanSend}
-                          startIcon={<AttachFileRoundedIcon fontSize="small" />}
-                          sx={{ borderRadius: 999 }}
-                        >
-                          上传文件
-                          <input
-                            hidden
-                            type="file"
-                            accept=".pdf,.txt,.md,.csv,.tsv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.rtf"
-                            onChange={(event) => handleAttachmentPicked(event.target.files?.[0] ?? null)}
-                          />
+                          {messageStore.sending ? '发送中...' : '发送'}
                         </Button>
                       </Stack>
 
-                      <Button
-                        variant="contained"
-                        endIcon={<SendRoundedIcon />}
-                        disabled={!canSubmitMessage}
-                        onClick={() => void sendMessage()}
-                        sx={{ borderRadius: 999, minWidth: 108, alignSelf: { xs: 'flex-end', md: 'auto' } }}
-                      >
-                        {messageStore.sending ? '发送中...' : '发送'}
-                      </Button>
-                    </Stack>
-
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        mb: 0.9,
-                        display: 'block',
-                        color: currentCanSend ? alpha(theme.palette.text.secondary, 0.86) : theme.palette.warning.dark,
-                        fontSize: '0.74rem',
-                      }}
-                    >
-                      {currentCanSend
-                        ? '支持发送文本，并附带 1 张图片或 1 个本地文件。'
-                        : '当前未互为好友，上传图片、上传文件和发送消息都已禁用。'}
-                    </Typography>
-
-                    <Divider sx={{ mb: 0.9 }} />
-
-                    <TextField
-                      multiline
-                      minRows={1.8}
-                      maxRows={6}
-                      fullWidth
-                      disabled={!currentCanSend}
-                      placeholder={currentCanSend ? '输入消息，支持同时附带一张图片或一个本地文件' : '待双方互相添加后，才可继续发送消息'}
-                      value={composerText}
-                      onChange={(event) => setComposerText(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (
-                          event.key === 'Enter'
-                          && !event.shiftKey
-                          && !(event.nativeEvent as KeyboardEvent).isComposing
-                        ) {
-                          event.preventDefault();
-                          if (canSubmitMessage) {
-                            void sendMessage();
+                      <TextField
+                        multiline
+                        minRows={3}
+                        maxRows={6}
+                        fullWidth
+                        disabled={!currentCanSend}
+                        placeholder={currentCanSend ? '输入消息，Enter 发送，Shift+Enter 换行' : '待双方互相添加后，才可继续发送消息'}
+                        value={composerText}
+                        onChange={(event) => setComposerText(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === 'Enter'
+                            && !event.shiftKey
+                            && !(event.nativeEvent as KeyboardEvent).isComposing
+                          ) {
+                            event.preventDefault();
+                            if (canSubmitMessage) {
+                              void sendMessage();
+                            }
                           }
-                        }
-                      }}
-                      variant="outlined"
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          p: 0,
-                          backgroundColor: 'transparent',
-                        },
-                        '& .MuiOutlinedInput-notchedOutline': {
-                          border: 'none',
-                        },
-                        '& .MuiInputBase-inputMultiline': {
-                          p: 0,
-                        },
-                      }}
-                    />
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        mt: 0.5,
-                        display: 'block',
-                        textAlign: 'right',
-                        color: alpha(theme.palette.text.secondary, 0.72),
-                        fontSize: '0.68rem',
-                      }}
-                    >
-                      Enter 发送 · Shift+Enter 换行
-                    </Typography>
+                        }}
+                      />
+                    </Stack>
                   </Paper>
                 </Stack>
               </Box>
@@ -1670,61 +1131,33 @@ const MessagePage = observer(() => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                px: 3,
-                background: [
-                  `radial-gradient(circle at 28% 20%, ${alpha('#fff6ee', 0.92)}, transparent 24%)`,
-                  `radial-gradient(circle at 75% 18%, ${alpha('#ffd8c0', 0.48)}, transparent 18%)`,
-                  `linear-gradient(180deg, ${alpha('#f7d7c4', 0.72)} 0%, ${alpha('#fff8f1', 0.94)} 100%)`,
-                ].join(','),
+                p: 3,
               }}
             >
-              <Stack spacing={1.2} sx={{ textAlign: 'center', maxWidth: 420, alignItems: 'center' }}>
-                <Box
-                  sx={{
-                    width: 74,
-                    height: 74,
-                    borderRadius: '50%',
-                    display: 'grid',
-                    placeItems: 'center',
-                    backgroundColor: alpha(theme.palette.common.white, 0.72),
-                    boxShadow: `0 14px 32px ${alpha(theme.palette.common.black, 0.08)}`,
-                  }}
-                >
-                  <ChatBubbleOutlineRoundedIcon sx={{ fontSize: 34, color: theme.palette.primary.main }} />
-                </Box>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>
+              <Stack spacing={1.25} sx={{ maxWidth: 360, textAlign: 'center', alignItems: 'center' }}>
+                <Avatar sx={{ width: 64, height: 64, bgcolor: 'primary.light', color: 'primary.main' }}>
+                  <ChatBubbleOutlineRoundedIcon />
+                </Avatar>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
                   选择一个会话
                 </Typography>
-                <Typography variant="body1" color="text.secondary">
-                  从左侧会话列表进入，或者先添加联系人。双方互相添加后，系统才允许发送首条站内消息。
+                <Typography variant="body2" color="text.secondary">
+                  从左侧进入会话，或者先添加联系人。双方互相添加后，系统才允许发送首条站内消息。
                 </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<PersonAddAlt1RoundedIcon />}
-                  onClick={() => void openCreateContactDialog()}
-                >
+                <Button variant="contained" startIcon={<PersonAddAlt1RoundedIcon />} onClick={() => void openCreateContactDialog()}>
                   添加联系人
                 </Button>
               </Stack>
             </Box>
           )}
-        </Paper>
-      </Box>
+        </Box>
+      </Paper>
 
       <Dialog open={globalSearchOpen} onClose={() => setGlobalSearchOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>全局消息搜索</DialogTitle>
         <DialogContent sx={{ pt: 0.5 }}>
           <Stack spacing={1.5}>
-            <Box
-              sx={{
-                display: 'grid',
-                gap: 1,
-                gridTemplateColumns: {
-                  xs: '1fr',
-                  sm: 'minmax(0, 1fr) auto auto',
-                },
-              }}
-            >
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <TextField
                 fullWidth
                 size="small"
@@ -1742,50 +1175,38 @@ const MessagePage = observer(() => {
                 startIcon={<SearchRoundedIcon />}
                 onClick={() => void messageStore.searchAllMessages(globalMessageKeyword)}
                 disabled={messageStore.searchingMessages || !globalMessageKeyword.trim()}
-                sx={{ whiteSpace: 'nowrap' }}
               >
                 {messageStore.searchingMessages ? '搜索中...' : '搜索'}
               </Button>
-              {messageStore.globalMessageSearchResult ? (
-                <Button variant="text" onClick={messageStore.clearGlobalMessageSearch} sx={{ whiteSpace: 'nowrap' }}>
+              {messageStore.globalMessageSearchResult && (
+                <Button onClick={messageStore.clearGlobalMessageSearch}>
                   清空
                 </Button>
-              ) : (
-                <Box sx={{ display: { xs: 'none', sm: 'block' } }} />
               )}
-            </Box>
+            </Stack>
 
             {messageStore.globalMessageSearchResult && (
               <Stack spacing={1}>
                 <Typography variant="body2" color="text.secondary">
-                  共找到 {messageStore.globalMessageSearchResult.total} 条消息，点击结果可直接定位到原消息
+                  共找到 {messageStore.globalMessageSearchResult.total} 条消息，点击结果可直接定位到原消息。
                 </Typography>
                 <Stack spacing={1} sx={{ maxHeight: 360, overflowY: 'auto' }}>
                   {messageStore.globalMessageSearchResult.hits.map((hit) => (
                     <Paper
                       key={`${hit.conversationId}-${hit.message.id}`}
                       variant="outlined"
-                      sx={{
-                        borderRadius: 2.5,
-                        p: 1.25,
-                        cursor: 'pointer',
-                        backgroundColor: alpha(theme.palette.background.paper, 0.9),
-                      }}
+                      sx={{ p: 1.25, cursor: 'pointer' }}
                       onClick={() => void openGlobalSearchHit(hit.conversationId, hit.message.id)}
                     >
-                      <Stack spacing={0.4}>
-                        <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-                          {hit.peer.alias || hit.peer.username}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {hit.message.senderUsername} · {formatTime(hit.message.createdAt)}
-                        </Typography>
-                        <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                          {hit.message.isRecalled
-                            ? '这条消息已撤回'
-                            : describeMessageContent(hit.message)}
-                        </Typography>
-                      </Stack>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {hit.peer.alias || hit.peer.username}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {hit.message.senderUsername} · {formatTime(hit.message.createdAt)}
+                      </Typography>
+                      <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {hit.message.isRecalled ? '这条消息已撤回' : describeMessageContent(hit.message)}
+                      </Typography>
                     </Paper>
                   ))}
                   {messageStore.globalMessageSearchResult.hits.length === 0 && (
@@ -1800,129 +1221,139 @@ const MessagePage = observer(() => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={contactsPanelOpen} onClose={() => setContactsPanelOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>联系人</DialogTitle>
-        <DialogContent sx={{ pt: 0.5 }}>
-          <Stack spacing={1.4}>
-            <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="body2" color="text.secondary">
-                共 {messageStore.contacts.length} 位联系人，置顶 {pinnedContactCount} 位，待处理申请 {messageStore.pendingIncomingFriendRequestCount} 条
-              </Typography>
-              <Button size="small" onClick={() => navigate('/messages/contacts')}>
-                打开管理页
-              </Button>
-            </Stack>
-
-            <Box
-              sx={{
-                display: 'grid',
-                gap: 1,
-                gridTemplateColumns: 'minmax(0, 1fr) auto',
-              }}
-            >
-              <TextField
-                size="small"
-                fullWidth
-                placeholder="搜索联系人或备注"
-                value={contactKeyword}
-                onChange={(event) => setContactKeyword(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    void messageStore.loadContacts(contactKeyword);
-                  }
-                }}
-              />
-              <IconButton onClick={() => void messageStore.loadContacts(contactKeyword)}>
-                <SearchRoundedIcon fontSize="small" />
-              </IconButton>
-            </Box>
-
-            <List disablePadding sx={{ maxHeight: 420, overflowY: 'auto' }}>
-              {messageStore.contacts.map((contact) => (
-                <ListItemButton
-                  key={contact.contactUserId}
-                  disabled={!contact.conversationId && !contact.isFriend}
-                  onClick={() => void openConversationForContact(contact)}
-                  sx={{ borderRadius: 2.5, mb: 0.8, alignItems: 'flex-start' }}
-                >
-                  <Avatar src={contact.avatarUrl ?? undefined} alt={contact.username}>
-                    {contact.username.slice(0, 1).toUpperCase()}
+      <Menu
+        anchorEl={friendRequestAnchorEl}
+        open={Boolean(friendRequestAnchorEl)}
+        onClose={closeFriendRequestMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <Box sx={{ px: 2, py: 1.5, minWidth: 320 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+            好友申请
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            点开后跳转到联系人页处理。
+          </Typography>
+        </Box>
+        <Divider />
+        {messageStore.friendRequestsLoading ? (
+          <Box sx={{ px: 2, py: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              好友申请加载中...
+            </Typography>
+          </Box>
+        ) : pendingIncomingFriendRequests.length > 0 ? (
+          pendingIncomingFriendRequests.slice(0, 6).map((request, index) => (
+            <Box key={request.id}>
+              <MenuItem onClick={() => navigateToFriendRequest(request.id, request.peer.id)} sx={{ alignItems: 'flex-start', py: 1.25 }}>
+                <Stack direction="row" spacing={1.25} sx={{ width: '100%', alignItems: 'flex-start' }}>
+                  <Avatar src={request.peer.avatarUrl ?? undefined} alt={request.peer.username} sx={{ width: 40, height: 40 }}>
+                    {request.peer.username.slice(0, 1).toUpperCase()}
                   </Avatar>
-
-                  <Box sx={{ ml: 1.2, minWidth: 0, flex: 1 }}>
-                    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }} noWrap>
-                        {contact.alias || contact.username}
+                  <Box sx={{ minWidth: 0, flex: 1 }}>
+                    <Stack direction="row" spacing={0.75} sx={{ alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Typography sx={{ fontWeight: 700 }} noWrap>
+                        {request.peer.alias || request.peer.username}
                       </Typography>
-                      <Stack direction="row" spacing={0.35} sx={{ alignItems: 'center', flexShrink: 0 }}>
-                        {contact.isOnline && (
-                          <Tooltip title="在线">
-                            <CircleRoundedIcon sx={{ fontSize: 12, color: theme.palette.success.main }} />
-                          </Tooltip>
-                        )}
-                        {!contact.isFriend && (
-                          <Tooltip title="待同意">
-                            <PersonAddAlt1RoundedIcon sx={{ fontSize: 15, color: theme.palette.warning.main }} />
-                          </Tooltip>
-                        )}
-                        {contact.isPinned && (
-                          <Tooltip title="已置顶">
-                            <PushPinRoundedIcon sx={{ fontSize: 15, color: alpha(theme.palette.text.secondary, 0.82) }} />
-                          </Tooltip>
-                        )}
-                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        {formatFriendRequestNoticeTime(request.createdAt)}
+                      </Typography>
                     </Stack>
-                    <Typography variant="body2" color="text.secondary" noWrap sx={{ mt: 0.3 }}>
-                      {formatLastSeen(contact.isOnline, contact.lastSeenAt)}
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      {request.requestMessage?.trim() || '请求添加你为好友'}
                     </Typography>
                   </Box>
+                </Stack>
+              </MenuItem>
+              {index < pendingIncomingFriendRequests.slice(0, 6).length - 1 && <Divider />}
+            </Box>
+          ))
+        ) : (
+          <Box sx={{ px: 2, py: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              目前没有待处理的好友申请。
+            </Typography>
+          </Box>
+        )}
+        <Divider />
+        <Box sx={{ px: 1.5, py: 0.75, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button size="small" onClick={() => {
+            closeFriendRequestMenu();
+            navigate('/messages/contacts');
+          }}
+          >
+            查看全部
+          </Button>
+        </Box>
+      </Menu>
 
-                  <Stack direction="row" spacing={0.25}>
-                    <Tooltip title="编辑联系人">
-                      <IconButton
-                        size="small"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openEditContactDialog(contact.contactUserId);
-                        }}
-                      >
-                        <EditRoundedIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="删除联系人">
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          confirmDeleteContact(contact.contactUserId, contact.alias || contact.username);
-                        }}
-                      >
-                        <DeleteOutlineRoundedIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </ListItemButton>
-              ))}
+      <Menu
+        anchorEl={conversationActionsAnchorEl}
+        open={Boolean(conversationActionsAnchorEl)}
+        onClose={() => setConversationActionsAnchorEl(null)}
+      >
+        {currentPeerContact ? (
+          <MenuItem
+            onClick={() => {
+              setConversationActionsAnchorEl(null);
+              openEditContactDialog(currentPeerContact.contactUserId);
+            }}
+          >
+            <EditRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+            编辑联系人
+          </MenuItem>
+        ) : currentSummary ? (
+          <MenuItem
+            onClick={() => {
+              setConversationActionsAnchorEl(null);
+              openCreateContactDialogForUser(currentSummary.peer);
+            }}
+          >
+            <PersonAddAlt1RoundedIcon fontSize="small" sx={{ mr: 1 }} />
+            添加联系人
+          </MenuItem>
+        ) : null}
 
-              {messageStore.contacts.length === 0 && (
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2.5 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    暂无联系人。
-                  </Typography>
-                </Paper>
-              )}
-            </List>
-          </Stack>
-        </DialogContent>
-      </Dialog>
+        {currentPeerContact && (
+          <MenuItem
+            onClick={() => confirmDeleteContact(
+              currentPeerContact.contactUserId,
+              currentPeerContact.alias || currentPeerContact.username,
+            )}
+          >
+            <DeleteOutlineRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+            删除联系人
+          </MenuItem>
+        )}
+
+        <MenuItem
+          onClick={() => {
+            setConversationActionsAnchorEl(null);
+            void toggleConversationPinned();
+          }}
+          disabled={!currentSummary}
+        >
+          <PushPinRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+          {currentSummary?.isPinned ? '取消置顶' : '置顶会话'}
+        </MenuItem>
+
+        <MenuItem
+          onClick={() => {
+            setConversationActionsAnchorEl(null);
+            void toggleConversationMuted();
+          }}
+          disabled={!currentSummary}
+        >
+          <VolumeOffRoundedIcon fontSize="small" sx={{ mr: 1 }} />
+          {currentSummary?.isMuted ? '取消静音' : '静音会话'}
+        </MenuItem>
+      </Menu>
 
       <Menu
         anchorEl={emojiAnchorEl}
         open={Boolean(emojiAnchorEl)}
         onClose={() => setEmojiAnchorEl(null)}
-        anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
       >
         {QUICK_EMOJIS.map((emoji) => (
           <MenuItem key={emoji} onClick={() => appendEmoji(emoji)} sx={{ minWidth: 56, justifyContent: 'center' }}>
