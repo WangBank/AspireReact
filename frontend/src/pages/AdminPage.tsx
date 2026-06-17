@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Avatar,
@@ -41,6 +41,7 @@ import {
   sortItemsBy,
   type SortOrder,
 } from '../utils/table';
+import { useStore } from '../stores/StoreProvider';
 import './AdminPage.css';
 
 type AdminTab = 'overview' | 'users' | 'settings' | 'audits' | 'reflection';
@@ -221,6 +222,8 @@ const AdminMetricGrid = ({ items }: { items: AdminMetricCardItem[] }) => (
 );
 
 const AdminPage = () => {
+  const navigate = useNavigate();
+  const { authStore } = useStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentTabParam = searchParams.get('tab');
   const activeTab: AdminTab = TAB_ITEMS.some((item) => item.key === currentTabParam)
@@ -265,7 +268,6 @@ const AdminPage = () => {
   const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState('');
-  const [restoreSuccess, setRestoreSuccess] = useState('');
   const restoreFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const sentenceCount = useMemo(() => {
@@ -654,7 +656,6 @@ const AdminPage = () => {
     }
 
     setRestoreError('');
-    setRestoreSuccess('');
     setRestoreFile(file);
     setRestoreConfirmed(false);
     setRestoreDialogOpen(true);
@@ -683,17 +684,17 @@ const AdminPage = () => {
 
     setRestoring(true);
     setRestoreError('');
-    setRestoreSuccess('');
 
     try {
-      const result = await adminService.restoreDatabase(restoreFile, true);
-      setRestoreSuccess(`已从 ${result.fileName} 恢复数据库 ${result.database}，建议立即刷新页面并重新登录。`);
+      await adminService.restoreDatabase(restoreFile, true);
       setRestoreDialogOpen(false);
       setRestoreConfirmed(false);
       setRestoreFile(null);
+      setRestoring(false);
+      authStore.logout();
+      navigate('/login', { replace: true });
     } catch (err) {
       setRestoreError(err instanceof Error ? err.message : '恢复数据库备份失败');
-    } finally {
       setRestoring(false);
     }
   };
@@ -824,12 +825,11 @@ const AdminPage = () => {
         </Box>
       </Paper>
 
-      {(exportError || exportSuccess || exportTempPath || restoreError || restoreSuccess) && (
+      {(exportError || exportSuccess || exportTempPath || restoreError) && (
         <Stack spacing={1.5} sx={{ mb: 2.5 }}>
           {exportError && <Alert severity="error">{exportError}</Alert>}
           {exportSuccess && <Alert severity="success">{exportSuccess}</Alert>}
           {restoreError && <Alert severity="error">{restoreError}</Alert>}
-          {restoreSuccess && <Alert severity="success">{restoreSuccess}</Alert>}
           {exportTempPath && (
             <Alert severity="info">
               临时文件：<code>{exportTempPath}</code>
