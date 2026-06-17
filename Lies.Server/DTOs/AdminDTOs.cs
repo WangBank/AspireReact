@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace Lies.Server.DTOs;
 
@@ -91,6 +92,23 @@ public class AdminBatchOperationResultResponse
 {
     public int UpdatedCount { get; set; }
     public List<int> UserIds { get; set; } = [];
+}
+
+public class AdminDatabaseRestoreRequest
+{
+    [Required(ErrorMessage = "请上传 dump 备份文件")]
+    public IFormFile? File { get; set; }
+
+    [Range(typeof(bool), "true", "true", ErrorMessage = "请先确认当前数据库将被覆盖")]
+    public bool ConfirmRestore { get; set; }
+}
+
+public class AdminDatabaseRestoreResponse
+{
+    public string FileName { get; set; } = string.Empty;
+    public string Database { get; set; } = string.Empty;
+    public long FileSizeBytes { get; set; }
+    public DateTime RestoredAt { get; set; }
 }
 
 public class ReflectionContentResponse

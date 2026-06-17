@@ -10,6 +10,7 @@ namespace Lies.Server.Controllers;
 [Route("api/admin")]
 public class AdminController : ControllerBase
 {
+    private const long DatabaseRestoreUploadLimitBytes = 1024L * 1024 * 1024;
     private readonly IAdminService _adminService;
     private readonly ISystemSettingService _systemSettingService;
 
@@ -267,6 +268,44 @@ public class AdminController : ControllerBase
         var result = await _adminService.ExportDatabaseBackupAsync(cancellationToken);
         Response.Headers.Append("X-Temp-File-Path", result.TempFilePath);
         return PhysicalFile(result.TempFilePath, result.ContentType, result.FileName);
+    }
+
+    [HttpPost("restore/database")]
+    [RequestSizeLimit(DatabaseRestoreUploadLimitBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = DatabaseRestoreUploadLimitBytes)]
+    public async Task<IActionResult> RestoreDatabase(
+        [FromForm] AdminDatabaseRestoreRequest request,
+        CancellationToken cancellationToken)
+    {
+        var guard = EnsureAdmin();
+        if (guard != null)
+        {
+            return guard;
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new { success = false, message = "参数验证失败", errors = ModelState });
+        }
+
+        try
+        {
+            var result = await _adminService.RestoreDatabaseBackupAsync(
+                request.File!,
+                request.ConfirmRestore,
+                cancellationToken);
+
+            return Ok(new
+            {
+                success = true,
+                data = result,
+                message = $"数据库 {result.Database} 已从 {result.FileName} 恢复完成"
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
     }
 
     private IActionResult? EnsureAdmin(int? userId = null)

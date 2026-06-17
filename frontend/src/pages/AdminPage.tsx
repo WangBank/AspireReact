@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Alert,
@@ -7,6 +7,11 @@ import {
   Button,
   Checkbox,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControlLabel,
   MenuItem,
   Paper,
   Stack,
@@ -79,6 +84,18 @@ const formatMoney = (value: number) =>
 
 const formatPercent = (value: number) =>
   new Intl.NumberFormat('zh-CN', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+};
 
 const getInitial = (value: string) => value.trim().charAt(0).toUpperCase() || '?';
 
@@ -243,6 +260,13 @@ const AdminPage = () => {
   const [exportError, setExportError] = useState('');
   const [exportSuccess, setExportSuccess] = useState('');
   const [exportTempPath, setExportTempPath] = useState<string | null>(null);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreConfirmed, setRestoreConfirmed] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState('');
+  const [restoreSuccess, setRestoreSuccess] = useState('');
+  const restoreFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const sentenceCount = useMemo(() => {
     const matched = reflectionText.match(/[^。！？；!?;]+[。！？；!?;]?/g);
@@ -613,6 +637,67 @@ const AdminPage = () => {
     }
   };
 
+  const handlePickRestoreFile = () => {
+    if (restoring) {
+      return;
+    }
+
+    restoreFileInputRef.current?.click();
+  };
+
+  const handleRestoreFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    setRestoreError('');
+    setRestoreSuccess('');
+    setRestoreFile(file);
+    setRestoreConfirmed(false);
+    setRestoreDialogOpen(true);
+  };
+
+  const handleCloseRestoreDialog = () => {
+    if (restoring) {
+      return;
+    }
+
+    setRestoreDialogOpen(false);
+    setRestoreConfirmed(false);
+    setRestoreFile(null);
+  };
+
+  const handleRestoreDatabase = async () => {
+    if (!restoreFile) {
+      setRestoreError('请先选择要恢复的 dump 文件');
+      return;
+    }
+
+    if (!restoreConfirmed) {
+      setRestoreError('请先确认当前数据库将被彻底覆盖');
+      return;
+    }
+
+    setRestoring(true);
+    setRestoreError('');
+    setRestoreSuccess('');
+
+    try {
+      const result = await adminService.restoreDatabase(restoreFile, true);
+      setRestoreSuccess(`已从 ${result.fileName} 恢复数据库 ${result.database}，建议立即刷新页面并重新登录。`);
+      setRestoreDialogOpen(false);
+      setRestoreConfirmed(false);
+      setRestoreFile(null);
+    } catch (err) {
+      setRestoreError(err instanceof Error ? err.message : '恢复数据库备份失败');
+    } finally {
+      setRestoring(false);
+    }
+  };
+
   const handleSaveReflection = async () => {
     setReflectionSaving(true);
     setReflectionError('');
@@ -633,6 +718,14 @@ const AdminPage = () => {
 
   return (
     <div className="admin-page">
+      <input
+        ref={restoreFileInputRef}
+        type="file"
+        accept=".sql,.dump,.backup,.tar"
+        hidden
+        onChange={handleRestoreFileChange}
+      />
+
       <PageHeader
         eyebrow="管理工作台"
         title="管理员后台"
@@ -646,6 +739,15 @@ const AdminPage = () => {
               sx={{ minWidth: { xs: '100%', sm: 188 } }}
             >
               {exporting ? '导出中...' : '一键导出数据库备份'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={handlePickRestoreFile}
+              disabled={restoring}
+              sx={{ minWidth: { xs: '100%', sm: 188 } }}
+            >
+              {restoring ? '恢复中...' : '上传 dump 恢复数据库'}
             </Button>
             <Button
               variant="outlined"
@@ -722,10 +824,12 @@ const AdminPage = () => {
         </Box>
       </Paper>
 
-      {(exportError || exportSuccess || exportTempPath) && (
+      {(exportError || exportSuccess || exportTempPath || restoreError || restoreSuccess) && (
         <Stack spacing={1.5} sx={{ mb: 2.5 }}>
           {exportError && <Alert severity="error">{exportError}</Alert>}
           {exportSuccess && <Alert severity="success">{exportSuccess}</Alert>}
+          {restoreError && <Alert severity="error">{restoreError}</Alert>}
+          {restoreSuccess && <Alert severity="success">{restoreSuccess}</Alert>}
           {exportTempPath && (
             <Alert severity="info">
               临时文件：<code>{exportTempPath}</code>
@@ -1316,6 +1420,72 @@ const AdminPage = () => {
           )}
         </SectionCard>
       )}
+
+      <Dialog
+        open={restoreDialogOpen}
+        onClose={handleCloseRestoreDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>确认恢复数据库</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Stack spacing={2}>
+            <Alert severity="warning">
+              这会先重建当前应用正在连接的 PostgreSQL 数据库，再导入你上传的 dump 文件。当前业务数据会被彻底覆盖，恢复期间接口可能短暂报错。
+            </Alert>
+
+            {restoreFile ? (
+              <Paper
+                elevation={0}
+                sx={(theme) => ({
+                  p: 1.75,
+                  borderRadius: 2.5,
+                  border: `1px solid ${theme.palette.divider}`,
+                  backgroundColor: theme.palette.background.default,
+                })}
+              >
+                <Stack spacing={0.75}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                    待恢复文件
+                  </Typography>
+                  <Typography variant="body2">{restoreFile.name}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    文件大小：{formatFileSize(restoreFile.size)}
+                  </Typography>
+                </Stack>
+              </Paper>
+            ) : null}
+
+            <FormControlLabel
+              control={(
+                <Checkbox
+                  checked={restoreConfirmed}
+                  onChange={(event) => setRestoreConfirmed(event.target.checked)}
+                  disabled={restoring}
+                />
+              )}
+              label="我确认当前数据库会被上传的 dump 文件完整覆盖"
+            />
+
+            <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.7 }}>
+              恢复完成后，建议立即刷新页面并重新登录，以免当前会话继续引用旧数据库状态。
+            </Typography>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={handleCloseRestoreDialog} disabled={restoring}>
+            取消
+          </Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => void handleRestoreDatabase()}
+            disabled={!restoreFile || !restoreConfirmed || restoring}
+          >
+            {restoring ? '恢复中...' : '确认恢复'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };

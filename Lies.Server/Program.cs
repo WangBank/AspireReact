@@ -117,6 +117,17 @@ static RateLimitPartition<string> CreateApiRateLimitPartition(HttpContext contex
                     QueueLimit = 0,
                     AutoReplenishment = true
                 }),
+        var p when p.StartsWith("/api/admin/restore/database", StringComparison.OrdinalIgnoreCase)
+            => RateLimitPartition.GetFixedWindowLimiter(
+                $"{identity}:admin-restore",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 2,
+                    Window = TimeSpan.FromMinutes(10),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit = 0,
+                    AutoReplenishment = true
+                }),
         _ => RateLimitPartition.GetFixedWindowLimiter(
             $"{identity}:api-default",
             _ => new FixedWindowRateLimiterOptions

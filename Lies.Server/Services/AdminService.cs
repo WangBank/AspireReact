@@ -4,6 +4,7 @@ using System.Globalization;
 using Lies.Server.Data;
 using Lies.Server.DTOs;
 using Lies.Server.Entities;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -38,6 +39,10 @@ public interface IAdminService
         string newPassword,
         CancellationToken cancellationToken = default);
     Task<DatabaseExportResult> ExportDatabaseBackupAsync(CancellationToken cancellationToken = default);
+    Task<AdminDatabaseRestoreResponse> RestoreDatabaseBackupAsync(
+        IFormFile file,
+        bool confirmRestore,
+        CancellationToken cancellationToken = default);
 }
 
 public class DatabaseExportResult
@@ -49,6 +54,15 @@ public class DatabaseExportResult
 
 public class AdminService : IAdminService
 {
+    private static readonly SemaphoreSlim DatabaseMaintenanceLock = new(1, 1);
+    private static readonly HashSet<string> SupportedRestoreExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".sql",
+        ".dump",
+        ".backup",
+        ".tar"
+    };
+
     private readonly AppDbContext _db;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AdminService> _logger;
@@ -383,6 +397,355 @@ public class AdminService : IAdminService
         };
     }
 
+    public async Task<AdminDatabaseRestoreResponse> RestoreDatabaseBackupAsync(
+        IFormFile file,
+        bool confirmRestore,
+        CancellationToken cancellationToken = default)
+    {
+        if (!confirmRestore)
+        {
+            throw new InvalidOperationException("请先确认当前数据库将被上传的 dump 文件覆盖。");
+        }
+
+        if (file == null || file.Length <= 0)
+        {
+            throw new InvalidOperationException("请上传有效的 dump 备份文件。");
+        }
+
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!SupportedRestoreExtensions.Contains(extension))
+        {
+            throw new InvalidOperationException("仅支持 .sql、.dump、.backup、.tar 格式的 PostgreSQL 备份文件。");
+        }
+
+        var connectionString = _db.Database.GetConnectionString();
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException("PostgreSQL connection string is not configured.");
+        }
+
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        if (string.IsNullOrWhiteSpace(builder.Host)
+            || string.IsNullOrWhiteSpace(builder.Database)
+            || string.IsNullOrWhiteSpace(builder.Username))
+        {
+            throw new InvalidOperationException("PostgreSQL connection string is incomplete.");
+        }
+
+        EnsureRestorableDatabaseName(builder.Database);
+
+        var originalFileName = Path.GetFileName(file.FileName);
+        var tempFilePath = Path.Combine(
+            Path.GetTempPath(),
+            $"lies-db-restore-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}{extension}");
+
+        await using (var fileStream = File.Create(tempFilePath))
+        {
+            await file.CopyToAsync(fileStream, cancellationToken);
+        }
+
+        await DatabaseMaintenanceLock.WaitAsync(cancellationToken);
+
+        try
+        {
+            try
+            {
+                await _db.Database.CloseConnectionAsync();
+            }
+            catch
+            {
+                // Best effort only. The restore flow forcibly disconnects all active sessions afterwards.
+            }
+
+            NpgsqlConnection.ClearAllPools();
+
+            await PrepareTargetDatabaseForRestoreAsync(builder, cancellationToken);
+
+            var restoredLocally = IsSqlDumpExtension(extension)
+                ? await TryRestoreSqlBackupWithLocalPsqlAsync(builder, tempFilePath, cancellationToken)
+                : await TryRestoreArchiveBackupWithLocalPgRestoreAsync(builder, tempFilePath, cancellationToken);
+
+            if (!restoredLocally)
+            {
+                var dockerContainer = await TryResolveDockerPostgresContainerAsync(builder, cancellationToken);
+                if (dockerContainer == null)
+                {
+                    throw new InvalidOperationException(
+                        IsSqlDumpExtension(extension)
+                            ? "未找到可用的 psql 来恢复 SQL 备份；如果当前数据库运行在 Docker 中，请确认宿主机可用 docker CLI。"
+                            : "未找到可用的 pg_restore 来恢复 dump 备份；如果当前数据库运行在 Docker 中，请确认宿主机可用 docker CLI。");
+                }
+
+                await RestoreDatabaseBackupWithDockerToolsAsync(
+                    builder,
+                    tempFilePath,
+                    extension,
+                    dockerContainer,
+                    cancellationToken);
+            }
+        }
+        finally
+        {
+            DatabaseMaintenanceLock.Release();
+            NpgsqlConnection.ClearAllPools();
+            TryDeleteFile(tempFilePath);
+        }
+
+        return new AdminDatabaseRestoreResponse
+        {
+            FileName = originalFileName,
+            Database = builder.Database,
+            FileSizeBytes = file.Length,
+            RestoredAt = DateTime.Now
+        };
+    }
+
+    private async Task PrepareTargetDatabaseForRestoreAsync(
+        NpgsqlConnectionStringBuilder builder,
+        CancellationToken cancellationToken)
+    {
+        EnsureRestorableDatabaseName(builder.Database);
+        var targetDatabase = builder.Database!;
+
+        var adminBuilder = new NpgsqlConnectionStringBuilder(builder.ConnectionString)
+        {
+            Database = "postgres",
+            Pooling = false
+        };
+
+        var quotedDatabaseName = QuotePostgresIdentifier(targetDatabase);
+
+        await using var connection = new NpgsqlConnection(adminBuilder.ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+
+        try
+        {
+            await using var disconnectCommand = new NpgsqlCommand(
+                """
+                UPDATE pg_database
+                SET datallowconn = false
+                WHERE datname = @database;
+
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE datname = @database
+                  AND pid <> pg_backend_pid();
+                """,
+                connection);
+            disconnectCommand.Parameters.AddWithValue("database", targetDatabase);
+            await disconnectCommand.ExecuteNonQueryAsync(cancellationToken);
+
+            await using var dropCommand = new NpgsqlCommand(
+                $"DROP DATABASE IF EXISTS {quotedDatabaseName};",
+                connection);
+            await dropCommand.ExecuteNonQueryAsync(cancellationToken);
+
+            await using var createCommand = new NpgsqlCommand(
+                $"CREATE DATABASE {quotedDatabaseName};",
+                connection);
+            await createCommand.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch
+        {
+            try
+            {
+                await using var reconnectCommand = new NpgsqlCommand(
+                    """
+                    UPDATE pg_database
+                    SET datallowconn = true
+                    WHERE datname = @database;
+                    """,
+                    connection);
+                reconnectCommand.Parameters.AddWithValue("database", targetDatabase);
+                await reconnectCommand.ExecuteNonQueryAsync(cancellationToken);
+            }
+            catch
+            {
+                // Best effort only.
+            }
+
+            throw;
+        }
+    }
+
+    private async Task<bool> TryRestoreSqlBackupWithLocalPsqlAsync(
+        NpgsqlConnectionStringBuilder builder,
+        string inputPath,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastStartException = null;
+        var attemptedPsqlPaths = GetPsqlCandidates().ToList();
+
+        foreach (var psqlPath in attemptedPsqlPaths)
+        {
+            try
+            {
+                await RestoreSqlBackupWithLocalPsqlAsync(builder, inputPath, psqlPath, cancellationToken);
+                _logger.LogInformation("Database SQL dump restored via local psql: {PsqlPath}", psqlPath);
+                return true;
+            }
+            catch (Win32Exception ex)
+            {
+                lastStartException = ex;
+                _logger.LogDebug(ex, "psql path is not available: {PsqlPath}", psqlPath);
+            }
+        }
+
+        if (lastStartException != null)
+        {
+            _logger.LogWarning(
+                lastStartException,
+                "Local psql is unavailable. Tried paths: {PsqlPaths}",
+                string.Join(", ", attemptedPsqlPaths));
+        }
+
+        return false;
+    }
+
+    private async Task<bool> TryRestoreArchiveBackupWithLocalPgRestoreAsync(
+        NpgsqlConnectionStringBuilder builder,
+        string inputPath,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastStartException = null;
+        var attemptedPgRestorePaths = GetPgRestoreCandidates().ToList();
+
+        foreach (var pgRestorePath in attemptedPgRestorePaths)
+        {
+            try
+            {
+                await RestoreArchiveBackupWithLocalPgRestoreAsync(builder, inputPath, pgRestorePath, cancellationToken);
+                _logger.LogInformation("Database archive dump restored via local pg_restore: {PgRestorePath}", pgRestorePath);
+                return true;
+            }
+            catch (Win32Exception ex)
+            {
+                lastStartException = ex;
+                _logger.LogDebug(ex, "pg_restore path is not available: {PgRestorePath}", pgRestorePath);
+            }
+        }
+
+        if (lastStartException != null)
+        {
+            _logger.LogWarning(
+                lastStartException,
+                "Local pg_restore is unavailable. Tried paths: {PgRestorePaths}",
+                string.Join(", ", attemptedPgRestorePaths));
+        }
+
+        return false;
+    }
+
+    private async Task RestoreSqlBackupWithLocalPsqlAsync(
+        NpgsqlConnectionStringBuilder builder,
+        string inputPath,
+        string psqlPath,
+        CancellationToken cancellationToken)
+    {
+        var startInfo = CreateProcessStartInfo(psqlPath);
+
+        foreach (var argument in BuildPsqlRestoreArguments(builder, inputPath))
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        ApplyPgEnvironment(startInfo, builder);
+
+        var result = await RunProcessAsync(startInfo, cancellationToken);
+        EnsureProcessSucceeded("psql restore", result, "恢复 PostgreSQL SQL 备份失败");
+    }
+
+    private async Task RestoreArchiveBackupWithLocalPgRestoreAsync(
+        NpgsqlConnectionStringBuilder builder,
+        string inputPath,
+        string pgRestorePath,
+        CancellationToken cancellationToken)
+    {
+        var startInfo = CreateProcessStartInfo(pgRestorePath);
+
+        foreach (var argument in BuildPgRestoreArguments(builder, inputPath))
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        ApplyPgEnvironment(startInfo, builder);
+
+        var result = await RunProcessAsync(startInfo, cancellationToken);
+        EnsureProcessSucceeded("pg_restore", result, "恢复 PostgreSQL dump 备份失败");
+    }
+
+    private async Task RestoreDatabaseBackupWithDockerToolsAsync(
+        NpgsqlConnectionStringBuilder builder,
+        string inputPath,
+        string extension,
+        DockerContainerMatch dockerContainer,
+        CancellationToken cancellationToken)
+    {
+        var containerDumpPath = $"/tmp/lies-db-restore-{Guid.NewGuid():N}{extension}";
+
+        try
+        {
+            var copyStartInfo = CreateProcessStartInfo("docker");
+            copyStartInfo.ArgumentList.Add("cp");
+            copyStartInfo.ArgumentList.Add(inputPath);
+            copyStartInfo.ArgumentList.Add($"{dockerContainer.ContainerId}:{containerDumpPath}");
+
+            var copyResult = await RunProcessAsync(copyStartInfo, cancellationToken);
+            EnsureProcessSucceeded("docker cp", copyResult, "复制数据库备份到 Docker 容器失败");
+
+            var restoreStartInfo = CreateProcessStartInfo("docker");
+            restoreStartInfo.ArgumentList.Add("exec");
+            ApplyDockerPgEnvironment(restoreStartInfo, builder);
+            restoreStartInfo.ArgumentList.Add(dockerContainer.ContainerId);
+            restoreStartInfo.ArgumentList.Add(IsSqlDumpExtension(extension) ? "psql" : "pg_restore");
+
+            var arguments = IsSqlDumpExtension(extension)
+                ? BuildPsqlRestoreArguments(builder, containerDumpPath, "127.0.0.1", dockerContainer.ContainerPort)
+                : BuildPgRestoreArguments(builder, containerDumpPath, "127.0.0.1", dockerContainer.ContainerPort);
+
+            foreach (var argument in arguments)
+            {
+                restoreStartInfo.ArgumentList.Add(argument);
+            }
+
+            var restoreResult = await RunProcessAsync(restoreStartInfo, cancellationToken);
+            EnsureProcessSucceeded(
+                IsSqlDumpExtension(extension) ? "docker exec psql" : "docker exec pg_restore",
+                restoreResult,
+                "通过 Docker 恢复 PostgreSQL 备份失败");
+
+            _logger.LogInformation(
+                "Database backup restored via docker container {ContainerName} ({ContainerId})",
+                dockerContainer.ContainerName,
+                dockerContainer.ContainerId);
+        }
+        catch (Win32Exception ex)
+        {
+            _logger.LogWarning(ex, "Docker CLI is not available while restoring PostgreSQL backup.");
+            throw new InvalidOperationException("当前环境缺少 docker CLI，无法使用 Docker 容器恢复数据库。");
+        }
+        finally
+        {
+            try
+            {
+                var cleanupStartInfo = CreateProcessStartInfo("docker");
+                cleanupStartInfo.ArgumentList.Add("exec");
+                cleanupStartInfo.ArgumentList.Add(dockerContainer.ContainerId);
+                cleanupStartInfo.ArgumentList.Add("rm");
+                cleanupStartInfo.ArgumentList.Add("-f");
+                cleanupStartInfo.ArgumentList.Add(containerDumpPath);
+                await RunProcessAsync(cleanupStartInfo, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(
+                    ex,
+                    "Failed to delete temporary restore file from docker container {ContainerId}",
+                    dockerContainer.ContainerId);
+            }
+        }
+    }
+
     private async Task<bool> TryExportDatabaseBackupWithLocalPgDumpAsync(
         NpgsqlConnectionStringBuilder builder,
         string outputPath,
@@ -433,7 +796,7 @@ public class AdminService : IAdminService
         ApplyPgEnvironment(startInfo, builder);
 
         var result = await RunProcessAsync(startInfo, cancellationToken);
-        EnsureProcessSucceeded("pg_dump", result);
+        EnsureProcessSucceeded("pg_dump", result, "导出 PostgreSQL dump 失败");
     }
 
     private async Task ExportDatabaseBackupWithDockerPgDumpAsync(
@@ -463,7 +826,7 @@ public class AdminService : IAdminService
             }
 
             var exportResult = await RunProcessAsync(exportStartInfo, cancellationToken);
-            EnsureProcessSucceeded("docker exec pg_dump", exportResult);
+            EnsureProcessSucceeded("docker exec pg_dump", exportResult, "导出 PostgreSQL dump 失败");
 
             var copyStartInfo = CreateProcessStartInfo("docker");
             copyStartInfo.ArgumentList.Add("cp");
@@ -471,7 +834,7 @@ public class AdminService : IAdminService
             copyStartInfo.ArgumentList.Add(outputPath);
 
             var copyResult = await RunProcessAsync(copyStartInfo, cancellationToken);
-            EnsureProcessSucceeded("docker cp", copyResult);
+            EnsureProcessSucceeded("docker cp", copyResult, "复制数据库备份文件失败");
 
             _logger.LogInformation(
                 "Database dump exported via docker container {ContainerName} ({ContainerId})",
@@ -667,6 +1030,58 @@ public class AdminService : IAdminService
         }
     }
 
+    private IEnumerable<string> GetPgRestoreCandidates()
+    {
+        var configuredPath = _configuration["DatabaseBackup:PgRestorePath"];
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            yield return configuredPath;
+        }
+
+        yield return "pg_restore";
+
+        foreach (var candidate in new[]
+                 {
+                     "/opt/homebrew/opt/libpq/bin/pg_restore",
+                     "/opt/homebrew/bin/pg_restore",
+                     "/usr/local/opt/libpq/bin/pg_restore",
+                     "/usr/local/bin/pg_restore",
+                     "/Applications/Postgres.app/Contents/Versions/latest/bin/pg_restore"
+                 })
+        {
+            if (File.Exists(candidate))
+            {
+                yield return candidate;
+            }
+        }
+    }
+
+    private IEnumerable<string> GetPsqlCandidates()
+    {
+        var configuredPath = _configuration["DatabaseBackup:PsqlPath"];
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            yield return configuredPath;
+        }
+
+        yield return "psql";
+
+        foreach (var candidate in new[]
+                 {
+                     "/opt/homebrew/opt/libpq/bin/psql",
+                     "/opt/homebrew/bin/psql",
+                     "/usr/local/opt/libpq/bin/psql",
+                     "/usr/local/bin/psql",
+                     "/Applications/Postgres.app/Contents/Versions/latest/bin/psql"
+                 })
+        {
+            if (File.Exists(candidate))
+            {
+                yield return candidate;
+            }
+        }
+    }
+
     private static List<string> BuildPgDumpArguments(
         NpgsqlConnectionStringBuilder builder,
         string outputPath,
@@ -684,6 +1099,41 @@ public class AdminService : IAdminService
             $"--port={(portOverride ?? builder.Port).ToString(CultureInfo.InvariantCulture)}",
             $"--username={builder.Username}",
             $"--dbname={builder.Database}"
+        ];
+    }
+
+    private static List<string> BuildPgRestoreArguments(
+        NpgsqlConnectionStringBuilder builder,
+        string inputPath,
+        string? hostOverride = null,
+        int? portOverride = null)
+    {
+        return
+        [
+            "--no-owner",
+            "--no-privileges",
+            $"--host={hostOverride ?? builder.Host}",
+            $"--port={(portOverride ?? builder.Port).ToString(CultureInfo.InvariantCulture)}",
+            $"--username={builder.Username}",
+            $"--dbname={builder.Database}",
+            inputPath
+        ];
+    }
+
+    private static List<string> BuildPsqlRestoreArguments(
+        NpgsqlConnectionStringBuilder builder,
+        string inputPath,
+        string? hostOverride = null,
+        int? portOverride = null)
+    {
+        return
+        [
+            "--set=ON_ERROR_STOP=1",
+            $"--host={hostOverride ?? builder.Host}",
+            $"--port={(portOverride ?? builder.Port).ToString(CultureInfo.InvariantCulture)}",
+            $"--username={builder.Username}",
+            $"--dbname={builder.Database}",
+            $"--file={inputPath}"
         ];
     }
 
@@ -808,7 +1258,7 @@ public class AdminService : IAdminService
         };
     }
 
-    private void EnsureProcessSucceeded(string commandName, ProcessExecutionResult result)
+    private void EnsureProcessSucceeded(string commandName, ProcessExecutionResult result, string failureMessage)
     {
         if (result.ExitCode == 0)
         {
@@ -823,7 +1273,7 @@ public class AdminService : IAdminService
             result.ExitCode,
             errorMessage);
 
-        throw new InvalidOperationException($"导出 PostgreSQL dump 失败: {errorMessage}");
+        throw new InvalidOperationException($"{failureMessage}: {errorMessage}");
     }
 
     private static void EnsureDumpFileExists(string tempFilePath)
@@ -848,6 +1298,31 @@ public class AdminService : IAdminService
         {
             // Best effort cleanup only.
         }
+    }
+
+    private static void EnsureRestorableDatabaseName(string? databaseName)
+    {
+        if (string.IsNullOrWhiteSpace(databaseName))
+        {
+            throw new InvalidOperationException("未找到当前应用链接的数据库名称。");
+        }
+
+        if (string.Equals(databaseName, "postgres", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(databaseName, "template0", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(databaseName, "template1", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"不允许直接恢复系统数据库 {databaseName}。");
+        }
+    }
+
+    private static string QuotePostgresIdentifier(string identifier)
+    {
+        return $"\"{identifier.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+    }
+
+    private static bool IsSqlDumpExtension(string extension)
+    {
+        return string.Equals(extension, ".sql", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<Dictionary<int, AdminUserPerformanceResponse>> BuildUserPerformanceLookupAsync(

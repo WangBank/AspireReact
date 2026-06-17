@@ -67,6 +67,8 @@ RUN set -eux; \
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /src/frontend/dist ./wwwroot
 COPY --from=postgres-tools /usr/lib/postgresql/18/bin/pg_dump /usr/local/bin/pg_dump
+COPY --from=postgres-tools /usr/lib/postgresql/18/bin/pg_restore /usr/local/bin/pg_restore
+COPY --from=postgres-tools /usr/lib/postgresql/18/bin/psql /usr/local/bin/psql
 
 RUN mkdir -p /app/Logs /app/RuntimeData/RapidOcr
 

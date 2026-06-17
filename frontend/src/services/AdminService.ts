@@ -62,6 +62,13 @@ export interface DatabaseExportResult {
   tempFilePath: string | null;
 }
 
+export interface DatabaseRestoreResult {
+  fileName: string;
+  database: string;
+  fileSizeBytes: number;
+  restoredAt: string;
+}
+
 export class AdminService {
   private getAuthHeaders(contentType = true): HeadersInit {
     const token = getAuthToken();
@@ -225,6 +232,26 @@ export class AdminService {
       fileName,
       tempFilePath: response.headers.get('X-Temp-File-Path'),
     };
+  }
+
+  async restoreDatabase(file: File, confirmRestore: boolean): Promise<DatabaseRestoreResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('confirmRestore', String(confirmRestore));
+
+    const response = await fetch(`${API_BASE}/restore/database`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(false),
+      body: formData,
+    });
+
+    const json: ApiResponse<DatabaseRestoreResult> = await response.json();
+
+    if (!response.ok || !json.success || !json.data) {
+      throw new Error(json.message || '恢复数据库备份失败');
+    }
+
+    return json.data;
   }
 }
 
