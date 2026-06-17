@@ -243,19 +243,29 @@ Windows PowerShell：
 powershell -ExecutionPolicy Bypass -File .\scripts\db-restore.ps1 C:\Users\12243\Downloads\lies.dump lies
 ```
 
+如果要直接恢复到当前 Docker 应用实际连接的数据库，第二个参数可以不传：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\db-restore.ps1 C:\Users\12243\Downloads\lies.dump
+```
+
 macOS / Linux：
 
 ```bash
 bash scripts/db-restore.sh /path/to/lies.dump lies
 ```
 
+```bash
+bash scripts/db-restore.sh /path/to/lies.dump
+```
+
 说明：
 
 - 恢复前先启动 Docker 栈，`docker-up` 和 `aspire-docker-up` 两条链路都可以
 - 脚本会自动寻找当前运行中的 `postgres` 容器，复制备份文件，断开活动连接，重建目标库，然后执行恢复
+- 第二个参数不传时，脚本会优先读取当前运行中的 `lies-app` / `lies-apphost-monitor` 容器连接串，自动恢复到当前链接数据库；如果拿不到，再回退到 `postgres` 容器环境变量和 `.env.docker`
 - 目标库会被重建，原有数据会被覆盖
-- 第二个参数不传时，默认恢复到 `.env.docker` 中的 `POSTGRES_DB`，默认值是 `lies`
-- 恢复凭据读取 `.env.docker` 中的 `POSTGRES_USER` 和 `POSTGRES_PASSWORD`
+- 如果显式传了第二个参数，脚本仍然会使用当前运行栈对应的 PostgreSQL 用户名和密码去恢复该库
 - 如果你使用的是 AppHost Docker 链路，建议把 `.env.docker` 和 `.env.aspire-docker` 里的 PostgreSQL 用户名和密码保持一致
 - 如果本机同时运行了多套 PostgreSQL 容器，先停掉旧栈，避免恢复到错误容器
 

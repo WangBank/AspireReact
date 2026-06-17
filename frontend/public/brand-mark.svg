@@ -1,17 +1,3 @@
-<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="bg" x1="88" y1="72" x2="424" y2="448" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FF6B6B"/>
-      <stop offset="1" stop-color="#D1242F"/>
-    </linearGradient>
-    <linearGradient id="glow" x1="152" y1="120" x2="368" y2="392" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFF5D6" stop-opacity="0.92"/>
-      <stop offset="1" stop-color="#FFE3A3" stop-opacity="0.58"/>
-    </linearGradient>
-  </defs>
-  <rect x="36" y="36" width="440" height="440" rx="120" fill="url(#bg)"/>
-  <rect x="64" y="64" width="384" height="384" rx="98" stroke="#FFFFFF" stroke-opacity="0.28" stroke-width="10"/>
-  <path d="M170 178C192 140 234 118 280 118C345 118 390 160 390 222C390 274 361 319 305 359C276 380 262 402 256 424C248 392 232 367 197 336C155 298 132 262 132 214C132 198 136 186 145 174C152 191 168 205 188 205C210 205 226 188 226 166C226 154 221 144 212 136C238 147 261 165 281 191C291 174 309 162 330 162C356 162 377 183 377 209C377 235 356 256 330 256C312 256 297 246 289 232C274 250 262 268 252 287C239 271 225 255 209 242C201 251 188 257 174 257C148 257 127 236 127 210C127 196 133 183 143 174L170 178Z" fill="url(#glow)"/>
-  <path d="M167 336C182 336 194 348 194 363C194 378 182 390 167 390C152 390 140 378 140 363C140 348 152 336 167 336Z" fill="#FFF5D6" fill-opacity="0.92"/>
-  <path d="M349 108C369 108 386 125 386 145C386 165 369 182 349 182C329 182 312 165 312 145C312 125 329 108 349 108Z" fill="#FFF5D6" fill-opacity="0.22"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Lies logo">
+  <image href="Lies.png" width="512" height="512" preserveAspectRatio="xMidYMid meet" />
 </svg>

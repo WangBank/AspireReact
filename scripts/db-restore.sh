@@ -21,6 +21,17 @@ get_env_value() {
   echo "$default_value"
 }
 
+first_non_empty() {
+  for value in "$@"; do
+    if [[ -n "${value// }" ]]; then
+      echo "$value"
+      return 0
+    fi
+  done
+
+  echo ""
+}
+
 get_first_existing_path() {
   for path in "$@"; do
     if [[ -f "$path" ]]; then
@@ -30,6 +41,18 @@ get_first_existing_path() {
   done
 
   return 1
+}
+
+get_compose_service_container_id() {
+  local env_file="$1"
+  local compose_file="$2"
+  local service_name="$3"
+
+  if [[ ! -f "$env_file" || ! -f "$compose_file" ]]; then
+    return 1
+  fi
+
+  docker compose --env-file "$env_file" -f "$compose_file" ps -q "$service_name" 2>/dev/null | awk 'NF { print; exit }'
 }
 
 invoke_postgres_sql() {
@@ -50,6 +73,122 @@ get_compose_postgres_container_id() {
   fi
 
   docker compose --env-file "$env_file" -f "$compose_file" ps -q postgres 2>/dev/null | awk 'NF { print; exit }'
+}
+
+get_container_env_value() {
+  local container_id="$1"
+  local env_name="$2"
+
+  docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container_id" 2>/dev/null | \
+    awk -v name="$env_name" 'index($0, name "=") == 1 { print substr($0, length(name) + 2); exit }'
+}
+
+get_connection_string_part() {
+  local connection_string="$1"
+  shift
+
+  for lookup_key in "$@"; do
+    local value
+    value="$(
+      printf '%s' "$connection_string" | tr ';' '\n' | \
+        awk -F '=' -v lookup="$lookup_key" '
+          {
+            key = $1
+            sub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+            lower_key = tolower(key)
+            value = substr($0, index($0, "=") + 1)
+            sub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            if (lower_key == tolower(lookup) && length(value) > 0) {
+              print value
+              exit
+            }
+          }
+        '
+    )"
+
+    if [[ -n "$value" ]]; then
+      echo "$value"
+      return 0
+    fi
+  done
+
+  echo ""
+}
+
+resolve_current_postgres_settings() {
+  local postgres_container_id="$1"
+  local default_database="$2"
+  local default_user="$3"
+  local default_password="$4"
+
+  local apphost_output_dir="$ROOT_DIR/.aspire-output/docker-compose"
+  local apphost_compose_file=""
+  apphost_compose_file="$(get_first_existing_path "$apphost_output_dir/docker-compose.yaml" "$apphost_output_dir/docker-compose.yml" || true)"
+  local apphost_env_file="$apphost_output_dir/.env.Production"
+
+  local compose_pairs=(
+    "$ENV_FILE"$'\t'"$COMPOSE_FILE"
+  )
+
+  if [[ -n "$apphost_compose_file" ]]; then
+    compose_pairs+=("$apphost_env_file"$'\t'"$apphost_compose_file")
+  fi
+
+  local pair
+  for pair in "${compose_pairs[@]}"; do
+    local pair_env_file="${pair%%$'\t'*}"
+    local pair_compose_file="${pair#*$'\t'}"
+
+    for service_name in lies-app lies-apphost-monitor; do
+      local service_container_id=""
+      service_container_id="$(get_compose_service_container_id "$pair_env_file" "$pair_compose_file" "$service_name" || true)"
+      if [[ -z "$service_container_id" ]]; then
+        continue
+      fi
+
+      for env_name in ConnectionStrings__PostgreSQL Monitoring__PostgresConnectionString; do
+        local connection_string=""
+        connection_string="$(get_container_env_value "$service_container_id" "$env_name")"
+        if [[ -z "$connection_string" ]]; then
+          continue
+        fi
+
+        local database=""
+        database="$(first_non_empty \
+          "$(get_connection_string_part "$connection_string" "database" "initial catalog")" \
+          "$default_database")"
+        local user=""
+        user="$(first_non_empty \
+          "$(get_connection_string_part "$connection_string" "username" "user id" "user" "userid" "uid")" \
+          "$default_user")"
+        local password=""
+        password="$(first_non_empty \
+          "$(get_connection_string_part "$connection_string" "password" "pwd")" \
+          "$default_password")"
+
+        if [[ -n "$database" && -n "$user" ]]; then
+          printf '%s\t%s\t%s\t%s\n' "$database" "$user" "$password" "container $service_name / $env_name"
+          return 0
+        fi
+      done
+    done
+  done
+
+  if [[ -n "$postgres_container_id" ]]; then
+    local database=""
+    database="$(first_non_empty "$(get_container_env_value "$postgres_container_id" "POSTGRES_DB")" "$default_database")"
+    local user=""
+    user="$(first_non_empty "$(get_container_env_value "$postgres_container_id" "POSTGRES_USER")" "$default_user")"
+    local password=""
+    password="$(first_non_empty "$(get_container_env_value "$postgres_container_id" "POSTGRES_PASSWORD")" "$default_password")"
+
+    if [[ -n "$database" && -n "$user" ]]; then
+      printf '%s\t%s\t%s\t%s\n' "$database" "$user" "$password" "postgres container environment"
+      return 0
+    fi
+  fi
+
+  printf '%s\t%s\t%s\t%s\n' "$default_database" "$default_user" "$default_password" ".env.docker defaults"
 }
 
 get_running_containers() {
@@ -135,16 +274,18 @@ get_postgres_container_id() {
   return 1
 }
 
+DEFAULT_DATABASE="$(get_env_value POSTGRES_DB lies)"
+DEFAULT_POSTGRES_USER="$(get_env_value POSTGRES_USER postgres)"
+DEFAULT_POSTGRES_PASSWORD="$(get_env_value POSTGRES_PASSWORD postgres123)"
+
 if [[ $# -lt 1 ]]; then
   echo "Usage: bash scripts/db-restore.sh <dump-file> [database]"
   echo "Supported formats: .sql, .dump, .backup, .tar"
+  echo "If [database] is omitted, the script restores into the database currently linked by the running Docker app container."
   exit 1
 fi
 
 DUMP_FILE="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-TARGET_DATABASE="${2:-$(get_env_value POSTGRES_DB lies)}"
-POSTGRES_USER="$(get_env_value POSTGRES_USER postgres)"
-POSTGRES_PASSWORD="$(get_env_value POSTGRES_PASSWORD postgres123)"
 CONTAINER_ID="$(get_postgres_container_id || true)"
 
 if [[ -z "$CONTAINER_ID" ]]; then
@@ -152,9 +293,16 @@ if [[ -z "$CONTAINER_ID" ]]; then
   exit 1
 fi
 
+RESOLVED_SETTINGS="$(resolve_current_postgres_settings "$CONTAINER_ID" "$DEFAULT_DATABASE" "$DEFAULT_POSTGRES_USER" "$DEFAULT_POSTGRES_PASSWORD")"
+TARGET_DATABASE="${2:-$(printf '%s' "$RESOLVED_SETTINGS" | cut -f1)}"
+POSTGRES_USER="$(printf '%s' "$RESOLVED_SETTINGS" | cut -f2)"
+POSTGRES_PASSWORD="$(printf '%s' "$RESOLVED_SETTINGS" | cut -f3)"
+SETTINGS_SOURCE="$(printf '%s' "$RESOLVED_SETTINGS" | cut -f4)"
+
 DUMP_EXTENSION="${DUMP_FILE##*.}"
 CONTAINER_DUMP_PATH="/tmp/restore-input.${DUMP_EXTENSION}"
 
+echo "Resolved PostgreSQL settings from: $SETTINGS_SOURCE"
 echo "Copying dump into postgres container..."
 docker cp "$DUMP_FILE" "${CONTAINER_ID}:${CONTAINER_DUMP_PATH}"
 
@@ -206,3 +354,4 @@ echo
 echo "Database restore completed."
 echo "Database: $TARGET_DATABASE"
 echo "User: $POSTGRES_USER"
+echo "Resolved from: $SETTINGS_SOURCE"

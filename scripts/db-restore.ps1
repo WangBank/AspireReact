@@ -42,6 +42,22 @@ function Get-EnvValue {
     return $DefaultValue
 }
 
+function Get-FirstNonEmptyString {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$Values
+    )
+
+    foreach ($value in $Values) {
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            return $value
+        }
+    }
+
+    return ""
+}
+
 function Invoke-Postgres {
     param(
         [Parameter(Mandatory = $true)]
@@ -119,6 +135,214 @@ function Get-ComposePostgresContainerId {
     }
 
     return $containerIds | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
+}
+
+function Get-ComposeServiceContainerId {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$EnvFile,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ComposeFile,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ServiceName
+    )
+
+    if (-not (Test-Path $EnvFile) -or -not (Test-Path $ComposeFile)) {
+        return ""
+    }
+
+    $containerIds = & docker compose --env-file $EnvFile -f $ComposeFile ps -q $ServiceName 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return ""
+    }
+
+    return $containerIds | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
+}
+
+function Get-ContainerEnvironmentMap {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ContainerId
+    )
+
+    $rows = & docker inspect --format "{{range .Config.Env}}{{println .}}{{end}}" $ContainerId 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return @{}
+    }
+
+    $environmentMap = @{}
+    foreach ($row in $rows) {
+        if ([string]::IsNullOrWhiteSpace($row)) {
+            continue
+        }
+
+        $separatorIndex = $row.IndexOf("=")
+        if ($separatorIndex -lt 1) {
+            continue
+        }
+
+        $name = $row.Substring(0, $separatorIndex)
+        $value = $row.Substring($separatorIndex + 1)
+        $environmentMap[$name] = $value
+    }
+
+    return $environmentMap
+}
+
+function Get-ConnectionStringSettings {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ConnectionString
+    )
+
+    $settings = @{}
+
+    foreach ($segment in ($ConnectionString -split ";")) {
+        if ([string]::IsNullOrWhiteSpace($segment)) {
+            continue
+        }
+
+        $separatorIndex = $segment.IndexOf("=")
+        if ($separatorIndex -lt 1) {
+            continue
+        }
+
+        $key = $segment.Substring(0, $separatorIndex).Trim().ToLowerInvariant()
+        $value = $segment.Substring($separatorIndex + 1).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            $settings[$key] = $value
+        }
+    }
+
+    return [PSCustomObject]@{
+        Database = Get-FirstNonEmptyString @(
+            $settings["database"],
+            $settings["initial catalog"]
+        )
+        User = Get-FirstNonEmptyString @(
+            $settings["username"],
+            $settings["user id"],
+            $settings["user"],
+            $settings["userid"],
+            $settings["uid"]
+        )
+        Password = Get-FirstNonEmptyString @(
+            $settings["password"],
+            $settings["pwd"]
+        )
+    }
+}
+
+function Resolve-CurrentPostgresSettings {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RootDir,
+
+        [Parameter(Mandatory = $true)]
+        [string]$EnvFile,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ComposeFile,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PostgresContainerId,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DefaultDatabase,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DefaultUser,
+
+        [Parameter(Mandatory = $true)]
+        [string]$DefaultPassword
+    )
+
+    $AppHostOutputDir = Join-Path $RootDir ".aspire-output/docker-compose"
+    $AppHostComposeFile = Get-FirstExistingPath @(
+        (Join-Path $AppHostOutputDir "docker-compose.yaml"),
+        (Join-Path $AppHostOutputDir "docker-compose.yml")
+    )
+    $AppHostEnvFile = Join-Path $AppHostOutputDir ".env.Production"
+
+    $composeTargets = @(
+        [PSCustomObject]@{
+            EnvFile = $EnvFile
+            ComposeFile = $ComposeFile
+            Services = @("lies-app", "lies-apphost-monitor")
+        }
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($AppHostComposeFile)) {
+        $composeTargets += [PSCustomObject]@{
+            EnvFile = $AppHostEnvFile
+            ComposeFile = $AppHostComposeFile
+            Services = @("lies-app", "lies-apphost-monitor")
+        }
+    }
+
+    foreach ($composeTarget in $composeTargets) {
+        foreach ($serviceName in $composeTarget.Services) {
+            $serviceContainerId = Get-ComposeServiceContainerId `
+                -EnvFile $composeTarget.EnvFile `
+                -ComposeFile $composeTarget.ComposeFile `
+                -ServiceName $serviceName
+
+            if ([string]::IsNullOrWhiteSpace($serviceContainerId)) {
+                continue
+            }
+
+            $environmentMap = Get-ContainerEnvironmentMap -ContainerId $serviceContainerId
+            foreach ($environmentName in @("ConnectionStrings__PostgreSQL", "Monitoring__PostgresConnectionString")) {
+                if (-not $environmentMap.ContainsKey($environmentName)) {
+                    continue
+                }
+
+                $connectionString = [string]$environmentMap[$environmentName]
+                if ([string]::IsNullOrWhiteSpace($connectionString)) {
+                    continue
+                }
+
+                $settings = Get-ConnectionStringSettings -ConnectionString $connectionString
+                $database = Get-FirstNonEmptyString @($settings.Database, $DefaultDatabase)
+                $user = Get-FirstNonEmptyString @($settings.User, $DefaultUser)
+                $password = Get-FirstNonEmptyString @($settings.Password, $DefaultPassword)
+
+                if (-not [string]::IsNullOrWhiteSpace($database) -and -not [string]::IsNullOrWhiteSpace($user)) {
+                    return [PSCustomObject]@{
+                        Database = $database
+                        User = $user
+                        Password = $password
+                        Source = "container $serviceName / $environmentName"
+                    }
+                }
+            }
+        }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($PostgresContainerId)) {
+        $environmentMap = Get-ContainerEnvironmentMap -ContainerId $PostgresContainerId
+        $database = Get-FirstNonEmptyString @([string]$environmentMap["POSTGRES_DB"], $DefaultDatabase)
+        $user = Get-FirstNonEmptyString @([string]$environmentMap["POSTGRES_USER"], $DefaultUser)
+        $password = Get-FirstNonEmptyString @([string]$environmentMap["POSTGRES_PASSWORD"], $DefaultPassword)
+
+        if (-not [string]::IsNullOrWhiteSpace($database) -and -not [string]::IsNullOrWhiteSpace($user)) {
+            return [PSCustomObject]@{
+                Database = $database
+                User = $user
+                Password = $password
+                Source = "postgres container environment"
+            }
+        }
+    }
+
+    return [PSCustomObject]@{
+        Database = $DefaultDatabase
+        User = $DefaultUser
+        Password = $DefaultPassword
+        Source = ".env.docker defaults"
+    }
 }
 
 function Get-RunningContainers {
@@ -240,28 +464,42 @@ function Get-PostgresContainerId {
 $RootDir = Split-Path -Parent $PSScriptRoot
 $EnvFile = Join-Path $RootDir ".env.docker"
 $ComposeFile = Join-Path $RootDir "docker-compose.yml"
+$DefaultDatabase = Get-EnvValue -FilePath $EnvFile -Name "POSTGRES_DB" -DefaultValue "lies"
+$DefaultPostgresUser = Get-EnvValue -FilePath $EnvFile -Name "POSTGRES_USER" -DefaultValue "postgres"
+$DefaultPostgresPassword = Get-EnvValue -FilePath $EnvFile -Name "POSTGRES_PASSWORD" -DefaultValue "postgres123"
 
 if ($args.Count -lt 1) {
     Write-Host "Usage: powershell -ExecutionPolicy Bypass -File .\scripts\db-restore.ps1 <dump-file> [database]"
     Write-Host "Supported formats: .sql, .dump, .backup, .tar"
+    Write-Host "If [database] is omitted, the script restores into the database currently linked by the running Docker app container."
     exit 1
 }
 
 $DumpFile = Resolve-Path $args[0]
-$TargetDatabase = if ($args.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($args[1])) {
-    $args[1]
-}
-else {
-    Get-EnvValue -FilePath $EnvFile -Name "POSTGRES_DB" -DefaultValue "lies"
-}
-
-$PostgresUser = Get-EnvValue -FilePath $EnvFile -Name "POSTGRES_USER" -DefaultValue "postgres"
-$PostgresPassword = Get-EnvValue -FilePath $EnvFile -Name "POSTGRES_PASSWORD" -DefaultValue "postgres123"
 $ContainerId = Get-PostgresContainerId -RootDir $RootDir -EnvFile $EnvFile -ComposeFile $ComposeFile
 
 if ([string]::IsNullOrWhiteSpace($ContainerId)) {
     throw "Postgres container is not running. Start the Docker stack first."
 }
+
+$ResolvedPostgresSettings = Resolve-CurrentPostgresSettings `
+    -RootDir $RootDir `
+    -EnvFile $EnvFile `
+    -ComposeFile $ComposeFile `
+    -PostgresContainerId $ContainerId `
+    -DefaultDatabase $DefaultDatabase `
+    -DefaultUser $DefaultPostgresUser `
+    -DefaultPassword $DefaultPostgresPassword
+
+$TargetDatabase = if ($args.Count -ge 2 -and -not [string]::IsNullOrWhiteSpace($args[1])) {
+    $args[1]
+}
+else {
+    $ResolvedPostgresSettings.Database
+}
+
+$PostgresUser = $ResolvedPostgresSettings.User
+$PostgresPassword = $ResolvedPostgresSettings.Password
 
 $DumpExtension = [System.IO.Path]::GetExtension($DumpFile.Path).ToLowerInvariant()
 $ContainerDumpPath = "/tmp/restore-input$DumpExtension"
@@ -269,6 +507,7 @@ $QuotedPassword = $PostgresPassword.Replace("'", "''")
 $QuotedUser = $PostgresUser.Replace("'", "''")
 $QuotedDb = $TargetDatabase.Replace("'", "''")
 
+Write-Host "Resolved PostgreSQL settings from: $($ResolvedPostgresSettings.Source)"
 Write-Host "Copying dump into postgres container..."
 Invoke-NativeCommand {
     docker cp $DumpFile.Path "${ContainerId}:${ContainerDumpPath}"
@@ -351,3 +590,4 @@ Write-Host ""
 Write-Host "Database restore completed."
 Write-Host "Database: $TargetDatabase"
 Write-Host "User: $PostgresUser"
+Write-Host "Resolved from: $($ResolvedPostgresSettings.Source)"
